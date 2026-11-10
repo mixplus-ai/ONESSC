@@ -1,7 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
-import { Alert, Badge, Button, ButtonLink, Card, Field, Input, PageTitle } from "../../components/ui";
-import { CLAIM_STATUS, fmtThai, type MyClaim } from "../../lib/claims";
+import { useState, type FormEvent } from "react";
+import { Alert, Badge, Button, Card, Field, Input, PageTitle } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, supabase } from "../../lib/supabase";
 import { COMPANY_STATUS_LABEL, DEPARTMENT_LABEL, ROLE_LABEL } from "../../lib/types";
@@ -11,44 +9,6 @@ export function isValidThaiTaxId(id: string) {
   if (!/^\d{13}$/.test(id)) return false;
   const sum = id.slice(0, 12).split("").reduce((s, d, i) => s + Number(d) * (13 - i), 0);
   return (11 - (sum % 11)) % 10 === Number(id[12]);
-}
-
-/** หัวข้อ "งานเคลมของฉัน": เคลมที่ผู้ใช้แจ้งเอง (my_claims คืนเฉพาะของตัวเอง) */
-function MyClaimsCard() {
-  const [rows, setRows] = useState<MyClaim[] | null>(null);
-  useEffect(() => {
-    supabase.rpc("my_claims").then(({ data }) => setRows((data ?? []) as MyClaim[]));
-  }, []);
-  const open = rows?.filter((c) => !["closed", "rejected"].includes(c.status)).length ?? 0;
-  return (
-    <Card>
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="font-semibold text-navy-900">งานเคลม</h3>
-        <ButtonLink to="/app/claims/new" variant="sun">+ แจ้งเคลม</ButtonLink>
-      </div>
-      {rows === null ? (
-        <p className="mt-3 text-sm text-slate-500">กำลังโหลด…</p>
-      ) : rows.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">ยังไม่มีเคลมที่คุณแจ้ง</p>
-      ) : (
-        <>
-          <p className="mt-1 text-sm text-slate-500">แจ้งไว้ทั้งหมด {rows.length} รายการ · กำลังดำเนินการ {open} รายการ</p>
-          <ul className="mt-3 divide-y divide-slate-100">
-            {rows.slice(0, 5).map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-                <div className="min-w-0">
-                  <p className="font-mono font-semibold text-navy-900">{c.claim_no}</p>
-                  <p className="truncate text-xs text-slate-500">{c.model ?? "-"} · {fmtThai(c.created_at)}</p>
-                </div>
-                <Badge tone={CLAIM_STATUS[c.status].tone}>{CLAIM_STATUS[c.status].label}</Badge>
-              </li>
-            ))}
-          </ul>
-          <Link to="/app/claims" className="mt-2 inline-block text-sm font-semibold text-navy-700 hover:underline">ดูเคลมทั้งหมดและติดตามสถานะ →</Link>
-        </>
-      )}
-    </Card>
-  );
 }
 
 export default function Profile() {
@@ -130,8 +90,6 @@ export default function Profile() {
             <div className="sm:col-span-2"><Button type="submit" loading={busy}>บันทึก</Button></div>
           </form>
         </Card>
-        <div className="space-y-6">
-        <MyClaimsCard />
         <Card>
           <h3 className="font-semibold text-navy-900">เปลี่ยนรหัสผ่าน</h3>
           <form onSubmit={changePassword} className="mt-4 space-y-4">
@@ -141,7 +99,6 @@ export default function Profile() {
             <Button type="submit" variant="secondary" loading={pwBusy}>เปลี่ยนรหัสผ่าน</Button>
           </form>
         </Card>
-        </div>
       </div>
     </>
   );

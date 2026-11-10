@@ -168,12 +168,12 @@ export default function MyClaims() {
     const { data, error } = await supabase.rpc("my_claims");
     return { data: (data ?? []) as MyClaim[], error };
   });
-  const [filter, setFilter] = useState<"open" | "all">("open");
+  const [filter, setFilter] = useState<"open" | "all">("all");
   const rows = list.rows.filter((c) => filter === "all" || !["closed", "rejected"].includes(c.status));
 
   return (
     <>
-      <PageTitle title="เคลมของฉัน" subtitle="ติดตามสถานะเคลมที่คุณแจ้งไว้" actions={<ButtonLink to="/app/claims/new" variant="sun">+ แจ้งเคลม</ButtonLink>} />
+      <PageTitle title="งานเคลมของฉัน" subtitle="ติดตามสถานะเคลมที่คุณแจ้งไว้" actions={<ButtonLink to="/app/claims/new" variant="sun">+ แจ้งเคลม</ButtonLink>} />
       {st?.created && (
         <div className="mb-4">
           <Alert tone="green">ส่งแจ้งเคลมแล้ว เลขเคลมของคุณคือ <span className="font-mono font-bold">{st.created}</span> · สถานะ: {CLAIM_STATUS.submitted.label} (รอเจ้าหน้าที่รับเรื่อง) ติดตามสถานะได้ที่หน้านี้</Alert>
@@ -181,7 +181,7 @@ export default function MyClaims() {
         </div>
       )}
       <div className="mb-4 flex gap-2 text-sm">
-        {(["open", "all"] as const).map((k) => (
+        {(["all", "open"] as const).map((k) => (
           <button key={k} onClick={() => setFilter(k)} className={cx("rounded-full px-3 py-1", filter === k ? "bg-navy-800 text-white" : "bg-slate-100 text-slate-700")}>
             {k === "open" ? "กำลังดำเนินการ" : "ทั้งหมด"}
           </button>

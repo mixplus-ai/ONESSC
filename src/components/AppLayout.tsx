@@ -52,8 +52,8 @@ export default function AppLayout() {
         { to: "/app/cart", label: count ? `รายการสินค้า (${count})` : "รายการสินค้า", icon: CartIcon, show: true },
         { to: "/app/requests", label: "ใบเสนอราคาและการจอง", icon: FileIcon, show: true },
         { to: "/app/training", label: "การอบรมของฉัน", icon: AcademicIcon, show: true },
+        { to: "/app/claims", label: "งานเคลมของฉัน", icon: WrenchIcon, show: true },
         { to: "/app/points", label: "แต้มและของรางวัล", icon: GiftIcon, show: true },
-        { to: "/app/claims", label: "เคลมของฉัน", icon: WrenchIcon, show: !isStaff },
       ],
     },
     {
