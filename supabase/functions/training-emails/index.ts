@@ -62,15 +62,34 @@ Deno.serve(async (req) => {
   if (!ok) return json({ error: "cron secret ไม่ถูกต้อง" }, 401);
 
   const { data: cfg } = await db.from("training_settings").select("email_enabled, pay_info, email_note, email_from, email_from_name").eq("id", 1).single();
-  if (!cfg?.email_enabled) return json({ sent: 0, skipped: "email_enabled = false" });
+  if (!cfg) return json({ error: "ไม่พบ training_settings" }, 500);
+  const body = await req.json().catch(() => ({})) as { test_to?: string };
+  if (!cfg.email_enabled && !body.test_to) return json({ sent: 0, skipped: "email_enabled = false" });
 
   const send = makeSender(cfg.email_from, cfg.email_from_name);
   if (typeof send === "string") return json({ error: send }, 500);
+  const siteUrl = Deno.env.get("SITE_URL") ?? "https://onessc.netlify.app";
+
+  // {"test_to": "..."}: one sample e-mail to check the mail settings (works while sending is off)
+  if (body.test_to) {
+    const sample: DueEmail = {
+      registration_id: "test", kind: "confirm", reg_code: "TR-TEST", to_email: body.test_to, full_name: "ทดสอบระบบ",
+      course_code: "TEST", course_title: "อีเมลทดสอบจาก SSC One App", session_title: null,
+      starts_on: new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10), ends_on: null,
+      start_time: "09:00:00", end_time: "16:00:00", location: "ทดสอบ", map_url: null,
+      total: 0, pay_status: "free", coupon_code: null, days_left: 5,
+    };
+    try {
+      await send({ to: body.test_to, ...buildTrainingEmail(sample, { siteUrl, payInfo: cfg.pay_info, note: cfg.email_note }) });
+      return json({ test: "sent", to: body.test_to });
+    } catch (x) {
+      return json({ test: "failed", error: x instanceof Error ? x.message : String(x) }, 500);
+    }
+  }
 
   const { data: due, error } = await db.rpc("training_emails_due", { p_limit: 100 });
   if (error) return json({ error: error.message }, 500);
 
-  const siteUrl = Deno.env.get("SITE_URL") ?? "https://onessc.netlify.app";
   let sent = 0;
   const failed: string[] = [];
   for (const e of (due ?? []) as DueEmail[]) {
