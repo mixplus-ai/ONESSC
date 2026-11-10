@@ -18,6 +18,8 @@ export interface Profile {
   pdpa_consent_at: string | null;
   name_en: string | null;
   legacy_cerssc_id: string | null;
+  avatar_url: string | null;
+  billing: import("./training").Billing | null;
   is_active: boolean;
   created_at: string;
 }

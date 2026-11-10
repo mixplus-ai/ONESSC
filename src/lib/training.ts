@@ -79,6 +79,8 @@ export interface Billing {
   tax_id?: string;
   branch?: string;
   address?: string;
+  phone?: string;
+  email?: string;
 }
 export interface Registration {
   id: string;

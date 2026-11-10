@@ -1,11 +1,12 @@
 import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
-import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABEL } from "../lib/types";
 import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, StarIcon, TagIcon, UserIcon, UsersIcon, WrenchIcon, XIcon, TruckIcon } from "./icons";
 import { useCart } from "../lib/cart";
 import { Logo } from "./PublicLayout";
 import { Alert, Loading, cx } from "./ui";
+import { Avatar } from "./Avatar";
 
 interface Item {
   to: string;
@@ -132,8 +133,13 @@ export default function AppLayout() {
 
   const userBox = (
     <div className="border-t border-white/10 p-4">
-      <p className="truncate text-sm font-semibold text-white">{profile?.full_name || profile?.email}</p>
-      <p className="truncate text-xs text-navy-200">{profile && ROLE_LABEL[profile.role]} · {profile?.email}</p>
+      <Link to="/app/profile" className="flex items-center gap-3">
+        <Avatar url={profile?.avatar_url} name={profile?.full_name || profile?.email} className="h-10 w-10 text-sm" />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-semibold text-white">{profile?.full_name || profile?.email}</span>
+          <span className="block truncate text-xs text-navy-200">{profile && ROLE_LABEL[profile.role]} · {profile?.email}</span>
+        </span>
+      </Link>
       <button onClick={signOut} className="mt-3 inline-flex items-center gap-2 text-sm text-navy-100 hover:text-white">
         <LogoutIcon className="h-4 w-4" /> ออกจากระบบ
       </button>

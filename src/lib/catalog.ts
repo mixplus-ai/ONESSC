@@ -114,6 +114,7 @@ export interface QuoteRequest {
   status: QuoteStatus;
   quoted_total: number | null;
   quote_file_path: string | null;
+  billing?: import("./training").Billing | null;
   staff_note: string | null;
   created_at: string;
   updated_at: string;
@@ -131,6 +132,7 @@ export interface Reservation {
   note: string | null;
   status: ReservationStatus;
   expires_at: string;
+  billing?: import("./training").Billing | null;
   staff_note: string | null;
   created_at: string;
   updated_at: string;
