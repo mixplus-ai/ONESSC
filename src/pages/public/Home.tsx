@@ -4,6 +4,8 @@ import { AcademicIcon, ArrowRightIcon, BoxIcon, ShieldIcon, SunIcon, WrenchIcon 
 import { ButtonLink, Empty } from "../../components/ui";
 import { usePublishedPortfolio, usePublishedTeam, useSiteSettings } from "../../lib/content";
 import { LEGACY } from "../../lib/types";
+import { sessionDateText } from "../../lib/training";
+import { useUpcomingSessions } from "./Training";
 import { ContactBlock } from "./Contact";
 
 const MODULES = [
@@ -82,11 +84,7 @@ export default function Home() {
             <p className="mt-2 text-sm text-slate-600">ระหว่างย้ายแคตตาล็อกเข้ามาใน One App ดูสินค้าทั้งหมดได้ที่แคตตาล็อกเดิม</p>
             <ButtonLink to={LEGACY.catalog} variant="secondary" className="mt-4">เปิดแคตตาล็อกสินค้า</ButtonLink>
           </div>
-          <div className="rounded-2xl bg-sun-500/10 p-6">
-            <h3 className="font-semibold text-navy-900">อบรมและกิจกรรมที่กำลังจะมาถึง</h3>
-            <p className="mt-2 text-sm text-slate-600">ดูปฏิทินอบรมและจองรอบได้ที่ SSC Training Portal</p>
-            <ButtonLink to={LEGACY.training} variant="secondary" className="mt-4">ดูปฏิทินอบรม</ButtonLink>
-          </div>
+          <UpcomingTraining />
         </div>
       </section>
 
@@ -128,5 +126,29 @@ export default function Home() {
 
       <ContactBlock />
     </>
+  );
+}
+
+function UpcomingTraining() {
+  const { rows, seats } = useUpcomingSessions(3);
+  return (
+    <div className="rounded-2xl bg-sun-500/10 p-6">
+      <h3 className="font-semibold text-navy-900">อบรมและกิจกรรมที่กำลังจะมาถึง</h3>
+      {rows.length ? (
+        <ul className="mt-3 space-y-2 text-sm">
+          {rows.map((s) => (
+            <li key={s.id}>
+              <Link to={`/app/training/book/${s.id}`} className="block rounded-lg bg-white/70 px-3 py-2 hover:bg-white">
+                <span className="block font-medium text-navy-900">{s.courses.title}</span>
+                <span className="block text-xs text-slate-600">{sessionDateText(s)} · เหลือ {Math.max(s.capacity - (seats.get(s.id) ?? 0), 0)} ที่</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm text-slate-600">ยังไม่มีรอบที่เปิดรับสมัคร</p>
+      )}
+      <ButtonLink to="/training" variant="secondary" className="mt-4">ดูปฏิทินอบรม</ButtonLink>
+    </div>
   );
 }

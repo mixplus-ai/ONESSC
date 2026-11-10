@@ -36,6 +36,7 @@ export default function Profile() {
         phone: String(f.get("phone") || "").trim() || null,
         line_id: String(f.get("line_id") || "").trim() || null,
         position: String(f.get("position") || "").trim() || null,
+        name_en: String(f.get("name_en") || "").trim() || null,
         tax_id: taxId || null,
         company_name: companyName || null,
         pdpa_consent_at: profile!.pdpa_consent_at ?? new Date().toISOString(),
@@ -73,6 +74,7 @@ export default function Profile() {
             <Field label="เบอร์โทร"><Input name="phone" type="tel" defaultValue={profile.phone ?? ""} autoComplete="tel" /></Field>
             <Field label="LINE ID"><Input name="line_id" defaultValue={profile.line_id ?? ""} /></Field>
             <Field label="ตำแหน่ง"><Input name="position" defaultValue={profile.position ?? ""} /></Field>
+            <Field label="ชื่อภาษาอังกฤษ (บนใบประกาศ)"><Input name="name_en" defaultValue={profile.name_en ?? ""} placeholder="Mr. Somchai Jaidee" /></Field>
             <div className="border-t border-slate-200 pt-4 sm:col-span-2">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-navy-900">บริษัทที่สังกัด</h3>

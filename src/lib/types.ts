@@ -16,6 +16,8 @@ export interface Profile {
   company_status: CompanyLinkStatus;
   company_reviewed_at: string | null;
   pdpa_consent_at: string | null;
+  name_en: string | null;
+  legacy_cerssc_id: string | null;
   is_active: boolean;
   created_at: string;
 }
