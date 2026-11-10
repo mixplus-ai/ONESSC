@@ -67,12 +67,113 @@ export function SessionCard({ s, booked }: { s: Session & { courses: Course }; b
   );
 }
 
+const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
+const ym = (d: string) => d.slice(0, 7);
+const monthLabel = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString("th-TH", { month: "long", year: "numeric" });
+function shiftMonth(m: string, by: number) {
+  const [y, mo] = m.split("-").map(Number);
+  const d = new Date(Date.UTC(y, mo - 1 + by, 1));
+  return d.toISOString().slice(0, 7);
+}
+
+/** Month grid; days with a session are marked in the course colour and can be clicked. */
+function Calendar({ month, onMonth, day, onDay, sessions }: {
+  month: string;
+  onMonth: (m: string) => void;
+  day: string;
+  onDay: (d: string) => void;
+  sessions: (Session & { courses: Course })[];
+}) {
+  const [y, mo] = month.split("-").map(Number);
+  const first = new Date(Date.UTC(y, mo - 1, 1));
+  const lead = (first.getUTCDay() + 6) % 7; // Monday first
+  const days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const byDay = new Map<string, (Session & { courses: Course })[]>();
+  for (const s of sessions) {
+    const end = s.ends_on && s.ends_on > s.starts_on ? s.ends_on : s.starts_on;
+    for (let d = new Date(`${s.starts_on}T00:00:00Z`); d.toISOString().slice(0, 10) <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      const k = d.toISOString().slice(0, 10);
+      byDay.set(k, [...(byDay.get(k) ?? []), s]);
+    }
+  }
+  const today = todayBkk();
+  const cells = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`)];
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <div className="mb-3 flex items-center justify-between">
+        <button type="button" aria-label="เดือนก่อน" onClick={() => onMonth(shiftMonth(month, -1))} className="rounded-lg px-2.5 py-1 text-lg text-slate-600 hover:bg-slate-100">‹</button>
+        <p className="font-semibold text-navy-900">{monthLabel(month)}</p>
+        <button type="button" aria-label="เดือนถัดไป" onClick={() => onMonth(shiftMonth(month, 1))} className="rounded-lg px-2.5 py-1 text-lg text-slate-600 hover:bg-slate-100">›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-xs text-slate-400">
+        {WEEKDAYS.map((w) => <span key={w} className="py-1">{w}</span>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-sm">
+        {cells.map((d, i) => {
+          if (!d) return <span key={`x${i}`} />;
+          const list = byDay.get(d) ?? [];
+          const has = list.length > 0;
+          const selected = d === day;
+          return (
+            <button
+              key={d}
+              type="button"
+              disabled={!has}
+              onClick={() => onDay(selected ? "" : d)}
+              title={list.map((s) => s.courses.title).join(", ")}
+              className={`relative flex aspect-square flex-col items-center justify-center rounded-lg ${selected ? "bg-navy-800 font-semibold text-white" : has ? "font-semibold text-navy-900 hover:bg-navy-50" : d < today ? "text-slate-300" : "text-slate-500"} ${d === today && !selected ? "ring-1 ring-sun-400" : ""}`}
+            >
+              {Number(d.slice(8))}
+              {has && (
+                <span className="absolute bottom-1 flex gap-0.5">
+                  {list.slice(0, 3).map((s) => <span key={s.id} className="h-1.5 w-1.5 rounded-full" style={{ background: selected ? "#fff" : s.courses.color || "#16235a" }} />)}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-xs text-slate-500">วันที่มีจุดสีคือวันที่มีรอบอบรม กดเพื่อดูรอบของวันนั้น</p>
+    </div>
+  );
+}
+
 export default function Training() {
   const { session } = useAuth();
   const { rows, loading, seats } = useUpcomingSessions();
   const courses = useRows<Course>(() => supabase.from("courses").select("*").eq("is_active", true).order("sort").order("title"));
   const [course, setCourse] = useState<string>("");
-  const shown = useMemo(() => (course ? rows.filter((s) => s.course_id === course) : rows), [rows, course]);
+  const [q, setQ] = useState("");
+  const [month, setMonth] = useState(""); // "" = ทุกเดือน
+  const [day, setDay] = useState("");
+  const [calMonth, setCalMonth] = useState(ym(todayBkk()));
+  const months = useMemo(() => [...new Set(rows.map((s) => ym(s.starts_on)))], [rows]);
+  useEffect(() => {
+    // open the calendar on the first month that has a session
+    if (!month && months.length && !months.includes(calMonth)) setCalMonth(months[0]);
+  }, [months]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const byCourse = useMemo(() => (course ? rows.filter((s) => s.course_id === course) : rows), [rows, course]);
+  const shown = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return byCourse.filter((s) => {
+      if (day && !(s.starts_on <= day && (s.ends_on ?? s.starts_on) >= day)) return false;
+      if (!day && month && ym(s.starts_on) !== month) return false;
+      if (!term) return true;
+      return [s.courses.title, s.courses.code, s.courses.subtitle, s.title, s.location].some((x) => x?.toLowerCase().includes(term));
+    });
+  }, [byCourse, q, month, day]);
+
+  function pickMonth(m: string) {
+    setMonth(m);
+    setDay("");
+    if (m) setCalMonth(m);
+  }
+  function pickDay(d: string) {
+    setDay(d);
+    if (d) setMonth(ym(d));
+  }
+  const filtered = Boolean(q || month || day || course);
 
   return (
     <>
@@ -95,25 +196,62 @@ export default function Training() {
       </section>
 
       <section className="container-x py-12">
-        {courses.rows.length > 1 && (
-          <div className="mb-6 flex flex-wrap gap-2">
-            <button onClick={() => setCourse("")} className={`rounded-full px-4 py-1.5 text-sm font-medium ring-1 ${!course ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-700 ring-slate-300"}`}>ทุกหลักสูตร</button>
-            {courses.rows.map((c) => (
-              <button key={c.id} onClick={() => setCourse(c.id)} className={`rounded-full px-4 py-1.5 text-sm font-medium ring-1 ${course === c.id ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-700 ring-slate-300"}`}>
-                {c.title}
-              </button>
-            ))}
+        <div className="grid gap-6 lg:grid-cols-[19rem_1fr] lg:items-start">
+          <aside className="space-y-4 lg:sticky lg:top-20">
+            <Calendar month={calMonth} onMonth={(m) => { setCalMonth(m); pickMonth(m); }} day={day} onDay={pickDay} sessions={byCourse} />
+            {courses.rows.length > 1 && (
+              <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                <p className="mb-2 text-sm font-semibold text-navy-900">หลักสูตร</p>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => setCourse("")} className={`rounded-full px-3 py-1 text-sm ring-1 ${!course ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-700 ring-slate-300"}`}>ทั้งหมด</button>
+                  {courses.rows.map((c) => (
+                    <button key={c.id} onClick={() => setCourse(c.id)} className={`rounded-full px-3 py-1 text-sm ring-1 ${course === c.id ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-700 ring-slate-300"}`}>{c.code}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </aside>
+
+          <div className="min-w-0">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="ค้นหาหลักสูตร รหัส หรือสถานที่"
+                className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm focus:border-navy-500 focus:outline-none focus:ring-2 focus:ring-navy-200"
+              />
+              <select
+                value={month}
+                onChange={(e) => pickMonth(e.target.value)}
+                aria-label="เลือกเดือน"
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-navy-500 focus:outline-none"
+              >
+                <option value="">ทุกเดือน</option>
+                {[...new Set([...months, ...(month ? [month] : [])])].sort().map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+              </select>
+            </div>
+            {filtered && (
+              <p className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                พบ {shown.length} รอบ
+                {day && <span>· วันที่ {new Date(`${day}T00:00:00`).toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" })}</span>}
+                {!day && month && <span>· {monthLabel(month)}</span>}
+                <button className="text-navy-700 underline" onClick={() => { setQ(""); setMonth(""); setDay(""); setCourse(""); }}>ล้างตัวกรอง</button>
+              </p>
+            )}
+            {loading ? (
+              <Loading />
+            ) : shown.length ? (
+              <div className="grid gap-4">
+                {shown.map((s) => <SessionCard key={s.id} s={s} booked={seats.get(s.id) ?? 0} />)}
+              </div>
+            ) : rows.length ? (
+              <Empty>ไม่มีรอบอบรมตามที่เลือก ลองเลือกเดือนอื่นหรือล้างตัวกรอง</Empty>
+            ) : (
+              <Empty>ยังไม่มีรอบอบรมที่เปิดรับสมัคร ติดตามข่าวสารได้ทาง LINE OA หรือ <Link to="/contact?topic=training" className="underline">ติดต่อเรา</Link></Empty>
+            )}
           </div>
-        )}
-        {loading ? (
-          <Loading />
-        ) : shown.length ? (
-          <div className="grid gap-4">
-            {shown.map((s) => <SessionCard key={s.id} s={s} booked={seats.get(s.id) ?? 0} />)}
-          </div>
-        ) : (
-          <Empty>ยังไม่มีรอบอบรมที่เปิดรับสมัคร ติดตามข่าวสารได้ทาง LINE OA หรือ <Link to="/contact?topic=training" className="underline">ติดต่อเรา</Link></Empty>
-        )}
+        </div>
 
         {courses.rows.length > 0 && (
           <div className="mt-14">

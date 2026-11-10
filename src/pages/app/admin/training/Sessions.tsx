@@ -194,6 +194,7 @@ function RosterRow({ r, edit, onChange }: { r: Registration; edit: boolean; onCh
         </div>
         <Badge tone={REG_STATUS[r.status].tone}>{REG_STATUS[r.status].label}</Badge>
         {r.total > 0 && <Badge tone={PAY_STATUS[r.pay_status].tone}>{PAY_STATUS[r.pay_status].label}</Badge>}
+        {r.coupon_code && r.discount > 0 && <Badge tone="green">{r.total <= 0 ? "ฟรี" : "ส่วนลด"} · {r.coupon_code}</Badge>}
         {r.cert_no && <span className="font-mono text-xs text-slate-500">{r.cert_no}</span>}
         {edit && ["registered", "attended", "no_show"].includes(r.status) && (
           <Select value={r.status} disabled={busy === "att"} onChange={(e) => attendance(e.target.value)} className="!w-auto !py-1.5">

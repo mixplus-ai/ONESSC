@@ -163,6 +163,7 @@ function RegCard({ r, cfg, status, templates, materials, onChange }: {
         <div className="flex flex-col items-end gap-1">
           <Badge tone={REG_STATUS[r.status].tone}>{REG_STATUS[r.status].label}</Badge>
           {r.total > 0 && <Badge tone={PAY_STATUS[r.pay_status].tone}>{PAY_STATUS[r.pay_status].label} · {formatMoney(r.total)}</Badge>}
+          {r.total <= 0 && r.discount > 0 && r.coupon_code && <Badge tone="green">ฟรีด้วยโค้ด {r.coupon_code}</Badge>}
           {Number(r.points_awarded ?? 0) > 0 && <span className="text-xs font-semibold text-emerald-700">+{formatPoints(r.points_awarded)} แต้ม</span>}
         </div>
       </div>

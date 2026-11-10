@@ -6,6 +6,7 @@ import { errorMessage, supabase } from "../../../../lib/supabase";
 import { loadTrainingSettings, type TrainingSettings } from "../../../../lib/training";
 import { Tabs } from "../../MyRequests";
 import CoursesTab from "./Courses";
+import PromoCodesTab from "./PromoCodes";
 import SessionsTab from "./Sessions";
 import TemplatesTab from "./Templates";
 
@@ -75,17 +76,19 @@ function SettingsTab() {
 
 export default function TrainingAdmin() {
   const { isStaff, can } = useAuth();
-  const [tab, setTab] = useState<"sessions" | "courses" | "templates" | "settings">("sessions");
+  const [tab, setTab] = useState<"sessions" | "promos" | "courses" | "templates" | "settings">("sessions");
   return (
     <Gate allow={isStaff}>
       <PageTitle title="อบรมและกิจกรรม" subtitle={can("courses") ? "รอบอบรม รายชื่อ เช็กอิน การชำระเงิน ใบประกาศ" : "ดูอย่างเดียว · ขอสิทธิ์ “อบรมและกิจกรรม” จาก Admin เพื่อแก้ไข"} />
       <Tabs value={tab} onChange={setTab} tabs={[
         { key: "sessions", label: "รอบอบรมและรายชื่อ" },
+        { key: "promos", label: "โค้ดโปรโมชั่น" },
         { key: "courses", label: "หลักสูตร" },
         { key: "templates", label: "แม่แบบใบประกาศ" },
         { key: "settings", label: "ตั้งค่า" },
       ]} />
       {tab === "sessions" && <SessionsTab />}
+      {tab === "promos" && <PromoCodesTab />}
       {tab === "courses" && <CoursesTab />}
       {tab === "templates" && <TemplatesTab />}
       {tab === "settings" && <SettingsTab />}

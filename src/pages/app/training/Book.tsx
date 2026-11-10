@@ -23,6 +23,25 @@ import {
 } from "../../../lib/training";
 
 type S = Session & { courses: Course };
+interface Promo { code: string; kind: "free" | "amount" | "percent"; value: number; session_id: string | null }
+
+/** Baht off for this session, or 0 when the code is for another session. */
+function promoDiscount(p: Promo | null, s: Pick<Session, "id">, price: number) {
+  if (!p || (p.session_id && p.session_id !== s.id) || price <= 0) return 0;
+  if (p.kind === "free") return price;
+  if (p.kind === "amount") return Math.min(Number(p.value), price);
+  return Math.round(price * Number(p.value)) / 100;
+}
+function PriceTag({ price, discount }: { price: number; discount: number }) {
+  if (price <= 0) return <span className="block font-semibold">ฟรี</span>;
+  if (discount <= 0) return <span className="block font-semibold">{formatMoney(price)}</span>;
+  return (
+    <span className="block">
+      <span className="mr-1 text-slate-400 line-through">{formatMoney(price)}</span>
+      <span className="font-semibold text-emerald-700">{price - discount > 0 ? formatMoney(price - discount) : "ฟรี"}</span>
+    </span>
+  );
+}
 
 function Steps({ step }: { step: number }) {
   const labels = ["เลือกรอบ", "กรอกข้อมูล", "ยืนยัน"];
@@ -54,6 +73,10 @@ export default function Book() {
   const [sourceOther, setSourceOther] = useState("");
   const [billing, setBilling] = useState<Billing>({ type: "company", name: "", tax_id: "", branch: "สำนักงานใหญ่", address: "" });
   const [coupon, setCoupon] = useState("");
+  const [promoInput, setPromoInput] = useState("");
+  const [promo, setPromo] = useState<Promo | null>(null);
+  const [promoBusy, setPromoBusy] = useState(false);
+  const [promoErr, setPromoErr] = useState("");
   const [wantsQuote, setWantsQuote] = useState(false);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -91,10 +114,33 @@ export default function Book() {
   const s = sessions.find((x) => x.id === pick);
   const price = s ? sessionPrice(s, s.courses) : 0;
   const couponRow = coupons.find((c) => c.code === coupon);
+  const promoOff = s ? promoDiscount(promo, s, price) : 0;
+  const discount = promoOff > 0 ? promoOff : Math.min(Number(couponRow?.rewards?.discount_baht ?? 0), price);
+  const toPay = price - discount; // before VAT / WHT
   const breakdown = useMemo(
-    () => (s && cfg ? priceBreakdown(price, billing.type, s, cfg, Math.min(Number(couponRow?.rewards?.discount_baht ?? 0), price)) : null),
-    [s, cfg, price, billing.type, couponRow],
+    () => (s && cfg ? priceBreakdown(price, billing.type, s, cfg, discount) : null),
+    [s, cfg, price, billing.type, discount],
   );
+
+  async function applyPromo() {
+    setPromoErr("");
+    const code = promoInput.trim().toUpperCase();
+    if (!code) return;
+    setPromoBusy(true);
+    const { data, error } = await supabase.rpc("check_promo_code", { p_code: code });
+    setPromoBusy(false);
+    if (error) return setPromoErr(errorMessage(error));
+    const p = data as Promo;
+    setPromo(p);
+    setCoupon("");
+    if (p.session_id && sessions.some((x) => x.id === p.session_id)) setPick(p.session_id);
+    else if (p.session_id) setPromoErr("โค้ดนี้ใช้กับรอบอื่นที่ไม่ได้แสดงในหน้านี้");
+  }
+  function clearPromo() {
+    setPromo(null);
+    setPromoInput("");
+    setPromoErr("");
+  }
 
   if (loading) return <Loading />;
   if (status?.banned)
@@ -114,7 +160,7 @@ export default function Book() {
     setErr("");
     if (!sale) return setErr("กรุณาเลือก Sale ที่เชิญ (หรือเลือก “ไม่มี”)");
     if (!source || (source === "อื่นๆ" && !sourceOther.trim())) return setErr("กรุณาเลือกช่องทางที่รู้จักกิจกรรม");
-    if (price > 0) {
+    if (toPay > 0) {
       if (!billing.name.trim()) return setErr("กรุณากรอกชื่อสำหรับออกใบเสร็จ");
       if (billing.type === "company" && !/^\d{13}$/.test(billing.tax_id ?? "")) return setErr("กรุณากรอกเลขผู้เสียภาษี 13 หลัก");
       if (billing.type !== "person_no_vat" && !billing.address?.trim()) return setErr("กรุณากรอกที่อยู่สำหรับออกใบกำกับภาษี");
@@ -128,9 +174,9 @@ export default function Book() {
       p_session_id: pick,
       p_sale_name: sale === "-" ? null : sale,
       p_source: source === "อื่นๆ" ? `อื่นๆ: ${sourceOther.trim()}` : source,
-      p_billing: price > 0 ? billing : null,
-      p_coupon_code: coupon || null,
-      p_wants_quote: wantsQuote,
+      p_billing: toPay > 0 ? billing : null,
+      p_coupon_code: (promoOff > 0 ? promo?.code : coupon) || null,
+      p_wants_quote: toPay > 0 && wantsQuote,
       p_note: note || null,
     });
     setBusy(false);
@@ -166,7 +212,7 @@ export default function Book() {
                       <span className="block text-sm text-slate-500">{x.location}</span>
                     </span>
                     <span className="text-right text-sm">
-                      <span className="block font-semibold">{sessionPrice(x, x.courses) > 0 ? formatMoney(sessionPrice(x, x.courses)) : "ฟรี"}</span>
+                      <PriceTag price={sessionPrice(x, x.courses)} discount={promoDiscount(promo, x, sessionPrice(x, x.courses))} />
                       <span className="block text-slate-500">{left > 0 ? `เหลือ ${left} ที่` : "เต็ม"}</span>
                     </span>
                   </label>
@@ -176,6 +222,27 @@ export default function Book() {
           ) : (
             <p className="text-sm text-slate-500">ไม่มีรอบที่เปิดรับสมัคร <Link to="/training" className="underline">ดูปฏิทินอบรม</Link></p>
           )}
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <p className="text-sm font-semibold text-navy-900">โค้ดโปรโมชั่น</p>
+            <p className="text-xs text-slate-500">มีโค้ดส่วนลดหรือโค้ดอบรมฟรีจากทีมงาน กรอกที่นี่</p>
+            {promo ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                <span className="rounded-lg bg-emerald-50 px-3 py-1.5 font-mono font-semibold text-emerald-800 ring-1 ring-emerald-200">{promo.code}</span>
+                <span className="text-emerald-700">
+                  {promo.kind === "free" ? "อบรมฟรี" : promo.kind === "amount" ? `ลด ${formatMoney(promo.value)}` : `ลด ${Number(promo.value)}%`}
+                  {promo.session_id ? " · เฉพาะรอบที่กำหนด" : ""}
+                </span>
+                <button type="button" className="text-slate-500 underline" onClick={clearPromo}>เอาออก</button>
+              </div>
+            ) : (
+              <div className="mt-2 flex max-w-sm gap-2">
+                <Input value={promoInput} onChange={(e) => setPromoInput(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && applyPromo()} placeholder="เช่น FREE2569" className="font-mono uppercase" />
+                <Button variant="secondary" onClick={applyPromo} loading={promoBusy}>ใช้โค้ด</Button>
+              </div>
+            )}
+            {promoErr && <p className="mt-1 text-sm text-red-600">{promoErr}</p>}
+            {s && promo && promoOff === 0 && price > 0 && !promoErr && <p className="mt-1 text-sm text-amber-700">โค้ดนี้ใช้กับรอบที่เลือกไม่ได้</p>}
+          </div>
           <div className="mt-5"><Button onClick={next2} disabled={!pick}>ถัดไป</Button></div>
         </Card>
       )}
@@ -198,7 +265,10 @@ export default function Book() {
             </Field>
             {source === "อื่นๆ" && <Field label="ระบุช่องทาง"><Input value={sourceOther} onChange={(e) => setSourceOther(e.target.value)} /></Field>}
 
-            {price > 0 && (
+            {price > 0 && toPay <= 0 && (
+              <div className="sm:col-span-2"><Alert tone="green">ใช้โค้ด {promo?.code} แล้ว รอบนี้ไม่มีค่าใช้จ่าย ไม่ต้องกรอกข้อมูลใบเสร็จหรือแนบสลิป</Alert></div>
+            )}
+            {toPay > 0 && (
               <>
                 <div className="border-t border-slate-200 pt-4 sm:col-span-2">
                   <h3 className="font-semibold text-navy-900">ข้อมูลออกใบเสร็จ / ใบกำกับภาษี</h3>
@@ -229,7 +299,7 @@ export default function Book() {
                     <Field label="ที่อยู่ออกใบกำกับภาษี" required><Textarea rows={2} value={billing.address ?? ""} onChange={(e) => setBilling({ ...billing, address: e.target.value })} /></Field>
                   </div>
                 )}
-                {coupons.length > 0 && (
+                {coupons.length > 0 && promoOff === 0 && (
                   <Field label="คูปองส่วนลดค่าอบรม" hint="คูปองที่แลกจากแต้มส่วนตัว">
                     <Select value={coupon} onChange={(e) => setCoupon(e.target.value)}>
                       <option value="">ไม่ใช้คูปอง</option>
@@ -259,15 +329,16 @@ export default function Book() {
           <dl className="mt-4 grid grid-cols-[10rem_1fr] gap-y-1 text-sm">
             <dt className="text-slate-500">ผู้เข้าอบรม</dt><dd>{profile?.full_name || profile?.email}</dd>
             <dt className="text-slate-500">Sale ที่เชิญ</dt><dd>{sale === "-" ? "-" : sale}</dd>
-            {price > 0 && (<><dt className="text-slate-500">ออกใบเสร็จในนาม</dt><dd>{billing.name}{billing.tax_id ? ` · ${billing.tax_id}` : ""}</dd></>)}
+            {toPay > 0 && (<><dt className="text-slate-500">ออกใบเสร็จในนาม</dt><dd>{billing.name}{billing.tax_id ? ` · ${billing.tax_id}` : ""}</dd></>)}
           </dl>
           {breakdown && price > 0 ? (
             <div className="mt-4 max-w-sm space-y-1 rounded-xl bg-slate-50 p-4 text-sm">
               <p className="flex justify-between"><span>ค่าอบรม</span><span>{formatMoney(breakdown.price)}</span></p>
-              {breakdown.discount > 0 && <p className="flex justify-between text-emerald-700"><span>ส่วนลดคูปอง</span><span>−{formatMoney(breakdown.discount)}</span></p>}
+              {breakdown.discount > 0 && <p className="flex justify-between text-emerald-700"><span>{promoOff > 0 ? `ส่วนลดโค้ด ${promo?.code}` : "ส่วนลดคูปอง"}</span><span>−{formatMoney(breakdown.discount)}</span></p>}
               {breakdown.vat > 0 && <p className="flex justify-between"><span>VAT {cfg?.vat_rate}%</span><span>{formatMoney(breakdown.vat)}</span></p>}
               {breakdown.wht > 0 && <p className="flex justify-between"><span>หัก ณ ที่จ่าย {cfg?.wht_rate}%</span><span>−{formatMoney(breakdown.wht)}</span></p>}
-              <p className="flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>ยอดชำระ</span><span>{formatMoney(breakdown.total)}</span></p>
+              <p className="flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>ยอดชำระ</span><span>{breakdown.total > 0 ? formatMoney(breakdown.total) : "ฟรี"}</span></p>
+              {breakdown.total <= 0 && <p className="pt-1 text-emerald-700">ไม่ต้องชำระเงินหรือแนบเอกสาร กดยืนยันการจองได้เลย</p>}
             </div>
           ) : (
             <p className="mt-4 text-sm font-semibold text-emerald-700">ไม่มีค่าใช้จ่าย</p>
