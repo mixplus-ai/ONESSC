@@ -6,7 +6,7 @@
 //   2. pg_cron (see supabase/cron/stock_sync_schedule.sql) → header x-cron-secret, checked against the
 //      Vault secret "stock_sync_cron_secret" (or the CRON_SECRET env var, if set).
 //
-// Deployed with verify_jwt off: this function checks the caller itself (admin JWT or cron secret).
+// The gateway checks for a valid JWT (verify_jwt on), so cron also sends the public anon key.
 //
 // The sheet must be shared as "Anyone with the link can view".
 import { createClient } from "npm:@supabase/supabase-js@2";

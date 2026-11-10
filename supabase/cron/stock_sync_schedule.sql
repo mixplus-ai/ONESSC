@@ -19,6 +19,8 @@ select cron.schedule(
     url     := 'https://vpgmxhhiumaqwgnoosfk.supabase.co/functions/v1/stock-sync',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
+      -- public anon key (the same one the website ships): the functions gateway wants a JWT
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZwZ214aGhpdW1hcXdnbm9vc2ZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM3NzIzMDgsImV4cCI6MjEwOTM0ODMwOH0.IPI0vPFPkwfXDLMKk-LuFxI7HwZq4vjywNEX8-2gbqY',
       'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'stock_sync_cron_secret')),
     body    := '{}'::jsonb,
     timeout_milliseconds := 60000
