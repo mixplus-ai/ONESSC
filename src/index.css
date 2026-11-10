@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans Thai", ui-sans-serif, system-ui, sans-serif;
+  --color-navy-50: #eef3fa;
+  --color-navy-100: #d6e2f2;
+  --color-navy-200: #a9c0e2;
+  --color-navy-600: #1d4f8c;
+  --color-navy-700: #163d6e;
+  --color-navy-800: #102f57;
+  --color-navy-900: #0b2545;
+  --color-navy-950: #071830;
+  --color-sun-300: #fcd38a;
+  --color-sun-400: #f9bd4f;
+  --color-sun-500: #f5a524;
+  --color-sun-600: #d98a0b;
+}
+
+html { scroll-behavior: smooth; }
+body { @apply bg-slate-50 text-slate-800 antialiased; }
+
+.container-x { @apply mx-auto w-full max-w-6xl px-4 sm:px-6; }
