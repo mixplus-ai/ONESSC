@@ -139,6 +139,10 @@ export interface TrainingSettings {
   sales_list: string[];
   source_list: string[];
   evaluation_questions: string[];
+  email_enabled: boolean;
+  confirm_email: boolean;
+  reminder_days_before: number;
+  email_note: string | null;
 }
 
 export interface TrainingStatus {

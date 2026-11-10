@@ -56,6 +56,16 @@ function SettingsTab() {
         <div className="sm:col-span-3">{boolField("cert_requires_evaluation", "ต้องทำแบบประเมินก่อนรับใบประกาศ")}</div>
         <div className="sm:col-span-3"><Field label="คำถามแบบประเมิน (บรรทัดละข้อ ให้คะแนน 1–5)"><Textarea rows={4} disabled={!isAdmin} value={(s.evaluation_questions ?? []).join("\n")} onChange={(e) => set("evaluation_questions", lines(e.target.value))} /></Field></div>
       </div>
+      <h3 className="mt-6 font-semibold text-navy-900">อีเมลแจ้งผู้ลงทะเบียน</h3>
+      <p className="text-sm text-slate-500">ระบบส่งอีเมลจาก Gmail ของบริษัท ทุกชั่วโมง ใช้ได้หลังตั้งค่า Gmail ใน Supabase แล้ว</p>
+      <div className="mt-3 grid gap-4 sm:grid-cols-3">
+        <div className="flex flex-col justify-end gap-2">
+          {boolField("email_enabled", "เปิดส่งอีเมล")}
+          {boolField("confirm_email", "ส่งอีเมลยืนยันหลังจอง")}
+        </div>
+        {numField("reminder_days_before", "เตือนก่อนวันอบรม (วัน)", "ผู้ที่จองภายในช่วงนี้จะได้แค่อีเมลยืนยัน")}
+        <div className="sm:col-span-3"><Field label="ข้อความท้ายอีเมล" hint="เช่น สิ่งที่ต้องเตรียมมา เบอร์ติดต่อทีมงาน"><Textarea rows={2} disabled={!isAdmin} value={s.email_note ?? ""} onChange={(e) => set("email_note", e.target.value || null)} /></Field></div>
+      </div>
       <h3 className="mt-6 font-semibold text-navy-900">การชำระเงินและแบบฟอร์ม</h3>
       <div className="mt-3 grid gap-4 sm:grid-cols-3">
         {numField("vat_rate", "VAT (%)")}

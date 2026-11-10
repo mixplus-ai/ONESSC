@@ -61,6 +61,18 @@ User เห็นเฉพาะข้อมูลตนเองและบร
 3. สมาชิก cerssc สมัคร One App ด้วยอีเมลเดิม ระบบผูกประวัติการอบรม แต้ม และเลขผู้เสียภาษีให้อัตโนมัติ (รหัสผ่านเดิมย้ายไม่ได้)
 4. อัปโหลดรูปแม่แบบใบประกาศใหม่ในหลังบ้าน (รูปเดิมอยู่บน cerssc.netlify.app ทำให้บันทึกไฟล์ไม่ได้)
 5. (ถ้าต้องการ) รัน `supabase/cron/training_no_show_schedule.sql` เพื่อบันทึก “ไม่มาอบรม” อัตโนมัติทุกคืน
+6. รัน `20261110000006_training_promo_codes.sql` (โค้ดโปรโมชั่น) และ `20261110000007_training_emails.sql` (อีเมลแจ้งเตือน)
+
+### อีเมลยืนยันการจองและเตือนก่อนอบรม
+
+ส่งผ่าน Gmail ของบริษัท (ราว 500 ฉบับต่อวัน) หรือ Resend เมื่อมีโดเมนของตัวเอง
+
+1. บัญชี Gmail ที่จะใช้ส่ง: เปิด 2-Step Verification แล้วสร้าง App Password ที่ https://myaccount.google.com/apppasswords
+2. Supabase → Edge Functions → Secrets ใส่ `SMTP_HOST=smtp.gmail.com`, `SMTP_USER=<อีเมล Gmail>`, `SMTP_PASS=<App Password 16 ตัว>`,
+   `EMAIL_FROM=SSC Training <อีเมล Gmail เดียวกัน>` และ `SITE_URL=https://onessc.netlify.app`
+   (ใช้ Resend แทน: ใส่ `RESEND_API_KEY` และ `EMAIL_FROM` เป็นอีเมลบนโดเมนที่ยืนยันแล้ว)
+3. Deploy ฟังก์ชัน `training-emails` แล้วรัน `supabase/cron/training_emails_schedule.sql` (ส่งทุกชั่วโมง)
+4. Admin เปิด “เปิดส่งอีเมล” ใน อบรมและกิจกรรม → ตั้งค่า (ตั้งจำนวนวันเตือนล่วงหน้าได้ ค่าเริ่มต้น 5 วัน)
 
 ## โครงสร้าง
 
