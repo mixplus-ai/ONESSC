@@ -2,7 +2,7 @@ import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps 
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABEL } from "../lib/types";
-import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, StarIcon, TagIcon, UserIcon, UsersIcon, XIcon } from "./icons";
+import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, StarIcon, TagIcon, UserIcon, UsersIcon, WrenchIcon, XIcon } from "./icons";
 import { useCart } from "../lib/cart";
 import { Logo } from "./PublicLayout";
 import { Alert, Loading, cx } from "./ui";
@@ -53,7 +53,12 @@ export default function AppLayout() {
         { to: "/app/requests", label: "ใบเสนอราคาและการจอง", icon: FileIcon, show: true },
         { to: "/app/training", label: "การอบรมของฉัน", icon: AcademicIcon, show: true },
         { to: "/app/points", label: "แต้มและของรางวัล", icon: GiftIcon, show: true },
+        { to: "/app/claims", label: "เคลมของฉัน", icon: WrenchIcon, show: !isStaff },
       ],
+    },
+    {
+      title: "งานบริการ",
+      items: [{ to: "/app/admin/claims", label: "งานบริการและเคลม", icon: WrenchIcon, show: isStaff }],
     },
     {
       title: "อบรมและแต้ม",

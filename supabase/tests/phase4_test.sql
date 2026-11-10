@@ -39,6 +39,7 @@ begin
          jsonb_build_object('model', 'P500', 'qty', 2, 'bad_sn', 'SN1, SN2'),
          jsonb_build_object('model', 'P850', 'qty', 1, 'bad_sn', 'SN3')))));
   assert (split_part(v2.claim_no, '-', 2))::int = (split_part(v.claim_no, '-', 2))::int + 1, 'numbers run on';
+  assert (select count(*) from public.claim_brands() where name = 'SolarPPM') = 1, 'unpublished panel brand offered for claims';
   -- customer cannot read tables directly, only via my_claims
   assert (select count(*) from public.claims) = 0, 'no direct read';
   assert (select count(*) from public.claim_units) = 0, 'no direct unit read';

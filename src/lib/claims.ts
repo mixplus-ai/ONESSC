@@ -396,7 +396,7 @@ export function parseDate(v: unknown): string | null | undefined {
   if (r) [y, m, d] = [Number(r[1]), Number(r[2]), Number(r[3])];
   else if ((r = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/.exec(s))) {
     [d, m, y] = [Number(r[1]), Number(r[2]), Number(r[3])];
-    if (y < 100) y += y > 50 ? 1900 : 2000;
+    if (y < 100) y += y >= 50 ? 2500 : 2000; // 68 → พ.ศ. 2568, 25 → ค.ศ. 2025
   } else if (/^\d{4,5}(\.\d+)?$/.test(s)) {
     const dt = new Date(Math.round((Number(s) - 25569) * 86400000));
     return isNaN(dt.getTime()) ? undefined : dt.toISOString().slice(0, 10);

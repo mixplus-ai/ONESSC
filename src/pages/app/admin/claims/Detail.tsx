@@ -267,7 +267,7 @@ function Photos({ claim, kind, title, canUpload }: { claim: Claim; kind: FileKin
     const imgs = list.filter(isImage);
     if (imgs.length) {
       const { data: urls } = await supabase.storage.from("claim-files").createSignedUrls(imgs.map((f) => f.path), 3600);
-      setThumbs(Object.fromEntries((urls ?? []).filter((x) => x.signedUrl).map((x) => [x.path!, x.signedUrl])));
+      setThumbs(Object.fromEntries((urls ?? []).filter((x) => x.signedUrl && x.path).map((x) => [x.path as string, x.signedUrl as string])));
     }
   };
   useEffect(() => { load(); }, [claim.id, kind]); // eslint-disable-line react-hooks/exhaustive-deps
