@@ -10,7 +10,7 @@ import ResetPassword from "./pages/auth/ResetPassword";
 import About from "./pages/public/About";
 import Contact from "./pages/public/Contact";
 import Home from "./pages/public/Home";
-import ModulePage from "./pages/public/ModulePage";
+import ClaimsInfo from "./pages/public/ClaimsInfo";
 import Products from "./pages/public/Products";
 import ProductDetail from "./pages/public/ProductDetail";
 import Promotions, { PackageDetail } from "./pages/public/Promotions";
@@ -47,6 +47,10 @@ const Points = lazy(() => import("./pages/app/Points"));
 const TrainingAdmin = lazy(() => import("./pages/app/admin/training/TrainingAdmin"));
 const CompanyPoints = lazy(() => import("./pages/app/admin/CompanyPoints"));
 const PointsAdmin = lazy(() => import("./pages/app/admin/PointsAdmin"));
+const MyClaims = lazy(() => import("./pages/app/claims/MyClaims"));
+const NewClaim = lazy(() => import("./pages/app/claims/NewClaim"));
+const ClaimsAdmin = lazy(() => import("./pages/app/admin/claims/ClaimsAdmin"));
+const DeliveriesAdmin = lazy(() => import("./pages/app/admin/deliveries/DeliveriesAdmin"));
 
 export default function App() {
   return (
@@ -70,7 +74,7 @@ export default function App() {
             <Route path="training" element={<Training />} />
             <Route path="verify" element={<VerifyCert />} />
             <Route path="verify/:certNo" element={<VerifyCert />} />
-            <Route path="claims" element={<ModulePage module="claims" />} />
+            <Route path="claims" element={<ClaimsInfo />} />
             <Route path="*" element={<NotFound />} />
           </Route>
           <Route path="login" element={<Login />} />
@@ -87,6 +91,9 @@ export default function App() {
             <Route path="training/book/:sessionId" element={<Book />} />
             <Route path="training/checkin" element={<CheckIn />} />
             <Route path="points" element={<Points />} />
+            <Route path="claims" element={<MyClaims />} />
+            <Route path="claims/new" element={<NewClaim />} />
+            <Route path="admin/claims" element={<ClaimsAdmin />} />
             <Route path="admin/training" element={<TrainingAdmin />} />
             <Route path="admin/company-points" element={<CompanyPoints />} />
             <Route path="admin/points" element={<PointsAdmin />} />
@@ -94,6 +101,7 @@ export default function App() {
             <Route path="admin/pricing" element={<Pricing />} />
             <Route path="admin/promotions" element={<PromotionsAdmin />} />
             <Route path="admin/stock" element={<StockAdmin />} />
+            <Route path="admin/deliveries" element={<DeliveriesAdmin />} />
             <Route path="admin/requests" element={<RequestsAdmin />} />
             <Route path="admin/users" element={<Users />} />
             <Route path="admin/companies" element={<Companies />} />

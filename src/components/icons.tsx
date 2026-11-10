@@ -72,3 +72,6 @@ export const GiftIcon = (p: SVGProps<SVGSVGElement>) => (
 export const StarIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3z" /></svg>
 );
+export const TruckIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7M7 19a2 2 0 100-4 2 2 0 000 4zM17 19a2 2 0 100-4 2 2 0 000 4z" /></svg>
+);

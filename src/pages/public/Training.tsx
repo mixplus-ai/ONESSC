@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { AcademicIcon, ClockIcon, PinIcon } from "../../components/icons";
 import { Badge, ButtonLink, Empty, Loading } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
-import { useRows } from "../../lib/content";
+import { useRows, useSiteSettings } from "../../lib/content";
+import { AdSlot } from "../../components/banners";
 import { supabase } from "../../lib/supabase";
 import { formatMoney, loadSeats, cols,
   SESSION_COLS, sessionDateText, sessionPrice, todayBkk, type Course, type Session } from "../../lib/training";
@@ -174,16 +175,16 @@ export default function Training() {
     if (d) setMonth(ym(d));
   }
   const filtered = Boolean(q || month || day || course);
+  const banner = useSiteSettings().pages.training;
 
   return (
     <>
-      <section className="bg-navy-900 py-14 text-white">
-        <div className="container-x">
-          <p className="flex items-center gap-2 text-sm font-semibold text-sun-400"><AcademicIcon className="h-5 w-5" /> อบรมและกิจกรรม</p>
-          <h1 className="mt-2 text-3xl font-bold sm:text-4xl">ปฏิทินอบรม</h1>
-          <p className="mt-3 max-w-2xl text-navy-100">
-            เลือกหลักสูตรและรอบที่สะดวก จองได้ทันทีด้วยบัญชี One App เข้าอบรมรับแต้มสะสมชั่วโมงละ 1 แต้ม และรับใบประกาศหลังทำแบบประเมิน
-          </p>
+      <section className="relative overflow-hidden bg-navy-900 py-14 text-white">
+        {banner.image_url && <img src={banner.image_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-35" />}
+        <div className="container-x relative">
+          {banner.eyebrow && <p className="flex items-center gap-2 text-sm font-semibold text-sun-400"><AcademicIcon className="h-5 w-5" /> {banner.eyebrow}</p>}
+          <h1 className="mt-2 text-3xl font-bold sm:text-4xl">{banner.title || "ปฏิทินอบรม"}</h1>
+          {banner.subtitle && <p className="mt-3 max-w-2xl whitespace-pre-line text-navy-100">{banner.subtitle}</p>}
           <div className="mt-6 flex flex-wrap gap-3">
             {session ? (
               <ButtonLink to="/app/training" variant="sun">การอบรมของฉัน</ButtonLink>
@@ -194,6 +195,8 @@ export default function Training() {
           </div>
         </div>
       </section>
+
+      <AdSlot placement="training" className="mt-8" />
 
       <section className="container-x py-12">
         <div className="grid gap-6 lg:grid-cols-[19rem_1fr] lg:items-start">

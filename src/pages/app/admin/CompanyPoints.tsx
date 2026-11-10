@@ -309,7 +309,7 @@ function CompanyDetail({ company }: { company: Company }) {
 }
 
 export default function CompanyPoints() {
-  const { isStaff } = useAuth();
+  const { can } = useAuth();
   const companies = useRows<Company>(() => supabase.from("companies").select("*").order("name"));
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<Company | null>(null);
@@ -335,7 +335,7 @@ export default function CompanyPoints() {
   }, [q, companies.rows]);
 
   return (
-    <Gate allow={isStaff}>
+    <Gate allow={can("company_points")}>
       <PageTitle title="แต้มบริษัท" subtitle="บันทึกยอดซื้อเป็นแต้มตามกติกา ตัดแต้มเป็นส่วนลด · ทุกการแก้ไข/ยกเลิกเก็บผู้ทำและเหตุผล" />
       <div className="grid gap-6 lg:grid-cols-[18rem_1fr]">
         <div>

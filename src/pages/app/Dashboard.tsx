@@ -20,30 +20,17 @@ function Stat({ label, value, to, icon: Icon }: { label: string; value: number |
   return to ? <Link to={to}>{body}</Link> : body;
 }
 
-function ComingCard({ icon: Icon, title, text, phase, href }: { icon: typeof UsersIcon; title: string; text: string; phase: string; href?: string }) {
-  return (
-    <Card>
-      <div className="flex items-start justify-between gap-3">
-        <span className="grid h-10 w-10 place-items-center rounded-xl bg-sun-500/15 text-sun-600"><Icon /></span>
-        <Badge>{phase}</Badge>
-      </div>
-      <h3 className="mt-4 font-semibold text-navy-900">{title}</h3>
-      <p className="mt-1 text-sm text-slate-500">{text}</p>
-      {href && (
-        <a href={href} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700 hover:underline">
-          ใช้ระบบเดิมไปก่อน <ArrowRightIcon className="h-4 w-4" />
-        </a>
-      )}
-    </Card>
-  );
-}
-
 function UserDashboard() {
   const { profile } = useAuth();
   const [company, setCompany] = useState<Company | null>(null);
   const [training, setTraining] = useState<TrainingStatus | null>(null);
+  const [claims, setClaims] = useState<{ open: number; toReturn: number } | null>(null);
   useEffect(() => {
     supabase.rpc("my_training_status").then(({ data }) => setTraining(data as TrainingStatus));
+    supabase.rpc("my_claims").then(({ data }) => {
+      const list = (data ?? []) as { status: string }[];
+      setClaims({ open: list.filter((c) => !["closed", "rejected"].includes(c.status)).length, toReturn: list.filter((c) => c.status === "done").length });
+    });
   }, []);
   useEffect(() => {
     if (profile?.company_id && profile.company_status === "approved")
@@ -104,7 +91,14 @@ function UserDashboard() {
             <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700">แลกของรางวัล <ArrowRightIcon className="h-4 w-4" /></span>
           </Card>
         </Link>
-        <ComingCard icon={WrenchIcon} title="สถานะเคลมของฉัน" text="แจ้งเคลมและติดตาม 3 ขั้นตอนได้จากที่นี่" phase="เฟส 4" />
+        <Link to="/app/claims">
+          <Card className="h-full transition hover:ring-navy-200">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-sun-500/15 text-sun-600"><WrenchIcon /></span>
+            <h3 className="mt-4 font-semibold text-navy-900">สถานะเคลมของฉัน</h3>
+            <p className="mt-1 text-sm text-slate-500">{claims ? (claims.open ? `เคลมที่กำลังดำเนินการ ${claims.open} รายการ${claims.toReturn ? ` · รอส่งของคืน ${claims.toReturn}` : ""}` : "ไม่มีเคลมค้าง") : "แจ้งเคลมและติดตาม 3 ขั้นตอน"}</p>
+            <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700">ดู / แจ้งเคลม <ArrowRightIcon className="h-4 w-4" /></span>
+          </Card>
+        </Link>
       </div>
     </div>
   );
@@ -112,7 +106,7 @@ function UserDashboard() {
 
 function StaffDashboard() {
   const { isAdmin, can } = useAuth();
-  const [stats, setStats] = useState({ pending: 0, messages: 0, users: 0, staff: 0, companies: 0, quotes: 0, reservations: 0, coupons: 0, slips: 0, sessions: 0 });
+  const [stats, setStats] = useState({ pending: 0, messages: 0, users: 0, staff: 0, companies: 0, quotes: 0, reservations: 0, coupons: 0, slips: 0, sessions: 0, claimsNew: 0, claimsOpen: 0 });
   useEffect(() => {
     const count = (q: PromiseLike<{ count: number | null }>) => Promise.resolve(q).then((r) => r.count ?? 0);
     Promise.all([
@@ -126,13 +120,17 @@ function StaffDashboard() {
       count(supabase.from("redemptions").select("id", { count: "exact", head: true }).eq("wallet", "personal").eq("status", "issued")),
       count(supabase.from("training_registrations").select("id", { count: "exact", head: true }).eq("pay_status", "pending").eq("status", "registered")),
       count(supabase.from("course_sessions").select("id", { count: "exact", head: true }).eq("is_archived", false).neq("status", "cancelled").gte("starts_on", todayBkk())),
-    ]).then(([pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions]) =>
-      setStats({ pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions }));
+      count(supabase.from("claims").select("id", { count: "exact", head: true }).eq("source", "customer").eq("status", "submitted")),
+      count(supabase.from("claims").select("id", { count: "exact", head: true }).eq("source", "customer").in("status", ["in_progress", "done", "returned"])),
+    ]).then(([pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions, claimsNew, claimsOpen]) =>
+      setStats({ pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions, claimsNew, claimsOpen }));
   }, [can]);
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="เคลมใหม่รอรับเรื่อง" value={stats.claimsNew} to="/app/admin/claims?tab=queue" icon={WrenchIcon} />
+        <Stat label="เคลมค้าง (กำลังดำเนินการ)" value={stats.claimsOpen} to="/app/admin/claims?tab=queue" icon={WrenchIcon} />
         <Stat label="คำขอใบเสนอราคาที่เปิดอยู่" value={stats.quotes} to="/app/admin/requests" icon={InboxIcon} />
         <Stat label="การจองที่รอดำเนินการ" value={stats.reservations} to="/app/admin/requests" icon={BoxIcon} />
         <Stat label="รออนุมัติผูกบริษัท" value={stats.pending} to="/app/admin/companies" icon={BuildingIcon} />
@@ -153,7 +151,14 @@ function StaffDashboard() {
             <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700">เปิด <ArrowRightIcon className="h-4 w-4" /></span>
           </Card>
         </Link>
-        <ComingCard icon={WrenchIcon} title="งานเคลมค้าง / ใหม่" text="ผัง 5 ขั้นภายในและคิวเคลมจากลูกค้า" phase="เฟส 4" />
+        <Link to="/app/admin/claims?tab=board">
+          <Card className="h-full transition hover:ring-navy-200">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-sun-500/15 text-sun-600"><WrenchIcon /></span>
+            <h3 className="mt-4 font-semibold text-navy-900">ผัง 5 ขั้นตอนงานเคลม</h3>
+            <p className="mt-1 text-sm text-slate-500">ติดตามทุกหน่วยสินค้า เลขที่เบิก SN และรายงานตรวจสอบ</p>
+            <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700">เปิด <ArrowRightIcon className="h-4 w-4" /></span>
+          </Card>
+        </Link>
       </div>
     </div>
   );

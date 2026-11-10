@@ -1,11 +1,12 @@
 import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
-import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABEL } from "../lib/types";
-import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, StarIcon, TagIcon, UserIcon, UsersIcon, XIcon } from "./icons";
+import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, StarIcon, TagIcon, UserIcon, UsersIcon, WrenchIcon, XIcon, TruckIcon } from "./icons";
 import { useCart } from "../lib/cart";
 import { Logo } from "./PublicLayout";
 import { Alert, Loading, cx } from "./ui";
+import { Avatar } from "./Avatar";
 
 interface Item {
   to: string;
@@ -36,7 +37,7 @@ export function Gate({ allow, children }: { allow: boolean; children: ReactNode 
 }
 
 export default function AppLayout() {
-  const { profile, isAdmin, isStaff, can, signOut } = useAuth();
+  const { profile, isAdmin, can, signOut } = useAuth();
   const { count } = useCart();
   const [open, setOpen] = useState(false);
   const loc = useLocation();
@@ -52,23 +53,29 @@ export default function AppLayout() {
         { to: "/app/cart", label: count ? `รายการสินค้า (${count})` : "รายการสินค้า", icon: CartIcon, show: true },
         { to: "/app/requests", label: "ใบเสนอราคาและการจอง", icon: FileIcon, show: true },
         { to: "/app/training", label: "การอบรมของฉัน", icon: AcademicIcon, show: true },
+        { to: "/app/claims", label: "งานเคลมของฉัน", icon: WrenchIcon, show: true },
         { to: "/app/points", label: "แต้มและของรางวัล", icon: GiftIcon, show: true },
       ],
     },
     {
+      title: "งานบริการ",
+      items: [{ to: "/app/admin/claims", label: "งานบริการและเคลม", icon: WrenchIcon, show: can("claims.view") || can("claims") }],
+    },
+    {
       title: "อบรมและแต้ม",
       items: [
-        { to: "/app/admin/training", label: "อบรมและกิจกรรม", icon: AcademicIcon, show: isStaff },
-        { to: "/app/admin/company-points", label: "แต้มบริษัท", icon: StarIcon, show: isStaff },
-        { to: "/app/admin/points", label: "คูปองและของรางวัล", icon: GiftIcon, show: isStaff },
+        { to: "/app/admin/training", label: "อบรมและกิจกรรม", icon: AcademicIcon, show: can("training.view") || can("courses") },
+        { to: "/app/admin/company-points", label: "แต้มบริษัท", icon: StarIcon, show: can("company_points") },
+        { to: "/app/admin/points", label: "คูปองและของรางวัล", icon: GiftIcon, show: can("rewards") },
       ],
     },
     {
       title: "สินค้าและการขาย",
       items: [
-        { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: isStaff },
-        { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: ChartIcon, show: isStaff },
-        { to: "/app/admin/pricing", label: "ราคาเฉพาะบริษัท", icon: TagIcon, show: isStaff },
+        { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: can("requests") },
+        { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: ChartIcon, show: can("stock.view") },
+        { to: "/app/admin/deliveries", label: "ตารางส่งสินค้า", icon: TruckIcon, show: can("deliveries.view") || can("deliveries.manage") },
+        { to: "/app/admin/pricing", label: "ราคาเฉพาะบริษัท", icon: TagIcon, show: can("pricing") },
         { to: "/app/admin/products", label: "สินค้า", icon: BoxIcon, show: can("products") },
         { to: "/app/admin/promotions", label: "โปรโมชั่นและแพ็กเกจ", icon: TagIcon, show: can("products") },
       ],
@@ -77,14 +84,14 @@ export default function AppLayout() {
       title: "จัดการ",
       items: [
         { to: "/app/admin/users", label: "ผู้ใช้และสิทธิ์", icon: UsersIcon, show: isAdmin },
-        { to: "/app/admin/companies", label: "บริษัทลูกค้า", icon: BuildingIcon, show: isStaff },
+        { to: "/app/admin/companies", label: "บริษัทลูกค้า", icon: BuildingIcon, show: can("companies") },
         { to: "/app/admin/messages", label: "ข้อความติดต่อ", icon: InboxIcon, show: can("contact_messages") },
       ],
     },
     {
       title: "หน้าเว็บ",
       items: [
-        { to: "/app/admin/content", label: "เนื้อหาหน้าเว็บ", icon: EditIcon, show: can("site_content") },
+        { to: "/app/admin/content", label: "เนื้อหาเว็บและโฆษณา", icon: EditIcon, show: can("site_content") },
         { to: "/app/admin/portfolio", label: "ผลงาน", icon: ImageIcon, show: can("site_content") },
         { to: "/app/admin/team", label: "ทีมงาน", icon: UsersIcon, show: can("site_content") },
       ],
@@ -126,8 +133,13 @@ export default function AppLayout() {
 
   const userBox = (
     <div className="border-t border-white/10 p-4">
-      <p className="truncate text-sm font-semibold text-white">{profile?.full_name || profile?.email}</p>
-      <p className="truncate text-xs text-navy-200">{profile && ROLE_LABEL[profile.role]} · {profile?.email}</p>
+      <Link to="/app/profile" className="flex items-center gap-3">
+        <Avatar url={profile?.avatar_url} name={profile?.full_name || profile?.email} className="h-10 w-10 text-sm" />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-semibold text-white">{profile?.full_name || profile?.email}</span>
+          <span className="block truncate text-xs text-navy-200">{profile && ROLE_LABEL[profile.role]} · {profile?.email}</span>
+        </span>
+      </Link>
       <button onClick={signOut} className="mt-3 inline-flex items-center gap-2 text-sm text-navy-100 hover:text-white">
         <LogoutIcon className="h-4 w-4" /> ออกจากระบบ
       </button>

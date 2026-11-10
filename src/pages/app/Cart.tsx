@@ -103,6 +103,16 @@ export default function Cart() {
               <Field label="ชื่อผู้ติดต่อ"><Input value={contactName} placeholder={profile?.full_name ?? ""} onChange={(e) => setContactName(e.target.value)} /></Field>
               <Field label="เบอร์โทร"><Input value={contactPhone} placeholder={profile?.phone ?? ""} onChange={(e) => setContactPhone(e.target.value)} /></Field>
             </div>
+            <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600 ring-1 ring-slate-200">
+              {profile?.billing?.name ? (
+                <>
+                  <p>ออกใบเสนอราคา/ใบจองในนาม <span className="font-semibold text-navy-900">{profile.billing.name}</span>{profile.billing.tax_id ? ` (${profile.billing.tax_id})` : ""}</p>
+                  <Link to="/app/profile" className="font-medium text-navy-700 underline">แก้ข้อมูลออกเอกสาร</Link>
+                </>
+              ) : (
+                <p>ต้องการเอกสารในนามบริษัท? <Link to="/app/profile" className="font-medium text-navy-700 underline">กรอกข้อมูลออกใบเสร็จ/ใบกำกับภาษี</Link> ในข้อมูลส่วนตัวก่อนส่งคำขอ</p>
+              )}
+            </div>
             {err && <Alert>{err}</Alert>}
             <Button className="w-full" onClick={() => submit("quote")} loading={busy === "quote"} disabled={!!busy}>ขอใบเสนอราคา</Button>
             <Button className="w-full" variant="sun" onClick={() => submit("reserve")} loading={busy === "reserve"} disabled={!!busy || !variantLines.length}>

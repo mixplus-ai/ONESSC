@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { PortfolioCard, SectionHeading } from "../../components/cards";
+import { PageBanner, PageHeading } from "../../components/banners";
+import { PortfolioCard } from "../../components/cards";
 import { Badge, Empty, Loading, cx } from "../../components/ui";
 import { usePublishedPortfolio } from "../../lib/content";
 import { PROJECT_TYPE_LABEL, type PortfolioProject } from "../../lib/types";
@@ -10,30 +11,33 @@ export default function Portfolio() {
   const [type, setType] = useState<"all" | PortfolioProject["project_type"]>("all");
   const shown = useMemo(() => (type === "all" ? rows : rows.filter((r) => r.project_type === type)), [rows, type]);
   return (
-    <div className="container-x py-16">
-      <SectionHeading eyebrow="ผลงาน" title="โครงการที่เราติดตั้ง" />
-      <div className="mb-6 flex flex-wrap gap-2">
-        {(["all", "residential", "factory", "commercial", "other"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setType(t)}
-            className={cx(
-              "rounded-full px-4 py-1.5 text-sm font-medium ring-1",
-              type === t ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-600 ring-slate-300 hover:ring-navy-600",
-            )}
-          >
-            {t === "all" ? "ทั้งหมด" : PROJECT_TYPE_LABEL[t]}
-          </button>
-        ))}
+    <>
+      <PageBanner page="portfolio" imageOnly />
+      <div className="container-x py-16">
+        <PageHeading page="portfolio" />
+        <div className="mb-6 flex flex-wrap gap-2">
+          {(["all", "residential", "factory", "commercial", "other"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setType(t)}
+              className={cx(
+                "rounded-full px-4 py-1.5 text-sm font-medium ring-1",
+                type === t ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-600 ring-slate-300 hover:ring-navy-600",
+              )}
+            >
+              {t === "all" ? "ทั้งหมด" : PROJECT_TYPE_LABEL[t]}
+            </button>
+          ))}
+        </div>
+        {loading ? (
+          <Loading />
+        ) : shown.length ? (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{shown.map((p) => <PortfolioCard key={p.id} p={p} />)}</div>
+        ) : (
+          <Empty>ยังไม่มีผลงานในหมวดนี้</Empty>
+        )}
       </div>
-      {loading ? (
-        <Loading />
-      ) : shown.length ? (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{shown.map((p) => <PortfolioCard key={p.id} p={p} />)}</div>
-      ) : (
-        <Empty>ยังไม่มีผลงานในหมวดนี้</Empty>
-      )}
-    </div>
+    </>
   );
 }
 

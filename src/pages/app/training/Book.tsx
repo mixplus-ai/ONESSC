@@ -58,7 +58,8 @@ function Steps({ step }: { step: number }) {
 
 export default function Book() {
   const { sessionId } = useParams();
-  const { profile } = useAuth();
+  const { profile, refresh } = useAuth();
+  const [saveBilling, setSaveBilling] = useState(false);
   const nav = useNavigate();
   const [cfg, setCfg] = useState<TrainingSettings | null>(null);
   const [status, setStatus] = useState<TrainingStatus | null>(null);
@@ -108,6 +109,8 @@ export default function Book() {
 
   useEffect(() => {
     if (!profile) return;
+    // saved billing details from the profile win; otherwise start from the company the user belongs to
+    if (profile.billing?.name) return setBilling((b) => ({ ...b, ...profile.billing!, branch: profile.billing!.branch || b.branch }));
     setBilling((b) => ({ ...b, name: b.name || profile.company_name || profile.full_name || "", tax_id: b.tax_id || profile.tax_id || "", type: profile.tax_id ? "company" : "person" }));
   }, [profile]);
 
@@ -179,6 +182,10 @@ export default function Book() {
       p_wants_quote: toPay > 0 && wantsQuote,
       p_note: note || null,
     });
+    if (!error && toPay > 0 && saveBilling && profile) {
+      await supabase.from("profiles").update({ billing }).eq("id", profile.id);
+      await refresh();
+    }
     setBusy(false);
     if (error) return setErr(errorMessage(error));
     nav("/app/training", { state: { booked: (data as { code: string }).code } });
@@ -298,6 +305,11 @@ export default function Book() {
                   <div className="sm:col-span-2">
                     <Field label="ที่อยู่ออกใบกำกับภาษี" required><Textarea rows={2} value={billing.address ?? ""} onChange={(e) => setBilling({ ...billing, address: e.target.value })} /></Field>
                   </div>
+                )}
+                {JSON.stringify(profile?.billing ?? null) !== JSON.stringify(billing) && (
+                  <label className="flex items-center gap-2 text-sm text-slate-600 sm:col-span-2">
+                    <input type="checkbox" checked={saveBilling} onChange={(e) => setSaveBilling(e.target.checked)} /> บันทึกเป็นข้อมูลออกใบเสร็จในข้อมูลส่วนตัว ใช้ครั้งต่อไปได้เลย
+                  </label>
                 )}
                 {coupons.length > 0 && promoOff === 0 && (
                   <Field label="คูปองส่วนลดค่าอบรม" hint="คูปองที่แลกจากแต้มส่วนตัว">

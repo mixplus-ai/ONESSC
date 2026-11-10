@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
+import { PageBanner, PageHeading } from "../../components/banners";
 import { SectionHeading, TeamCard } from "../../components/cards";
 import { ChatIcon, ClockIcon, MailIcon, PhoneIcon, PinIcon } from "../../components/icons";
 import { Alert, Button, Field, Input, Select, Textarea } from "../../components/ui";
@@ -79,7 +80,7 @@ function ContactForm() {
   );
 }
 
-export function ContactBlock() {
+export function ContactBlock({ heading = true }: { heading?: boolean }) {
   const { company } = useSiteSettings();
   const items = [
     company.address && { icon: PinIcon, label: "ที่อยู่", value: company.address },
@@ -91,7 +92,7 @@ export function ContactBlock() {
 
   return (
     <section className="container-x py-20" id="contact">
-      <SectionHeading eyebrow="ติดต่อเรา" title="ติดต่อบริษัท" subtitle="ส่งข้อความถึงทีมงาน หรือติดต่อผ่านช่องทางด้านล่าง" />
+      {heading && <PageHeading page="contact" />}
       <div className="grid gap-8 lg:grid-cols-[1fr_1.4fr]">
         <div className="space-y-4">
           {items.map(({ icon: Icon, label, value, href }) => (
@@ -129,6 +130,7 @@ export default function Contact() {
   const team = usePublishedTeam();
   return (
     <>
+      <PageBanner page="contact" imageOnly />
       <ContactBlock />
       {team.rows.length > 0 && (
         <section className="bg-white py-16">

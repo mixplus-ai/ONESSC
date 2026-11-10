@@ -164,7 +164,7 @@ function SyncPanel({ onDone }: { onDone: () => void }) {
 }
 
 export default function StockAdmin() {
-  const { isStaff, isAdmin, can } = useAuth();
+  const { isAdmin, can } = useAuth();
   const [tab, setTab] = useState<"board" | "backorders" | "sync">("board");
   const [tick, setTick] = useState(0);
   const board = useRows<BoardRow>(() => supabase.rpc("stock_board"), [tick]);
@@ -190,7 +190,7 @@ export default function StockAdmin() {
   const syncedAt = board.rows[0]?.synced_at;
 
   return (
-    <Gate allow={isStaff}>
+    <Gate allow={can("stock.view")}>
       <PageTitle title="สต๊อกสินค้า" subtitle={syncedAt ? `ข้อมูลจากไฟล์สต๊อก ซิงก์ล่าสุด ${formatDateTime(syncedAt)}` : "ยังไม่เคยซิงก์สต๊อก"} />
       <Tabs
         value={tab}

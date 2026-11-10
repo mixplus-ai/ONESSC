@@ -19,10 +19,11 @@ import {
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 import { Tabs } from "../MyRequests";
+import { BILLING_TYPE, type Billing } from "../../../lib/training";
 
 const WHO = "profiles(full_name, email, phone), companies(name, tax_id)";
 
-function Customer({ r }: { r: { profiles?: QuoteRequest["profiles"]; companies?: QuoteRequest["companies"]; contact_name?: string | null; contact_phone?: string | null } }) {
+function Customer({ r }: { r: { profiles?: QuoteRequest["profiles"]; companies?: QuoteRequest["companies"]; contact_name?: string | null; contact_phone?: string | null; billing?: Billing | null } }) {
   return (
     <div className="text-sm">
       <p className="font-medium text-navy-900">{r.contact_name || r.profiles?.full_name || r.profiles?.email}</p>
@@ -30,6 +31,14 @@ function Customer({ r }: { r: { profiles?: QuoteRequest["profiles"]; companies?:
         {[r.profiles?.email, r.contact_phone || r.profiles?.phone].filter(Boolean).join(" · ")}
       </p>
       <p className="text-xs text-slate-500">{r.companies ? `${r.companies.name} · ${r.companies.tax_id}` : "ยังไม่ผูกบริษัท"}</p>
+      {r.billing?.name && (
+        <div className="mt-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-600 ring-1 ring-slate-200">
+          <p className="font-semibold text-navy-900">ออกเอกสารในนาม ({BILLING_TYPE[r.billing.type] ?? r.billing.type})</p>
+          <p>{r.billing.name}{r.billing.tax_id ? ` · ${r.billing.tax_id}` : ""}{r.billing.branch ? ` · ${r.billing.branch}` : ""}</p>
+          {r.billing.address && <p className="whitespace-pre-line">{r.billing.address}</p>}
+          {(r.billing.phone || r.billing.email) && <p>{[r.billing.phone, r.billing.email].filter(Boolean).join(" · ")}</p>}
+        </div>
+      )}
     </div>
   );
 }
@@ -174,7 +183,7 @@ function ReservationCard({ r, onSaved }: { r: Reservation; onSaved: () => void }
 }
 
 export default function RequestsAdmin() {
-  const { isStaff } = useAuth();
+  const { can } = useAuth();
   const [tab, setTab] = useState<"quotes" | "reservations">("quotes");
   const [show, setShow] = useState<"open" | "all">("open");
   const quotes = useRows<QuoteRequest>(() => supabase.from("quote_requests").select(`*, quote_request_items(*), ${WHO}`).order("created_at", { ascending: false }).limit(300));
@@ -186,7 +195,7 @@ export default function RequestsAdmin() {
   const rRows = show === "open" ? openRes : reservations.rows;
 
   return (
-    <Gate allow={isStaff}>
+    <Gate allow={can("requests")}>
       <PageTitle
         title="ใบเสนอราคาและการจอง"
         subtitle="คำขอจากลูกค้าที่ส่งผ่านหน้าเว็บ"

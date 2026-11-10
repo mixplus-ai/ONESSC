@@ -412,10 +412,10 @@ function RulesTab() {
 }
 
 export default function PointsAdmin() {
-  const { isStaff } = useAuth();
+  const { can } = useAuth();
   const [tab, setTab] = useState<"coupons" | "personal" | "rewards" | "rules">("coupons");
   return (
-    <Gate allow={isStaff}>
+    <Gate allow={can("rewards")}>
       <PageTitle title="แต้มส่วนตัวและของรางวัล" subtitle="รับคูปอง ดู/ปรับแต้มส่วนตัว ของรางวัล และกติกาแต้ม" />
       <Tabs value={tab} onChange={setTab} tabs={[
         { key: "coupons", label: "รับคูปอง" },
