@@ -1301,12 +1301,14 @@ end $$;
 
 -- Guard: staff edits registrations directly (payment, notes), but not identity / points / certificate fields.
 create or replace function public.training_regs_guard()
-returns trigger language plpgsql security definer set search_path = ''
+returns trigger language plpgsql set search_path = ''
 as $$
 begin
   if auth.uid() is null then return new; end if;
-  -- security-definer RPCs above write these columns; direct table updates come only from staff (RLS)
-  if current_setting('onessc.rpc', true) = '1' then return new; end if;
+  -- Not security definer on purpose: current_user is the role running the UPDATE. Inside the
+  -- security-definer RPCs above it is the function owner, so their writes go through; a direct
+  -- table update from the API runs as authenticated (staff only, via RLS) and is limited here.
+  if current_user not in ('authenticated', 'anon') then return new; end if;
   new.id := old.id; new.code := old.code; new.user_id := old.user_id; new.session_id := old.session_id;
   new.legacy_user_id := old.legacy_user_id; new.status := old.status; new.points_awarded := old.points_awarded;
   new.cert_no := old.cert_no; new.cert_issued_at := old.cert_issued_at; new.cert_expires_on := old.cert_expires_on;
@@ -1331,7 +1333,6 @@ begin
   if not found then return null; end if;
   select * into v_l from public.legacy_cerssc_users where email = lower(v_p.email) and claimed_by is null for update;
   if not found then return null; end if;
-  perform set_config('onessc.rpc', '1', true);
   update public.legacy_cerssc_users set claimed_by = v_p.id, claimed_at = now() where legacy_id = v_l.legacy_id;
   update public.profiles
      set legacy_cerssc_id = v_l.legacy_id,
@@ -1346,7 +1347,6 @@ begin
   update public.training_strikes set user_id = v_p.id where legacy_user_id = v_l.legacy_id and user_id is null;
   update public.point_ledger set user_id = v_p.id, legacy_user_id = null
    where legacy_user_id = v_l.legacy_id and user_id is null and wallet = 'personal';
-  perform set_config('onessc.rpc', '', true);
   return v_l.legacy_id;
 end $$;
 
@@ -1359,27 +1359,6 @@ begin
 end $$;
 create trigger profiles_claim_legacy after insert on public.profiles
   for each row execute function public.profiles_claim_legacy();
-
--- the RPCs set onessc.rpc so the registrations guard lets their writes through
-do $$
-declare
-  f text;
-begin
-  foreach f in array array[
-    'book_session(uuid,text,text,jsonb,text,boolean,text)',
-    'cancel_registration(uuid,text,boolean)',
-    'reschedule_registration(uuid,uuid,text)',
-    'check_in(uuid,text,numeric,numeric,text)',
-    'set_attendance(uuid,text,text)',
-    'mark_no_shows()',
-    'submit_evaluation(uuid,jsonb)',
-    'issue_certificate(uuid)',
-    'attach_training_file(uuid,text,text)',
-    'redeem_reward(uuid)', 'lucky_draw()', 'cancel_redemption(uuid,text)'
-  ] loop
-    execute format('alter function public.%s set onessc.rpc = ''1''', f);
-  end loop;
-end $$;
 
 create trigger training_regs_guard before update on public.training_registrations
   for each row execute function public.training_regs_guard();

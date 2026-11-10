@@ -368,5 +368,17 @@ do $$ begin
   assert public.point_balance('personal', '00000000-0000-0000-0000-00000000000f') = 12, 'points moved';
 end $$;
 
+-- ---- registrations guard: staff edit payment fields directly, but not status / identity
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', true);
+update public.training_registrations set status = 'cancelled', pay_status = 'paid', staff_note = 'ok'
+ where legacy_id = 'R-OLD-1';
+do $$ begin
+  assert (select status from public.training_registrations where legacy_id = 'R-OLD-1') = 'attended', 'guard keeps status';
+  assert (select pay_status from public.training_registrations where legacy_id = 'R-OLD-1') = 'paid', 'staff can set payment';
+  assert (select paid_at from public.training_registrations where legacy_id = 'R-OLD-1') is not null, 'paid_at stamped';
+end $$;
+reset role;
+
 rollback;
 \echo ALL PHASE 3 TESTS PASSED
