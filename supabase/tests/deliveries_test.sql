@@ -7,14 +7,14 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('00000000-0000-0000-0000-0000000de0c1', 'duser@ssc.test', '{}');
 update public.profiles set role = 'admin' where email = 'dadmin@ssc.test';
 update public.profiles set role = 'staff' where email = 'dstaff@ssc.test';
-insert into public.companies (id, tax_id, name) values ('40000000-0000-0000-0000-0000000000d1', '0345561002101', 'PJ');
+insert into public.companies (id, tax_id, name) values ('40000000-0000-0000-0000-0000000000d1', '1234567890123', 'PJ');
 
 set local role authenticated;
 
 -- staff creates a delivery with items; tax ID links the company
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000de0b1', true);
 insert into public.deliveries (id, doc_no, delivery_date, customer_name, customer_tax_id)
-values ('50000000-0000-0000-0000-0000000000d1', 'PI-TEST-1', '2026-10-27', 'PJ', '0345561002101');
+values ('50000000-0000-0000-0000-0000000000d1', 'PI-TEST-1', '2026-10-27', 'PJ', '1234567890123');
 insert into public.delivery_items (delivery_id, model, unit_watt, qty, total_watt)
 values ('50000000-0000-0000-0000-0000000000d1', 'LP182', 650, 36, 23400);
 do $$ begin
