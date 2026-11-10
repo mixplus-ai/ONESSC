@@ -40,6 +40,7 @@ export interface PermissionKey {
   label: string;
   description: string | null;
   sort: number;
+  grp: string;
 }
 
 export interface PortfolioProject {

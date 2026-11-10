@@ -43,7 +43,8 @@ const toDraft = (d: Delivery): DeliveryDraft => ({
 });
 
 export default function DeliveriesAdmin() {
-  const { isStaff, isAdmin } = useAuth();
+  const { isAdmin, can } = useAuth();
+  const canManage = can("deliveries.manage");
   const [month, setMonth] = useState(todayBkk().slice(0, 7));
   const [day, setDay] = useState("");
   const [q, setQ] = useState("");
@@ -175,29 +176,29 @@ export default function DeliveriesAdmin() {
   }
 
   return (
-    <Gate allow={isStaff}>
+    <Gate allow={can("deliveries.view") || can("deliveries.manage")}>
       <PageTitle
         title="ตารางส่งสินค้า"
-        subtitle="อัปโหลดใบส่งสินค้า (PDF) ระบบอ่านรายละเอียดและวันส่งให้ ตรวจแล้วบันทึกลงปฏิทิน · เห็นเฉพาะ Staff และ Admin"
-        actions={
+        subtitle="อัปโหลดใบส่งสินค้า (PDF) ระบบอ่านรายละเอียดและวันส่งให้ ตรวจแล้วบันทึกลงปฏิทิน · เห็นเฉพาะผู้ที่ได้รับสิทธิ์"
+        actions={canManage && (
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => setEdit(emptyDraft())}>+ เพิ่มเอง</Button>
             <Button variant="sun" onClick={() => fileRef.current?.click()} loading={reading > 0}>อัปโหลดใบส่งสินค้า</Button>
           </div>
-        }
+        )}
       />
       <input ref={fileRef} type="file" accept="application/pdf,image/*" multiple hidden onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       {note && <div className="mb-4"><Alert tone="green">{note}</Alert></div>}
       {reading > 0 && <div className="mb-4"><Alert tone="navy">กำลังอ่านเอกสาร {reading} ไฟล์…</Alert></div>}
 
-      <div
+      {canManage && <div
         className="mb-5 rounded-2xl border-2 border-dashed border-slate-300 bg-white p-4 text-center text-sm text-slate-500"
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => { e.preventDefault(); onFiles(e.dataTransfer.files); }}
       >
         ลากไฟล์ใบส่งสินค้ามาวางที่นี่ได้หลายไฟล์พร้อมกัน หรือกด <button className="font-semibold text-navy-700 underline" onClick={() => fileRef.current?.click()}>เลือกไฟล์</button>
-      </div>
+      </div>}
 
       <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
@@ -249,7 +250,7 @@ export default function DeliveriesAdmin() {
                     {dayLabel(date)}{date === todayBkk() && " · วันนี้"} <span className="font-normal text-slate-400">({list.length} รายการ)</span>
                   </h3>
                   <div className="space-y-2">
-                    {list.map((r) => <DeliveryCard key={r.id} r={r} onOpen={() => setEdit(toDraft(r))} onStatus={(s) => quickStatus(r, s)} />)}
+                    {list.map((r) => <DeliveryCard key={r.id} r={r} onOpen={() => setEdit(toDraft(r))} onStatus={canManage ? (s) => quickStatus(r, s) : undefined} />)}
                   </div>
                 </section>
               ))}
@@ -285,11 +286,11 @@ export default function DeliveriesAdmin() {
             <>
               {isAdmin && edit.id && <Button variant="ghost" className="mr-auto !text-red-600" onClick={() => remove(edit)}>ลบ</Button>}
               {edit.file_path && <Button variant="secondary" onClick={() => openDeliveryFile(edit.file_path!).catch((x) => setErr(errorMessage(x)))}>เปิดไฟล์เอกสาร</Button>}
-              <label className="inline-flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-navy-700 hover:bg-slate-100">
+              {canManage && <label className="inline-flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-navy-700 hover:bg-slate-100">
                 {edit.file ? `แนบ: ${edit.file.name}` : edit.file_path ? "เปลี่ยนไฟล์" : "แนบไฟล์"}
                 <input type="file" accept="application/pdf,image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) setEdit({ ...edit, file: f }); e.target.value = ""; }} />
-              </label>
-              <Button onClick={() => saveDraft(edit, () => setEdit(null))}>บันทึก</Button>
+              </label>}
+              {canManage ? <Button onClick={() => saveDraft(edit, () => setEdit(null))}>บันทึก</Button> : <Button variant="ghost" onClick={() => setEdit(null)}>ปิด</Button>}
             </>
           )
         }
@@ -300,7 +301,7 @@ export default function DeliveriesAdmin() {
   );
 }
 
-function DeliveryCard({ r, onOpen, onStatus }: { r: Delivery; onOpen: () => void; onStatus: (s: DeliveryStatus) => void }) {
+function DeliveryCard({ r, onOpen, onStatus }: { r: Delivery; onOpen: () => void; onStatus?: (s: DeliveryStatus) => void }) {
   const st = DELIVERY_STATUS[r.status];
   const qty = sumQty(r.delivery_items);
   const w = sumWatt(r.delivery_items);
@@ -332,9 +333,11 @@ function DeliveryCard({ r, onOpen, onStatus }: { r: Delivery; onOpen: () => void
         </button>
         <div className="flex flex-col items-end gap-2">
           <Badge tone={st.tone}>{st.label}</Badge>
-          <Select className="!w-auto !py-1 text-xs" value={r.status} onChange={(e) => onStatus(e.target.value as DeliveryStatus)} aria-label="เปลี่ยนสถานะ">
-            {(Object.keys(DELIVERY_STATUS) as DeliveryStatus[]).map((k) => <option key={k} value={k}>{DELIVERY_STATUS[k].label}</option>)}
-          </Select>
+          {onStatus && (
+            <Select className="!w-auto !py-1 text-xs" value={r.status} onChange={(e) => onStatus(e.target.value as DeliveryStatus)} aria-label="เปลี่ยนสถานะ">
+              {(Object.keys(DELIVERY_STATUS) as DeliveryStatus[]).map((k) => <option key={k} value={k}>{DELIVERY_STATUS[k].label}</option>)}
+            </Select>
+          )}
         </div>
       </div>
     </Card>

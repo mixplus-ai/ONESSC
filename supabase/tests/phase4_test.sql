@@ -10,6 +10,8 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('00000000-0000-0000-0000-00000000d0c3', 'cu3@ssc.test', '{}');
 update public.profiles set role = 'admin' where email = 'cadmin@ssc.test';
 update public.profiles set role = 'staff' where email in ('cstaff@ssc.test', 'cstaff2@ssc.test');
+insert into public.staff_permissions (user_id, perm) values
+  ('00000000-0000-0000-0000-00000000d0b1', 'claims.handle'), ('00000000-0000-0000-0000-00000000d0b2', 'claims.handle');
 insert into public.companies (id, tax_id, name) values ('40000000-0000-0000-0000-000000000001', '1111111111111', 'Solar Co');
 update public.profiles set company_id = '40000000-0000-0000-0000-000000000001', company_status = 'approved', tax_id = '1111111111111'
  where email in ('cu1@ssc.test', 'cu2@ssc.test');

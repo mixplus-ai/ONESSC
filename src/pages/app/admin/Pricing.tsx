@@ -12,7 +12,7 @@ interface PriceRow { variant_id: string; price: number; note: string | null; upd
 
 /** Staff sets a price per customer company; customers of that company see it after logging in. */
 export default function Pricing() {
-  const { isStaff } = useAuth();
+  const { can } = useAuth();
   const companies = useRows<Company>(() => supabase.from("companies").select("*").order("name"));
   const variants = useRows<Row>(() => supabase.from("product_variants").select("*, products(name, brands(name))").order("sku"));
   const [companyId, setCompanyId] = useState("");
@@ -98,7 +98,7 @@ export default function Pricing() {
   const company = companies.rows.find((c) => c.id === companyId);
 
   return (
-    <Gate allow={isStaff}>
+    <Gate allow={can("pricing")}>
       <PageTitle title="ราคาเฉพาะบริษัท" subtitle="ราคาที่ลูกค้าของบริษัทนั้นเห็นเมื่อเข้าสู่ระบบ (โปรโมชั่นที่กำลังใช้งานจะแสดงแทน)" />
       <Card className="mb-4 grid gap-3 md:grid-cols-[1fr_1fr]">
         <Select value={companyId} onChange={(e) => setCompanyId(e.target.value)} aria-label="เลือกบริษัท">

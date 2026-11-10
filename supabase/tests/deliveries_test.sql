@@ -4,9 +4,12 @@ begin;
 insert into auth.users (id, email, raw_user_meta_data) values
   ('00000000-0000-0000-0000-0000000de0a1', 'dadmin@ssc.test', '{}'),
   ('00000000-0000-0000-0000-0000000de0b1', 'dstaff@ssc.test', '{}'),
-  ('00000000-0000-0000-0000-0000000de0c1', 'duser@ssc.test', '{}');
+  ('00000000-0000-0000-0000-0000000de0c1', 'duser@ssc.test', '{}'),
+  ('00000000-0000-0000-0000-0000000de0b2', 'dstaff2@ssc.test', '{}');
 update public.profiles set role = 'admin' where email = 'dadmin@ssc.test';
-update public.profiles set role = 'staff' where email = 'dstaff@ssc.test';
+update public.profiles set role = 'staff' where email in ('dstaff@ssc.test', 'dstaff2@ssc.test');
+insert into public.staff_permissions (user_id, perm) values
+  ('00000000-0000-0000-0000-0000000de0b1', 'deliveries.manage'), ('00000000-0000-0000-0000-0000000de0b2', 'deliveries.view');
 insert into public.companies (id, tax_id, name) values ('40000000-0000-0000-0000-0000000000d1', '1234567890123', 'PJ');
 
 set local role authenticated;
@@ -33,6 +36,24 @@ do $$ begin
   exception when unique_violation then null;
   end;
 end $$;
+
+-- staff with view only reads but cannot change; staff without the permission sees nothing (checked as user below)
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000de0b2', true);
+update public.deliveries set status = 'cancelled' where doc_no = 'PI-TEST-1';
+do $$ begin
+  assert (select count(*) from public.deliveries) = 1, 'view-only staff reads';
+  assert (select status from public.deliveries where doc_no = 'PI-TEST-1') = 'delivered', 'view-only staff cannot update';
+  begin
+    insert into public.deliveries (doc_no, delivery_date, customer_name) values ('PI-V', '2026-10-28', 'X');
+    assert false, 'view-only insert';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+reset role;
+delete from public.staff_permissions where user_id = '00000000-0000-0000-0000-0000000de0b2';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000de0b2', true);
+do $$ begin assert (select count(*) from public.deliveries) = 0, 'staff without deliveries perm sees nothing'; end $$;
 
 -- a normal user sees nothing and cannot insert
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000de0c1', true);

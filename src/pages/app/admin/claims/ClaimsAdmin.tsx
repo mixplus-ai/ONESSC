@@ -76,7 +76,7 @@ export default function ClaimsAdmin() {
   ];
 
   return (
-    <Gate allow={isStaff}>
+    <Gate allow={can("claims.view") || can("claims")}>
       <PageTitle title="งานบริการและเคลม" subtitle={canEdit ? "จัดการคิวเคลม ผัง 5 ขั้นตอน นำเข้าข้อมูล และตั้งค่า" : "ดูผัง 5 ขั้นได้ทั้งหมด · อัปเดตสถานะได้เฉพาะเคลมที่คุณรับเรื่อง"} />
       <Tabs value={tab} onChange={setTab} tabs={tabs} />
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}

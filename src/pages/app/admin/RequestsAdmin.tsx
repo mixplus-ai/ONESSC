@@ -183,7 +183,7 @@ function ReservationCard({ r, onSaved }: { r: Reservation; onSaved: () => void }
 }
 
 export default function RequestsAdmin() {
-  const { isStaff } = useAuth();
+  const { can } = useAuth();
   const [tab, setTab] = useState<"quotes" | "reservations">("quotes");
   const [show, setShow] = useState<"open" | "all">("open");
   const quotes = useRows<QuoteRequest>(() => supabase.from("quote_requests").select(`*, quote_request_items(*), ${WHO}`).order("created_at", { ascending: false }).limit(300));
@@ -195,7 +195,7 @@ export default function RequestsAdmin() {
   const rRows = show === "open" ? openRes : reservations.rows;
 
   return (
-    <Gate allow={isStaff}>
+    <Gate allow={can("requests")}>
       <PageTitle
         title="ใบเสนอราคาและการจอง"
         subtitle="คำขอจากลูกค้าที่ส่งผ่านหน้าเว็บ"

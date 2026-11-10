@@ -88,10 +88,10 @@ function SettingsTab() {
 }
 
 export default function TrainingAdmin() {
-  const { isStaff, can } = useAuth();
+  const { can } = useAuth();
   const [tab, setTab] = useState<"sessions" | "promos" | "courses" | "templates" | "settings">("sessions");
   return (
-    <Gate allow={isStaff}>
+    <Gate allow={can("training.view") || can("courses")}>
       <PageTitle title="อบรมและกิจกรรม" subtitle={can("courses") ? "รอบอบรม รายชื่อ เช็กอิน การชำระเงิน ใบประกาศ" : "ดูอย่างเดียว · ขอสิทธิ์ “อบรมและกิจกรรม” จาก Admin เพื่อแก้ไข"} />
       <Tabs value={tab} onChange={setTab} tabs={[
         { key: "sessions", label: "รอบอบรมและรายชื่อ" },

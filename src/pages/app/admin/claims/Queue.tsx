@@ -54,7 +54,7 @@ function Details({ c }: { c: Claim }) {
 }
 
 function QueueCard({ c, onOpenBoard }: { c: Claim; onOpenBoard: (id: string) => void }) {
-  const { session, isAdmin } = useAuth();
+  const { session, isAdmin, can } = useAuth();
   const { staff, canEdit, reload, brands } = useBoard();
   const me = session?.user.id ?? "";
   const mine = c.assigned_to === me;
@@ -123,7 +123,7 @@ function QueueCard({ c, onOpenBoard }: { c: Claim; onOpenBoard: (id: string) => 
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {!c.assigned_to && <Button onClick={take} loading={busy === "take"}>รับเรื่อง</Button>}
+        {!c.assigned_to && (can("claims.handle") || canEdit) && <Button onClick={take} loading={busy === "take"}>รับเรื่อง</Button>}
         {canEdit && (
           <Select className="!w-auto !py-1.5" value={c.assigned_to ?? ""} onChange={(e) => assign(e.target.value)} aria-label="มอบหมายผู้รับผิดชอบ">
             <option value="">— มอบหมายให้ —</option>
@@ -167,7 +167,7 @@ function QueueCard({ c, onOpenBoard }: { c: Claim; onOpenBoard: (id: string) => 
               </div>
             </div>
           ) : (
-            <Alert tone="amber">รับเรื่องก่อนจึงจะเปลี่ยนสถานะหรืออัปโหลดใบเคลมได้</Alert>
+            <Alert tone="amber">{can("claims.handle") ? "รับเรื่องก่อนจึงจะเปลี่ยนสถานะหรืออัปโหลดใบเคลมได้" : "ดูได้อย่างเดียว · ขอสิทธิ์ “รับเรื่อง เปลี่ยนสถานะ” จาก Admin เพื่อดูแลเคลม"}</Alert>
           )}
           {err && <Alert>{err}</Alert>}
           {events.length > 0 && (

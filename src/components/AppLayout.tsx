@@ -37,7 +37,7 @@ export function Gate({ allow, children }: { allow: boolean; children: ReactNode 
 }
 
 export default function AppLayout() {
-  const { profile, isAdmin, isStaff, can, signOut } = useAuth();
+  const { profile, isAdmin, can, signOut } = useAuth();
   const { count } = useCart();
   const [open, setOpen] = useState(false);
   const loc = useLocation();
@@ -59,23 +59,23 @@ export default function AppLayout() {
     },
     {
       title: "งานบริการ",
-      items: [{ to: "/app/admin/claims", label: "งานบริการและเคลม", icon: WrenchIcon, show: isStaff }],
+      items: [{ to: "/app/admin/claims", label: "งานบริการและเคลม", icon: WrenchIcon, show: can("claims.view") || can("claims") }],
     },
     {
       title: "อบรมและแต้ม",
       items: [
-        { to: "/app/admin/training", label: "อบรมและกิจกรรม", icon: AcademicIcon, show: isStaff },
-        { to: "/app/admin/company-points", label: "แต้มบริษัท", icon: StarIcon, show: isStaff },
-        { to: "/app/admin/points", label: "คูปองและของรางวัล", icon: GiftIcon, show: isStaff },
+        { to: "/app/admin/training", label: "อบรมและกิจกรรม", icon: AcademicIcon, show: can("training.view") || can("courses") },
+        { to: "/app/admin/company-points", label: "แต้มบริษัท", icon: StarIcon, show: can("company_points") },
+        { to: "/app/admin/points", label: "คูปองและของรางวัล", icon: GiftIcon, show: can("rewards") },
       ],
     },
     {
       title: "สินค้าและการขาย",
       items: [
-        { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: isStaff },
-        { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: ChartIcon, show: isStaff },
-        { to: "/app/admin/deliveries", label: "ตารางส่งสินค้า", icon: TruckIcon, show: isStaff },
-        { to: "/app/admin/pricing", label: "ราคาเฉพาะบริษัท", icon: TagIcon, show: isStaff },
+        { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: can("requests") },
+        { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: ChartIcon, show: can("stock.view") },
+        { to: "/app/admin/deliveries", label: "ตารางส่งสินค้า", icon: TruckIcon, show: can("deliveries.view") || can("deliveries.manage") },
+        { to: "/app/admin/pricing", label: "ราคาเฉพาะบริษัท", icon: TagIcon, show: can("pricing") },
         { to: "/app/admin/products", label: "สินค้า", icon: BoxIcon, show: can("products") },
         { to: "/app/admin/promotions", label: "โปรโมชั่นและแพ็กเกจ", icon: TagIcon, show: can("products") },
       ],
@@ -84,7 +84,7 @@ export default function AppLayout() {
       title: "จัดการ",
       items: [
         { to: "/app/admin/users", label: "ผู้ใช้และสิทธิ์", icon: UsersIcon, show: isAdmin },
-        { to: "/app/admin/companies", label: "บริษัทลูกค้า", icon: BuildingIcon, show: isStaff },
+        { to: "/app/admin/companies", label: "บริษัทลูกค้า", icon: BuildingIcon, show: can("companies") },
         { to: "/app/admin/messages", label: "ข้อความติดต่อ", icon: InboxIcon, show: can("contact_messages") },
       ],
     },

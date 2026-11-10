@@ -106,7 +106,7 @@ function CompanyRow({ c, members, onSaved }: { c: Company; members: Profile[]; o
 }
 
 export default function Companies() {
-  const { isStaff } = useAuth();
+  const { can } = useAuth();
   const [tab, setTab] = useState<"pending" | "all">("pending");
   const companies = useRows<Company>(() => supabase.from("companies").select("*").order("name"));
   const members = useRows<Profile>(() => supabase.from("profiles").select("*").eq("company_status", "approved"));
@@ -117,7 +117,7 @@ export default function Companies() {
   }, [companies.rows, q]);
 
   return (
-    <Gate allow={isStaff}>
+    <Gate allow={can("companies")}>
       <PageTitle title="บริษัทลูกค้า" subtitle="อนุมัติการผูกผู้ใช้กับบริษัทด้วยเลขผู้เสียภาษี และดูรายชื่อบริษัท" />
       <div className="mb-5 inline-flex rounded-lg bg-slate-200/60 p-1">
         {(["pending", "all"] as const).map((t) => (
