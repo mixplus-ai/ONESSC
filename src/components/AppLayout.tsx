@@ -2,7 +2,8 @@ import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps 
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABEL } from "../lib/types";
-import { BuildingIcon, EditIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, UserIcon, UsersIcon, XIcon } from "./icons";
+import { BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, TagIcon, UserIcon, UsersIcon, XIcon } from "./icons";
+import { useCart } from "../lib/cart";
 import { Logo } from "./PublicLayout";
 import { Alert, Loading, cx } from "./ui";
 
@@ -36,6 +37,7 @@ export function Gate({ allow, children }: { allow: boolean; children: ReactNode 
 
 export default function AppLayout() {
   const { profile, isAdmin, isStaff, can, signOut } = useAuth();
+  const { count } = useCart();
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
@@ -45,6 +47,18 @@ export default function AppLayout() {
       items: [
         { to: "/app", label: "แดชบอร์ด", icon: HomeIcon, show: true, end: true },
         { to: "/app/profile", label: "ข้อมูลส่วนตัว", icon: UserIcon, show: true },
+        { to: "/app/cart", label: count ? `รายการสินค้า (${count})` : "รายการสินค้า", icon: CartIcon, show: true },
+        { to: "/app/requests", label: "ใบเสนอราคาและการจอง", icon: FileIcon, show: true },
+      ],
+    },
+    {
+      title: "สินค้าและการขาย",
+      items: [
+        { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: isStaff },
+        { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: ChartIcon, show: isStaff },
+        { to: "/app/admin/pricing", label: "ราคาเฉพาะบริษัท", icon: TagIcon, show: isStaff },
+        { to: "/app/admin/products", label: "สินค้า", icon: BoxIcon, show: can("products") },
+        { to: "/app/admin/promotions", label: "โปรโมชั่นและแพ็กเกจ", icon: TagIcon, show: can("products") },
       ],
     },
     {

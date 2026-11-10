@@ -1,5 +1,5 @@
 import type { ComponentType, SVGProps } from "react";
-import { AcademicIcon, BoxIcon, ExternalIcon, WrenchIcon } from "../../components/icons";
+import { AcademicIcon, ExternalIcon, WrenchIcon } from "../../components/icons";
 import { ButtonLink } from "../../components/ui";
 import { LEGACY } from "../../lib/types";
 
@@ -13,21 +13,6 @@ interface ModuleInfo {
 }
 
 const MODULES: Record<string, ModuleInfo> = {
-  products: {
-    icon: BoxIcon,
-    title: "สินค้า",
-    text: "แคตตาล็อกพร้อมราคา สต๊อก แพคเกจ และขอใบเสนอราคาออนไลน์กำลังย้ายเข้ามาใน One App ระหว่างนี้ดูสินค้าทั้งหมดได้ที่แคตตาล็อกเดิม",
-    phase: "เฟส 2",
-    link: { href: LEGACY.catalog, label: "เปิดแคตตาล็อกสินค้า" },
-    secondary: { href: "/contact?topic=quotation", label: "ขอใบเสนอราคา" },
-  },
-  promotions: {
-    icon: BoxIcon,
-    title: "โปรโมชั่น",
-    text: "โปรโมชั่นและแพคเกจราคาพิเศษจะแสดงที่นี่ สอบถามโปรโมชั่นล่าสุดกับเซลล์ได้ทาง LINE หรือแบบฟอร์มติดต่อ",
-    phase: "เฟส 2",
-    secondary: { href: "/contact?topic=product", label: "สอบถามโปรโมชั่น" },
-  },
   training: {
     icon: AcademicIcon,
     title: "อบรมและกิจกรรม",
