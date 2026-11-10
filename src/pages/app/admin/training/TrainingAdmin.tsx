@@ -57,8 +57,11 @@ function SettingsTab() {
         <div className="sm:col-span-3"><Field label="คำถามแบบประเมิน (บรรทัดละข้อ ให้คะแนน 1–5)"><Textarea rows={4} disabled={!isAdmin} value={(s.evaluation_questions ?? []).join("\n")} onChange={(e) => set("evaluation_questions", lines(e.target.value))} /></Field></div>
       </div>
       <h3 className="mt-6 font-semibold text-navy-900">อีเมลแจ้งผู้ลงทะเบียน</h3>
-      <p className="text-sm text-slate-500">ระบบส่งอีเมลจาก Gmail ของบริษัท ทุกชั่วโมง ใช้ได้หลังตั้งค่า Gmail ใน Supabase แล้ว</p>
+      <p className="text-sm text-slate-500">ระบบเช็กและส่งทุกชั่วโมง ต้องใส่ App Password ของ Gmail นี้เป็น SMTP_PASS ใน Supabase → Edge Functions → Secrets ก่อน</p>
       <div className="mt-3 grid gap-4 sm:grid-cols-3">
+        <Field label="อีเมลผู้ส่ง (Gmail)"><Input type="email" value={s.email_from ?? ""} disabled={!isAdmin} onChange={(e) => set("email_from", e.target.value.trim() || null)} /></Field>
+        <Field label="ชื่อผู้ส่ง"><Input value={s.email_from_name} disabled={!isAdmin} onChange={(e) => set("email_from_name", e.target.value)} /></Field>
+        <div />
         <div className="flex flex-col justify-end gap-2">
           {boolField("email_enabled", "เปิดส่งอีเมล")}
           {boolField("confirm_email", "ส่งอีเมลยืนยันหลังจอง")}

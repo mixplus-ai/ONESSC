@@ -68,9 +68,8 @@ User เห็นเฉพาะข้อมูลตนเองและบร
 ส่งผ่าน Gmail ของบริษัท (ราว 500 ฉบับต่อวัน) หรือ Resend เมื่อมีโดเมนของตัวเอง
 
 1. บัญชี Gmail ที่จะใช้ส่ง: เปิด 2-Step Verification แล้วสร้าง App Password ที่ https://myaccount.google.com/apppasswords
-2. Supabase → Edge Functions → Secrets ใส่ `SMTP_HOST=smtp.gmail.com`, `SMTP_USER=<อีเมล Gmail>`, `SMTP_PASS=<App Password 16 ตัว>`,
-   `EMAIL_FROM=SSC Training <อีเมล Gmail เดียวกัน>` และ `SITE_URL=https://onessc.netlify.app`
-   (ใช้ Resend แทน: ใส่ `RESEND_API_KEY` และ `EMAIL_FROM` เป็นอีเมลบนโดเมนที่ยืนยันแล้ว)
+2. Supabase → Edge Functions → Secrets ใส่ `SMTP_PASS=<App Password 16 ตัว>` (ใช้ Resend แทน: ใส่ `RESEND_API_KEY`)
+   แล้วใส่อีเมล Gmail และชื่อผู้ส่งใน อบรมและกิจกรรม → ตั้งค่า
 3. Deploy ฟังก์ชัน `training-emails` แล้วรัน `supabase/cron/training_emails_schedule.sql` (ส่งทุกชั่วโมง)
 4. Admin เปิด “เปิดส่งอีเมล” ใน อบรมและกิจกรรม → ตั้งค่า (ตั้งจำนวนวันเตือนล่วงหน้าได้ ค่าเริ่มต้น 5 วัน)
 

@@ -5,12 +5,15 @@
 -- The training-emails edge function runs every hour from pg_cron (supabase/cron/training_emails_schedule.sql),
 -- asks training_emails_due() what to send, sends it, and records the result with record_training_email().
 -- Nothing is sent until an Admin turns on email_enabled in อบรมและกิจกรรม → ตั้งค่า.
+-- The sender address is a setting; only the mail password (SMTP_PASS) lives in Edge Function secrets.
 
 alter table public.training_settings
   add column email_enabled boolean not null default false,
   add column confirm_email boolean not null default true,
   add column reminder_days_before int not null default 5 check (reminder_days_before between 1 and 30),
-  add column email_note text;   -- extra text at the bottom of every e-mail (e.g. what to bring, contact)
+  add column email_note text,   -- extra text at the bottom of every e-mail (e.g. what to bring, contact)
+  add column email_from text check (email_from is null or email_from ~ '^[^@<>\s]+@[^@<>\s]+$'),  -- sender address (Gmail)
+  add column email_from_name text not null default 'SSC Training';
 
 create table public.training_email_log (
   id               uuid primary key default gen_random_uuid(),

@@ -4,10 +4,12 @@
 // checked like stock-sync against the Vault secret through public.verify_cron_secret().
 // It asks public.training_emails_due() what to send and records each result with public.record_training_email().
 //
+// Sender: training_settings.email_from / email_from_name (Admin sets them in the back office).
 // Mail provider, from Edge Function secrets (one of the two):
-//   RESEND_API_KEY                      → Resend HTTP API (needs a verified sender domain)
-//   SMTP_HOST, SMTP_USER, SMTP_PASS     → SMTP over TLS, port 465 by default (SMTP_PORT). Gmail: smtp.gmail.com + App Password
-// plus EMAIL_FROM, e.g. "SSC Training <training@example.com>" (Gmail: the same Gmail address), and SITE_URL.
+//   SMTP_PASS                → Gmail App Password; SMTP over TLS to smtp.gmail.com:465 as email_from
+//                              (SMTP_HOST / SMTP_PORT / SMTP_USER override the defaults)
+//   RESEND_API_KEY           → Resend HTTP API (email_from must be on a domain verified in Resend)
+// Optional: SITE_URL (default https://onessc.netlify.app).
 import { createClient } from "npm:@supabase/supabase-js@2";
 import nodemailer from "npm:nodemailer@6.9.16";
 import { buildTrainingEmail, type DueEmail } from "../_shared/training_email.ts";
@@ -18,9 +20,10 @@ const json = (body: unknown, status = 200) =>
 type Mail = { to: string; subject: string; html: string; text: string };
 type Sender = (m: Mail) => Promise<void>;
 
-function makeSender(): Sender | string {
-  const from = Deno.env.get("EMAIL_FROM") ?? Deno.env.get("SMTP_USER");
-  if (!from) return "ยังไม่ได้ตั้ง EMAIL_FROM";
+function makeSender(address: string | null, name: string | null): Sender | string {
+  const addr = address ?? Deno.env.get("SMTP_USER");
+  if (!addr) return "ยังไม่ได้ตั้งอีเมลผู้ส่งในหลังบ้าน";
+  const from = name ? `${name.replace(/["<>]/g, "")} <${addr}>` : addr;
   const resendKey = Deno.env.get("RESEND_API_KEY");
   if (resendKey) {
     return async (m) => {
@@ -32,10 +35,10 @@ function makeSender(): Sender | string {
       if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
     };
   }
-  const host = Deno.env.get("SMTP_HOST");
-  const user = Deno.env.get("SMTP_USER");
+  const host = Deno.env.get("SMTP_HOST") ?? "smtp.gmail.com";
+  const user = Deno.env.get("SMTP_USER") ?? addr;
   const pass = Deno.env.get("SMTP_PASS");
-  if (!host || !user || !pass) return "ยังไม่ได้ตั้งค่าอีเมล (RESEND_API_KEY หรือ SMTP_HOST/SMTP_USER/SMTP_PASS)";
+  if (!pass) return "ยังไม่ได้ใส่ SMTP_PASS (App Password ของ Gmail) ใน Edge Function secrets";
   const port = Number(Deno.env.get("SMTP_PORT") ?? 465);
   // Supabase Edge Functions block outbound ports 25 and 587, so use implicit TLS on 465.
   const transport = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
@@ -58,10 +61,10 @@ Deno.serve(async (req) => {
   }
   if (!ok) return json({ error: "cron secret ไม่ถูกต้อง" }, 401);
 
-  const { data: cfg } = await db.from("training_settings").select("email_enabled, pay_info, email_note").eq("id", 1).single();
+  const { data: cfg } = await db.from("training_settings").select("email_enabled, pay_info, email_note, email_from, email_from_name").eq("id", 1).single();
   if (!cfg?.email_enabled) return json({ sent: 0, skipped: "email_enabled = false" });
 
-  const send = makeSender();
+  const send = makeSender(cfg.email_from, cfg.email_from_name);
   if (typeof send === "string") return json({ error: send }, 500);
 
   const { data: due, error } = await db.rpc("training_emails_due", { p_limit: 100 });

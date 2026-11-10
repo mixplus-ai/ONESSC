@@ -143,6 +143,8 @@ export interface TrainingSettings {
   confirm_email: boolean;
   reminder_days_before: number;
   email_note: string | null;
+  email_from: string | null;
+  email_from_name: string;
 }
 
 export interface TrainingStatus {
