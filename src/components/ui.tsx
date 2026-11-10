@@ -139,3 +139,27 @@ export function Loading() {
 }
 
 export { cx };
+
+/** Simple dialog: closes on Escape and backdrop click. */
+export function Modal({ open, onClose, title, children, wide, footer }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean | "full"; footer?: ReactNode }) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/40 p-3 sm:p-6"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div className={cx("my-4 w-full rounded-2xl bg-white shadow-xl", wide === "full" ? "max-w-[96rem]" : wide ? "max-w-4xl" : "max-w-lg")}>
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+          <h2 className="font-semibold text-navy-900">{title}</h2>
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="ปิด">✕</button>
+        </div>
+        <div className="max-h-[calc(100vh-10rem)] overflow-y-auto px-5 py-4">{children}</div>
+        {footer && <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-5 py-3">{footer}</div>}
+      </div>
+    </div>
+  );
+}
