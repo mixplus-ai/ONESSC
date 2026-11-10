@@ -35,7 +35,8 @@ User เห็นเฉพาะข้อมูลตนเองและบร
 2. Deploy `supabase functions deploy stock-sync`
 3. Google Sheet สต๊อก: แชร์ “ทุกคนที่มีลิงก์ดูได้” แล้ววางลิงก์ใน `/app/admin/stock` → ซิงก์และตั้งค่า → กด “ซิงก์จาก Google Sheet ตอนนี้”
 4. (ถ้าต้องการดึงอัตโนมัติ) ตั้ง secret `CRON_SECRET` ให้ function แล้วรัน `supabase/cron/stock_sync_schedule.sql` (ทุกชั่วโมง 07:00–19:00)
-5. `/app/admin/products` กด “สร้างจากไฟล์สต๊อก” ได้สินค้าแบบร่าง 1 รหัสต่อ 1 สินค้า แล้วจัดกลุ่มรหัสที่เป็นรุ่นเดียวกันด้วยปุ่ม “ดึงเข้า” ใส่รูป สเปก ราคา และเปิดแสดง
+5. รัน `supabase/seed/siamsolar_catalog.sql` เพื่อย้ายแคตตาล็อกเดิมจาก siamsolar (40 สินค้า รูป Datasheet วิดีโอ ผูกรหัสสต๊อกแล้ว 43 รหัส และทีมขาย 9 คน) รันซ้ำได้ไม่ซ้ำข้อมูล
+6. `/app/admin/products` กด “สร้างจากไฟล์สต๊อก” ได้สินค้าแบบร่าง 1 รหัสต่อ 1 สินค้า แล้วจัดกลุ่มรหัสที่เป็นรุ่นเดียวกันด้วยปุ่ม “ดึงเข้า” ใส่รูป สเปก ราคา และเปิดแสดง
 
 ## โครงสร้าง
 
@@ -47,6 +48,7 @@ src/                 React + TypeScript + Tailwind (Vite)
 supabase/migrations/ ตาราง ฟังก์ชัน RLS storage bucket
 supabase/functions/  Edge Functions admin-create-user (เชิญ Staff), stock-sync (ดึงสต๊อก) และ _shared/stock_parser.ts
 supabase/cron/       SQL ตั้งเวลาดึงสต๊อกอัตโนมัติ (pg_cron)
+supabase/seed/       ข้อมูลย้ายจากระบบเดิม (แคตตาล็อก siamsolar + ทีมขาย)
 supabase/tests/      ทดสอบ RLS บน Postgres ธรรมดา (npm run test:db)
 netlify.toml         build + SPA redirect
 ```
