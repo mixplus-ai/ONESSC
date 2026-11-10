@@ -50,6 +50,14 @@ export default function ClaimsAdmin() {
       supabase.from("brands").select("id, name, slug").order("sort").order("name").then(({ data }) => setBrands((data ?? []) as BrandOpt[])),
     ]).finally(() => setLoading(false));
   }, [isStaff, reload]);
+  // new claims from customers show up without a manual refresh: reload when the tab comes back and every 2 minutes
+  useEffect(() => {
+    if (!isStaff) return;
+    const onVisible = () => { if (document.visibilityState === "visible") reload(); };
+    document.addEventListener("visibilitychange", onVisible);
+    const t = window.setInterval(() => { if (document.visibilityState === "visible") reload(); }, 120_000);
+    return () => { document.removeEventListener("visibilitychange", onVisible); window.clearInterval(t); };
+  }, [isStaff, reload]);
 
   const value: BoardData = useMemo(() => {
     const unitsBy = groupUnits(units);

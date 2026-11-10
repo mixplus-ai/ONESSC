@@ -567,21 +567,29 @@ export function sheetRows(claims: Claim[], unitsBy: Map<string, ClaimUnit[]>): (
 // Supabase helpers
 // ---------------------------------------------------------------------------
 /** Reads every row of a query in pages of 1000 (PostgREST caps a single response). */
-export async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+/**
+ * Reads every row page by page. The page size follows what the API actually returns (Supabase caps a
+ * response at its "max rows" setting, which may be lower than 1000), and stops only once the exact
+ * row count has been read, so a lower cap can never silently cut the list short.
+ */
+export async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown; count?: number | null }>): Promise<T[]> {
   const out: T[] = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await build(from, from + 999);
+  let total: number | null = null;
+  for (;;) {
+    const { data, error, count } = await build(out.length, out.length + 999);
     if (error) throw error;
-    out.push(...(data ?? []));
-    if (!data || data.length < 1000) break;
+    if (total === null && typeof count === "number") total = count;
+    const rows = data ?? [];
+    out.push(...rows);
+    if (rows.length === 0 || (total !== null ? out.length >= total : rows.length < 1000)) break;
   }
   return out;
 }
 
 export async function loadBoard(): Promise<{ claims: Claim[]; units: ClaimUnit[] }> {
   const [claims, units] = await Promise.all([
-    fetchAll<Claim>((a, b) => supabase.from("claims").select("*").order("claim_no").range(a, b)),
-    fetchAll<ClaimUnit>((a, b) => supabase.from("claim_units").select("*").order("claim_id").order("seq").range(a, b)),
+    fetchAll<Claim>((a, b) => supabase.from("claims").select("*", { count: "exact" }).order("claim_no").range(a, b)),
+    fetchAll<ClaimUnit>((a, b) => supabase.from("claim_units").select("*", { count: "exact" }).order("claim_id").order("seq").range(a, b)),
   ]);
   return { claims, units };
 }

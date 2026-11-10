@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Card, Empty, Input, Select, cx } from "../../../../components/ui";
-import { BOARD_STATUS, SHEET_HEADER, claimYear, download, sheetRows, snKey, toCsv, type BoardStatus, type Claim } from "../../../../lib/claims";
+import { BOARD_STATUS, CLAIM_STATUS, SHEET_HEADER, claimYear, download, sheetRows, snKey, toCsv, type BoardStatus, type Claim } from "../../../../lib/claims";
 import ClaimDetail, { Pips } from "./Detail";
 import { BulkDocsModal, NewClaimModal, PasteModal } from "./Tools";
 import { useBoard } from "./shared";
@@ -131,6 +131,7 @@ export default function Board({ selected, onSelect }: { selected: string | null;
                         <Badge tone={st.tone}>{st.label}</Badge>
                       </div>
                       <p className="truncate text-xs text-slate-600">{c.company_name ?? "-"}</p>
+                      {c.source === "customer" && <p className="text-[11px] text-sky-700">ลูกค้าแจ้งออนไลน์ · {CLAIM_STATUS[c.status].label}</p>}
                       <div className="mt-1 flex items-center justify-between gap-2">
                         <span className="truncate text-xs text-slate-500">{hit || units[0]?.pcode || c.model || ""}</span>
                         <Pips claim={c} units={units} />
