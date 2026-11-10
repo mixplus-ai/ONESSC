@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ScanButton } from "../../../components/SnScanner";
-import { Alert, Badge, Button, ButtonLink, Card, Empty, Input, Loading, PageTitle, Spinner, Textarea, cx } from "../../../components/ui";
+import { Alert, Badge, Button, ButtonLink, Card, Empty, Input, Loading, PageTitle, Spinner, cx } from "../../../components/ui";
 import { CLAIM_STATUS, fmtThai, fmtThaiTime, openClaimFile, productTypeLabel, splitSns, uploadClaimFile, type MyClaim } from "../../../lib/claims";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
@@ -93,30 +93,109 @@ function TrackingHistory({ c }: { c: MyClaim }) {
   );
 }
 
+/** Same rule as public.sn_key() in the DB: upper-case, drop spaces - _ . /, letter O → zero. */
+const snKey = (v: string) => v.toUpperCase().replace(/[\s\-_./]/g, "").replace(/O/g, "0");
+
+/** Model for each reported SN (optimizer lines carry their own bad SNs), falling back to the claim's model. */
+function snModels(c: MyClaim): Record<string, string> {
+  const m: Record<string, string> = {};
+  for (const it of c.details.items ?? []) for (const sn of splitSns(it.bad_sn ?? "")) m[snKey(sn)] = it.model;
+  return m;
+}
+
 function ReturnForm({ c, onDone }: { c: MyClaim; onDone: () => void }) {
-  const [text, setText] = useState("");
+  const reported = c.reported_sns.filter((s) => snKey(s));
+  const models = snModels(c);
+  const [vals, setVals] = useState<string[]>(() => reported.map(() => ""));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const ok = (i: number) => !!vals[i].trim() && snKey(vals[i]) === snKey(reported[i]);
+  const matched = reported.filter((_, i) => ok(i)).length;
+  const all = reported.length > 0 && matched === reported.length;
+
+  const setAt = (i: number, v: string) => setVals((vs) => vs.map((x, k) => (k === i ? v : x)));
+  /** A scanned code goes to the row whose reported SN it matches, otherwise to the first empty row. */
+  function placeScan(sn: string) {
+    const k = snKey(sn);
+    let i = reported.findIndex((r, j) => snKey(r) === k && !ok(j));
+    if (i < 0) i = vals.findIndex((v) => !v.trim());
+    if (i < 0) return setErr(`สแกนได้ ${sn} แต่กรอกครบทุกช่องแล้ว`);
+    setErr("");
+    setAt(i, sn);
+  }
   async function send() {
     setErr("");
-    const sns = splitSns(text);
-    if (!sns.length) return setErr("กรุณากรอก SN ของตัวเก่าที่ส่งคืน");
+    if (!all) return setErr(`SN ที่คืนยังไม่ตรงกับที่แจ้ง ${reported.length - matched} รายการ กรุณาตรวจช่องที่มีเครื่องหมาย ✕ หรือยังว่าง`);
     setBusy(true);
-    const { error } = await supabase.rpc("return_claim", { p_claim: c.id, p_sns: sns });
+    const { error } = await supabase.rpc("return_claim", { p_claim: c.id, p_sns: vals.map((v) => v.trim()) });
     setBusy(false);
     if (error) return setErr(errorMessage(error));
     onDone();
   }
+
+  if (!reported.length) {
+    return (
+      <div className="mt-4 rounded-xl bg-sun-500/10 p-4 text-sm">
+        <p className="font-semibold text-navy-900">ขั้นที่ 3: ส่งของเคลมกลับ</p>
+        <p className="mt-1 text-slate-600">เคลมนี้ไม่มี SN ที่แจ้งไว้ในระบบ กรุณาติดต่อเจ้าหน้าที่</p>
+      </div>
+    );
+  }
   return (
     <div className="mt-4 rounded-xl bg-sun-500/10 p-4">
-      <p className="text-sm font-semibold text-navy-900">ขั้นที่ 3: ส่งของเคลมกลับ</p>
-      <p className="mt-1 text-xs text-slate-600">กรอก SN ของตัวเก่าที่ส่งคืน {c.reported_sns.length > 1 ? `ให้ครบ ${c.reported_sns.length} ตัว ` : ""}ต้องตรงกับ SN ที่แจ้งเคลมไว้ ไม่เช่นนั้นจะส่งไม่ได้</p>
-      <div className="mt-3 flex gap-2">
-        <Textarea rows={Math.min(6, Math.max(2, c.reported_sns.length))} className="font-mono" value={text} onChange={(e) => setText(e.target.value)} placeholder="พิมพ์หรือสแกน SN ทีละบรรทัด" />
-        <ScanButton multi onScan={(sn) => setText((t) => (t.trim() ? `${t.trim()}\n${sn}` : sn))} />
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-navy-900">ขั้นที่ 3: ส่งของเคลมกลับ</p>
+          <p className="mt-1 text-xs text-slate-600">กรอกหรือสแกน SN ของตัวเก่าที่ส่งคืนให้ตรงกับ SN ที่แจ้งไว้ทีละรายการ ระบบจะเทียบให้ทันที ส่งได้เมื่อตรงครบทุกรายการ</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={cx("rounded-full px-2.5 py-1 text-xs font-semibold", all ? "bg-emerald-100 text-emerald-700" : "bg-white text-slate-700")}>
+            ตรงกัน {matched}/{reported.length}
+          </span>
+          <ScanButton multi onScan={placeScan} />
+        </div>
+      </div>
+
+      <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="hidden grid-cols-[2rem_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_2rem] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 sm:grid">
+          <span>#</span><span>รุ่น</span><span>SN ที่แจ้ง</span><span>SN ที่คืน</span><span />
+        </div>
+        <ul className="divide-y divide-slate-100">
+          {reported.map((sn, i) => {
+            const filled = !!vals[i].trim();
+            const good = ok(i);
+            return (
+              <li key={i} className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-x-3 gap-y-1 px-3 py-2 sm:grid-cols-[2rem_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_2rem]">
+                <span className="row-span-3 self-start pt-1 text-sm text-slate-500 sm:row-span-1 sm:self-center sm:pt-0">{i + 1}</span>
+                <span className="truncate text-sm text-slate-700 sm:order-none">{models[snKey(sn)] ?? c.model ?? "-"}</span>
+                <span className="hidden sm:block font-mono text-sm text-navy-900 break-all">{sn}</span>
+                <span className="col-start-2 font-mono text-xs text-slate-500 sm:hidden">แจ้ง: <span className="text-navy-900">{sn}</span></span>
+                <input
+                  ref={(el) => { refs.current[i] = el; }}
+                  value={vals[i]}
+                  onChange={(e) => setAt(i, e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); refs.current[i + 1]?.focus(); } }}
+                  placeholder="SN ที่คืน"
+                  aria-label={`SN ที่คืน รายการ ${i + 1}`}
+                  className={cx(
+                    "col-start-2 w-full rounded-lg border px-2.5 py-1.5 font-mono text-sm outline-none focus:ring-2 sm:col-start-auto",
+                    !filled ? "border-slate-300 focus:ring-navy-200" : good ? "border-emerald-400 bg-emerald-50 focus:ring-emerald-200" : "border-red-400 bg-red-50 focus:ring-red-200",
+                  )}
+                />
+                <span className="col-start-3 row-start-1 flex justify-center sm:col-start-auto sm:row-start-auto" aria-live="polite">
+                  {filled && (good
+                    ? <span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-xs font-bold text-white" title="ตรงกับที่แจ้ง">✓</span>
+                    : <span className="grid h-6 w-6 place-items-center rounded-full bg-red-500 text-xs font-bold text-white" title="ไม่ตรงกับที่แจ้ง">✕</span>)}
+                </span>
+                {filled && !good && <span className="col-start-2 text-xs text-red-600 sm:col-span-2 sm:col-start-4">ไม่ตรงกับ SN ที่แจ้ง</span>}
+              </li>
+            );
+          })}
+        </ul>
       </div>
       {err && <div className="mt-2"><Alert>{err}</Alert></div>}
-      <Button className="mt-3" onClick={send} loading={busy}>ยืนยันส่งของคืน</Button>
+      <Button className="mt-3" onClick={send} loading={busy} disabled={!all}>ยืนยันส่งของคืน {reported.length > 1 ? `(${reported.length} รายการ)` : ""}</Button>
     </div>
   );
 }
@@ -193,7 +272,7 @@ function ClaimCard({ c, onChanged }: { c: MyClaim; onChanged: () => void }) {
           </div>
         )}
         {c.status === "done" && <ReturnForm c={c} onDone={onChanged} />}
-        {c.status === "returned" && <p className="mt-3 text-sm text-slate-600">ส่ง SN คืนแล้ว {c.returned_sns?.join(", ")} · รอทีมงานตรวจรับเพื่อปิดงาน</p>}
+        {c.status === "returned" && <p className="mt-3 text-sm text-slate-600">ส่งของคืนแล้ว {c.returned_sns?.length ?? 0} รายการ ตรงกับ SN ที่แจ้งครบ · รอทีมงานตรวจรับเพื่อปิดงาน</p>}
 
         {open && (
           <div className="mt-4 grid gap-6 border-t border-slate-100 pt-4 text-sm md:grid-cols-[1fr_1.1fr]">
@@ -208,7 +287,24 @@ function ClaimCard({ c, onChanged }: { c: MyClaim; onChanged: () => void }) {
                 {c.company_name && <div><dt className="inline text-slate-500">บริษัท: </dt><dd className="inline">{c.company_name}</dd></div>}
                 {c.installer_name && <div><dt className="inline text-slate-500">ผู้ติดตั้ง: </dt><dd className="inline">{c.installer_name}</dd></div>}
                 {c.case_id && <div><dt className="inline text-slate-500">Case: </dt><dd className="inline">{c.case_id}</dd></div>}
-                {c.reported_sns.length > 0 && <div><dt className="inline text-slate-500">SN ที่แจ้ง: </dt><dd className="inline font-mono">{c.reported_sns.join(", ")}</dd></div>}
+                {c.reported_sns.length > 0 && (c.returned_sns?.length ? (
+                  <div>
+                    <dt className="text-slate-500">SN ที่แจ้ง / SN ที่คืน</dt>
+                    <dd>
+                      <ul className="mt-1 space-y-0.5 font-mono text-xs">
+                        {c.reported_sns.map((sn, i) => {
+                          const back = c.returned_sns!.find((r) => snKey(r) === snKey(sn));
+                          return (
+                            <li key={i} className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-slate-400">{i + 1}.</span><span>{sn}</span><span className="text-slate-400">→</span>
+                              {back ? <span className="text-emerald-700">{back} ✓</span> : <span className="text-slate-400">ยังไม่คืน</span>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </dd>
+                  </div>
+                ) : <div><dt className="inline text-slate-500">SN ที่แจ้ง: </dt><dd className="inline font-mono">{c.reported_sns.join(", ")}</dd></div>)}
                 {optItems.length > 0 && (
                   <div><dt className="text-slate-500">รายการ Optimizer</dt>
                     <dd><ul className="list-disc pl-5">{optItems.map((i, k) => <li key={k}>{i.model} × {i.qty}{i.ref_inv_sn ? ` · Ref Inv ${i.ref_inv_sn}` : ""}</li>)}</ul></dd></div>
