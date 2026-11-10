@@ -2,7 +2,7 @@ import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps 
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABEL } from "../lib/types";
-import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, StarIcon, TagIcon, UserIcon, UsersIcon, WrenchIcon, XIcon } from "./icons";
+import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, StarIcon, TagIcon, UserIcon, UsersIcon, WrenchIcon, XIcon, TruckIcon } from "./icons";
 import { useCart } from "../lib/cart";
 import { Logo } from "./PublicLayout";
 import { Alert, Loading, cx } from "./ui";
@@ -73,6 +73,7 @@ export default function AppLayout() {
       items: [
         { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: isStaff },
         { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: ChartIcon, show: isStaff },
+        { to: "/app/admin/deliveries", label: "ตารางส่งสินค้า", icon: TruckIcon, show: isStaff },
         { to: "/app/admin/pricing", label: "ราคาเฉพาะบริษัท", icon: TagIcon, show: isStaff },
         { to: "/app/admin/products", label: "สินค้า", icon: BoxIcon, show: can("products") },
         { to: "/app/admin/promotions", label: "โปรโมชั่นและแพ็กเกจ", icon: TagIcon, show: can("products") },

@@ -50,6 +50,7 @@ const PointsAdmin = lazy(() => import("./pages/app/admin/PointsAdmin"));
 const MyClaims = lazy(() => import("./pages/app/claims/MyClaims"));
 const NewClaim = lazy(() => import("./pages/app/claims/NewClaim"));
 const ClaimsAdmin = lazy(() => import("./pages/app/admin/claims/ClaimsAdmin"));
+const DeliveriesAdmin = lazy(() => import("./pages/app/admin/deliveries/DeliveriesAdmin"));
 
 export default function App() {
   return (
@@ -100,6 +101,7 @@ export default function App() {
             <Route path="admin/pricing" element={<Pricing />} />
             <Route path="admin/promotions" element={<PromotionsAdmin />} />
             <Route path="admin/stock" element={<StockAdmin />} />
+            <Route path="admin/deliveries" element={<DeliveriesAdmin />} />
             <Route path="admin/requests" element={<RequestsAdmin />} />
             <Route path="admin/users" element={<Users />} />
             <Route path="admin/companies" element={<Companies />} />
