@@ -97,7 +97,7 @@ function ClaimCard({ c, onChanged }: { c: MyClaim; onChanged: () => void }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-mono text-lg font-bold text-navy-900">{c.claim_no}</p>
-          <p className="text-xs text-slate-500">แจ้งเมื่อ {fmtThaiTime(c.created_at)}{!c.mine && " · แจ้งโดยเพื่อนร่วมบริษัท"}</p>
+          <p className="text-xs text-slate-500">แจ้งเมื่อ {fmtThaiTime(c.created_at)}</p>
         </div>
         <Badge tone={st.tone}>{st.label}</Badge>
       </div>
@@ -173,10 +173,10 @@ export default function MyClaims() {
 
   return (
     <>
-      <PageTitle title="เคลมของฉัน" subtitle="ติดตามสถานะเคลมของคุณและของบริษัท" actions={<ButtonLink to="/app/claims/new" variant="sun">+ แจ้งเคลม</ButtonLink>} />
+      <PageTitle title="เคลมของฉัน" subtitle="ติดตามสถานะเคลมที่คุณแจ้งไว้" actions={<ButtonLink to="/app/claims/new" variant="sun">+ แจ้งเคลม</ButtonLink>} />
       {st?.created && (
         <div className="mb-4">
-          <Alert tone="green">ส่งแจ้งเคลมแล้ว เลขเคลมของคุณคือ <span className="font-mono font-bold">{st.created}</span> ทีมงานจะติดต่อกลับโดยเร็ว</Alert>
+          <Alert tone="green">ส่งแจ้งเคลมแล้ว เลขเคลมของคุณคือ <span className="font-mono font-bold">{st.created}</span> · สถานะ: {CLAIM_STATUS.submitted.label} (รอเจ้าหน้าที่รับเรื่อง) ติดตามสถานะได้ที่หน้านี้</Alert>
           {st.failed && st.failed.length > 0 && <div className="mt-2"><Alert tone="amber">อัปโหลดไฟล์ไม่สำเร็จ: {st.failed.join(", ")} กรุณากด "แนบไฟล์เพิ่ม" อีกครั้ง</Alert></div>}
         </div>
       )}

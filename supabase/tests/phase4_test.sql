@@ -58,9 +58,9 @@ begin
   end;
 end $$;
 
--- same-company colleague sees them; another customer does not
+-- only the customer who submitted sees them: not a same-company colleague, not another customer
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000d0c2', true);
-do $$ begin assert jsonb_array_length(public.my_claims()) = 2, 'company colleague sees claims'; end $$;
+do $$ begin assert jsonb_array_length(public.my_claims()) = 0, 'company colleague does not see claims'; end $$;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000d0c3', true);
 do $$ begin assert jsonb_array_length(public.my_claims()) = 0, 'other customer sees nothing'; end $$;
 
