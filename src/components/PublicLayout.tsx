@@ -37,7 +37,9 @@ function Header() {
   const { session, profile } = useAuth();
   const { count } = useCart();
   const loc = useLocation();
-  useEffect(() => setOpen(false), [loc.pathname]);
+  useEffect(() => {
+    setOpen(false);
+  }, [loc.pathname]);
 
   const account = session ? (
     <Link to="/app" className="rounded-lg bg-navy-800 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-700">
@@ -177,7 +179,10 @@ function LineButton() {
 
 export default function PublicLayout() {
   const { pathname } = useLocation();
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  // braces matter: newer Chrome returns a Promise from scrollTo, which React would call as a cleanup
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
   return (
     <div className="flex min-h-screen flex-col">
       <Header />

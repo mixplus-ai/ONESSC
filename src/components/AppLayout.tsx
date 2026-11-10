@@ -40,7 +40,9 @@ export default function AppLayout() {
   const { count } = useCart();
   const [open, setOpen] = useState(false);
   const loc = useLocation();
-  useEffect(() => setOpen(false), [loc.pathname]);
+  useEffect(() => {
+    setOpen(false);
+  }, [loc.pathname]);
 
   const groups: { title?: string; items: Item[] }[] = [
     {
