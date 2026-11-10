@@ -3,7 +3,10 @@
 //
 // Called two ways:
 //   1. Admin presses "ซิงก์ตอนนี้" in the back office → Authorization: Bearer <user JWT>
-//   2. pg_cron (see supabase/cron/stock_sync_schedule.sql) → header x-cron-secret: <CRON_SECRET>
+//   2. pg_cron (see supabase/cron/stock_sync_schedule.sql) → header x-cron-secret, checked against the
+//      Vault secret "stock_sync_cron_secret" (or the CRON_SECRET env var, if set).
+//
+// The gateway checks for a valid JWT (verify_jwt on), so cron also sends the public anon key.
 //
 // The sheet must be shared as "Anyone with the link can view".
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -57,8 +60,17 @@ Deno.serve(async (req) => {
   const service = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
   // who is calling?
-  const cronSecret = Deno.env.get("CRON_SECRET");
-  const isCron = !!cronSecret && req.headers.get("x-cron-secret") === cronSecret;
+  const cronHeader = req.headers.get("x-cron-secret");
+  let isCron = false;
+  if (cronHeader) {
+    const envSecret = Deno.env.get("CRON_SECRET");
+    if (envSecret) isCron = cronHeader === envSecret;
+    else {
+      const { data } = await service.rpc("verify_cron_secret", { p_secret: cronHeader });
+      isCron = data === true;
+    }
+    if (!isCron) return json({ error: "cron secret ไม่ถูกต้อง" }, 401);
+  }
   let db = service;
   if (!isCron) {
     const auth = req.headers.get("Authorization") ?? "";
