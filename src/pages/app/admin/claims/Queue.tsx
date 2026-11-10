@@ -54,11 +54,14 @@ function Details({ c }: { c: Claim }) {
 }
 
 function QueueCard({ c, onOpenBoard }: { c: Claim; onOpenBoard: (id: string) => void }) {
-  const { session } = useAuth();
+  const { session, isAdmin } = useAuth();
   const { staff, canEdit, reload, brands } = useBoard();
   const me = session?.user.id ?? "";
   const mine = c.assigned_to === me;
   const canHandle = canEdit || mine;
+  // ปิดงาน / เปิดงานที่ปิดแล้ว: only Admin or the staff responsible (DB enforces the same rule)
+  const canClose = isAdmin || mine;
+  const touchesClose = (to: ClaimStatus) => to === "closed" || c.status === "closed";
   const [open, setOpen] = useState(c.status === "submitted");
   const [files, setFiles] = useState<ClaimFile[] | null>(null);
   const [events, setEvents] = useState<ClaimEvent[]>([]);
@@ -153,9 +156,13 @@ function QueueCard({ c, onOpenBoard }: { c: Claim; onOpenBoard: (id: string) => 
                 <input ref={docRef} type="file" hidden accept="application/pdf,image/*" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) uploadDoc(f); }} />
               </div>
               <div className="sm:col-span-2 flex flex-wrap gap-2">
-                {NEXT[c.status].map((n) => (
+                {NEXT[c.status].filter((n) => canClose || !touchesClose(n.to)).map((n) => (
                   <Button key={n.to} variant={n.variant} onClick={() => setStatus(n.to)} loading={busy === n.to} disabled={Boolean(busy)}>{n.label}</Button>
                 ))}
+                {!canClose && NEXT[c.status].some((n) => touchesClose(n.to)) && (
+                  <span className="self-center text-xs text-slate-500">ปิดงานได้เฉพาะ Admin หรือผู้รับผิดชอบ ({actorName(staff, c.assigned_to)})</span>
+                )}
+                {c.status === "closed" && c.closed_by && <span className="self-center text-xs text-slate-500">ปิดงานโดย {actorName(staff, c.closed_by)}</span>}
                 {note.trim() !== (c.customer_note ?? "") && <Button variant="ghost" onClick={() => setStatus(c.status)} loading={busy === c.status}>บันทึกข้อความ</Button>}
               </div>
             </div>

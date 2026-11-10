@@ -135,6 +135,42 @@ begin
   perform public.return_claim(cid, array[' 7e1-2345 ']);
 end $$;
 
+-- closing (ปิดงาน) only by Admin or the assigned staff: staff2 even with perm 'claims' is refused
+reset role;
+insert into public.staff_permissions (user_id, perm) values ('00000000-0000-0000-0000-00000000d0b2', 'claims');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000d0b2', true);
+do $$ begin
+  begin
+    perform public.set_claim_status((select id from public.claims where product_type = 'inverter'), 'closed');
+    assert false, 'non-assigned staff cannot close';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+-- the assigned staff closes; admin reopens (back to returned) and closes again below
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000d0b1', true);
+do $$
+declare cid uuid := (select id from public.claims where product_type = 'inverter');
+begin
+  perform public.set_claim_status(cid, 'closed');
+  assert (select closed_by from public.claims where id = cid) = '00000000-0000-0000-0000-00000000d0b1', 'closed_by = handler';
+end $$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000d0b2', true);
+do $$ begin
+  begin
+    perform public.set_claim_status((select id from public.claims where product_type = 'inverter'), 'returned');
+    assert false, 'non-assigned staff cannot reopen';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000d0a1', true);
+do $$
+declare cid uuid := (select id from public.claims where product_type = 'inverter');
+begin
+  perform public.set_claim_status(cid, 'returned');
+  assert (select closed_by from public.claims where id = cid) is null, 'reopen clears closed_by';
+end $$;
+
 -- admin: step 3 filled, closes, imports, numbering after import
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000d0a1', true);
 do $$
@@ -149,6 +185,7 @@ begin
   assert (select ret_date from public.claim_units where claim_id = c.id and seq = 1) = public.bkk_today(), 'step 3 date';
   perform public.set_claim_status(c.id, 'closed');
   assert (select closed_at from public.claims where id = c.id) is not null, 'closed_at set';
+  assert (select closed_by from public.claims where id = c.id) = '00000000-0000-0000-0000-00000000d0a1', 'admin closed_by';
 
   res := public.import_claims(jsonb_build_array(
     jsonb_build_object('claim_no', '25-0123', 'company_name', 'solar co', 'qty', 2, 'model', 'SE5000H', 'status', 'closed',
@@ -181,7 +218,7 @@ end $$;
 
 -- staff with perm 'claims' can edit the board
 reset role;
-insert into public.staff_permissions (user_id, perm) values ('00000000-0000-0000-0000-00000000d0b2', 'claims');
+insert into public.staff_permissions (user_id, perm) values ('00000000-0000-0000-0000-00000000d0b2', 'claims') on conflict do nothing;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000d0b2', true);
 do $$ begin
@@ -202,7 +239,7 @@ declare n_staff int; n_cust int;
 begin
   select count(*) filter (where audience = 'staff'), count(*) filter (where audience = 'customer') into n_staff, n_cust from public.claim_emails_due(500);
   assert n_staff = 4, 'staff mails: 2 customer claims × 2 addresses, got ' || n_staff;
-  assert n_cust = 5, 'customer mails: 2 submitted + in_progress + done + closed (returned not mailed), got ' || n_cust;
+  assert n_cust = 6, 'customer mails: 2 submitted + in_progress + done + closed twice (staff, then admin after reopen; returned not mailed), got ' || n_cust;
   perform public.record_claim_email(e.event_id, e.to_email, e.audience) from public.claim_emails_due(500) e;
   assert (select count(*) from public.claim_emails_due(500)) = 0, 'sent mails not repeated';
 end $$;

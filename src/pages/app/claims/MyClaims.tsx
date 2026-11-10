@@ -59,6 +59,7 @@ export function ClaimTracker({ c }: { c: MyClaim }) {
                 {rejected && i === 0 ? "ไม่อนุมัติ" : m.label}
               </span>
               {(done || active) && at.get(m.status) && <span className="text-[10px] text-slate-500 sm:text-[11px]">{fmtThai(at.get(m.status)!)}</span>}
+              {final && c.closed_by && <span className="text-[10px] text-slate-500 sm:text-[11px]">โดย {c.closed_by}</span>}
             </li>
           );
         })}
@@ -272,7 +273,8 @@ function ClaimCard({ c, onChanged }: { c: MyClaim; onChanged: () => void }) {
           </div>
         )}
         {c.status === "done" && <ReturnForm c={c} onDone={onChanged} />}
-        {c.status === "returned" && <p className="mt-3 text-sm text-slate-600">ส่งของคืนแล้ว {c.returned_sns?.length ?? 0} รายการ ตรงกับ SN ที่แจ้งครบ · รอทีมงานตรวจรับเพื่อปิดงาน</p>}
+        {c.status === "returned" && <p className="mt-3 text-sm text-slate-600">ส่งของคืนแล้ว {c.returned_sns?.length ?? 0} รายการ ตรงกับ SN ที่แจ้งครบ · รอ{c.handler ? ` ${c.handler} (ผู้รับผิดชอบ)` : "ทีมงาน"}ตรวจรับเพื่อปิดงาน</p>}
+        {c.status === "closed" && <p className="mt-3 text-sm text-emerald-700">ปิดงานเรียบร้อย{c.closed_at ? ` เมื่อ ${fmtThaiTime(c.closed_at)}` : ""}{c.closed_by ? ` โดย ${c.closed_by}` : ""}</p>}
 
         {open && (
           <div className="mt-4 grid gap-6 border-t border-slate-100 pt-4 text-sm md:grid-cols-[1fr_1.1fr]">

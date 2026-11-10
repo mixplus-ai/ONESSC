@@ -71,6 +71,7 @@ export interface Claim {
   returned_sns: string[] | null;
   returned_at: string | null;
   closed_at: string | null;
+  closed_by: string | null;
   internal_note: string | null;
   created_at: string;
   updated_at: string;
@@ -138,6 +139,7 @@ export interface MyClaim {
   claim_doc_path: string | null;
   returned_at: string | null;
   closed_at: string | null;
+  closed_by: string | null;
   created_at: string;
   updated_at: string;
   mine: boolean;
