@@ -1,22 +1,22 @@
 import { Link } from "react-router-dom";
 import { PortfolioCard, SectionHeading, TeamCard } from "../../components/cards";
 import { AcademicIcon, ArrowRightIcon, BoxIcon, ShieldIcon, SunIcon, WrenchIcon } from "../../components/icons";
+import { AdPopup, AdSlot } from "../../components/banners";
 import { ButtonLink, Empty } from "../../components/ui";
 import { usePublishedPortfolio, usePublishedTeam, useSiteSettings } from "../../lib/content";
-import { LEGACY } from "../../lib/types";
 import { sessionDateText } from "../../lib/training";
 import { useUpcomingSessions } from "./Training";
 import { ContactBlock } from "./Contact";
 
 const MODULES = [
-  { icon: BoxIcon, title: "สินค้าและโปรโมชั่น", text: "แคตตาล็อกอุปกรณ์ ราคา แพคเกจ และขอใบเสนอราคาออนไลน์", to: "/products" },
-  { icon: AcademicIcon, title: "อบรมและกิจกรรม", text: "จองรอบอบรม รับใบประกาศ และสะสมแต้มแลกของรางวัล", to: "/training" },
-  { icon: WrenchIcon, title: "งานบริการและเคลม", text: "แจ้งเคลมสินค้าและติดตามสถานะได้จากบัญชีของคุณ", to: "/claims" },
-  { icon: ShieldIcon, title: "บัญชีเดียวใช้ได้ทุกส่วน", text: "ล็อกอินครั้งเดียว เห็นการจอง แต้ม และเคลมของคุณและบริษัท", to: "/register" },
+  { icon: BoxIcon, to: "/products" },
+  { icon: AcademicIcon, to: "/training" },
+  { icon: WrenchIcon, to: "/claims" },
+  { icon: ShieldIcon, to: "/register" },
 ];
 
 export default function Home() {
-  const { hero, about } = useSiteSettings();
+  const { hero, about, home } = useSiteSettings();
   const portfolio = usePublishedPortfolio(6);
   const team = usePublishedTeam();
 
@@ -31,7 +31,7 @@ export default function Home() {
         <div className="container-x relative grid items-center gap-10 py-20 md:grid-cols-[1.3fr_1fr] md:py-28">
           <div>
             <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-sun-300 ring-1 ring-white/15">
-              <SunIcon className="h-4 w-4" /> ตัวแทนจำหน่ายอุปกรณ์โซลาร์
+              <SunIcon className="h-4 w-4" /> {home.badge}
             </p>
             <h1 className="text-3xl leading-tight font-bold sm:text-5xl sm:leading-tight">{hero.title}</h1>
             <p className="mt-5 max-w-xl text-lg text-navy-100">{hero.subtitle}</p>
@@ -55,8 +55,8 @@ export default function Home() {
 
       {/* Modules */}
       <section className="container-x -mt-10 relative z-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {MODULES.map(({ icon: Icon, title, text, to }) => (
-          <Link key={title} to={to} className="group rounded-2xl bg-white p-5 shadow-md ring-1 ring-slate-200 transition hover:-translate-y-0.5">
+        {MODULES.map(({ icon: Icon, to }, i) => ({ Icon, to, ...home.modules[i] })).map(({ Icon, title, text, to }) => (
+          <Link key={to} to={to} className="group rounded-2xl bg-white p-5 shadow-md ring-1 ring-slate-200 transition hover:-translate-y-0.5">
             <span className="grid h-11 w-11 place-items-center rounded-xl bg-sun-500/15 text-sun-600"><Icon className="h-6 w-6" /></span>
             <h3 className="mt-4 font-semibold text-navy-900">{title}</h3>
             <p className="mt-1 text-sm text-slate-600">{text}</p>
@@ -64,9 +64,11 @@ export default function Home() {
         ))}
       </section>
 
+      <AdSlot placement="home_top" className="mt-10" />
+
       {/* About */}
       <section className="container-x grid gap-10 py-20 md:grid-cols-2">
-        <SectionHeading eyebrow="เกี่ยวกับเรา" title="พลังงานสะอาด เริ่มที่อุปกรณ์คุณภาพ" />
+        <SectionHeading eyebrow="เกี่ยวกับเรา" title={home.about_title} />
         <div className="space-y-4 text-slate-600">
           <p>{about.history}</p>
           <p className="border-l-4 border-sun-500 pl-4 font-medium text-navy-800">{about.vision}</p>
@@ -80,18 +82,23 @@ export default function Home() {
       <section className="bg-white py-16">
         <div className="container-x grid gap-6 md:grid-cols-2">
           <div className="rounded-2xl bg-navy-50 p-6">
-            <h3 className="font-semibold text-navy-900">สินค้าแนะนำและโปรโมชั่น</h3>
-            <p className="mt-2 text-sm text-slate-600">ระหว่างย้ายแคตตาล็อกเข้ามาใน One App ดูสินค้าทั้งหมดได้ที่แคตตาล็อกเดิม</p>
-            <ButtonLink to={LEGACY.catalog} variant="secondary" className="mt-4">เปิดแคตตาล็อกสินค้า</ButtonLink>
+            <h3 className="font-semibold text-navy-900">{home.products_title}</h3>
+            <p className="mt-2 text-sm text-slate-600">{home.products_text}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <ButtonLink to="/products" variant="secondary">{home.products_button}</ButtonLink>
+              <ButtonLink to="/promotions" variant="ghost">โปรโมชั่น</ButtonLink>
+            </div>
           </div>
           <UpcomingTraining />
         </div>
       </section>
 
+      <AdSlot placement="home_middle" className="mt-16" />
+
       {/* Portfolio */}
       <section className="container-x py-20">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <SectionHeading eyebrow="ผลงาน" title="โครงการที่เราติดตั้ง" subtitle="ตัวอย่างงานบ้านพักอาศัย โรงงาน และอาคารพาณิชย์" />
+          <SectionHeading eyebrow="ผลงาน" title={home.portfolio_title} subtitle={home.portfolio_subtitle} />
           <Link to="/portfolio" className="mb-8 inline-flex items-center gap-1 text-sm font-semibold text-navy-700 hover:underline">
             ดูผลงานทั้งหมด <ArrowRightIcon className="h-4 w-4" />
           </Link>
@@ -108,7 +115,7 @@ export default function Home() {
       {/* Team */}
       <section className="bg-white py-20">
         <div className="container-x">
-          <SectionHeading eyebrow="ทีมงาน" title="ติดต่อพนักงานได้โดยตรง" subtitle="ฝ่ายขาย ฝ่ายบริการ และฝ่ายประสานงาน พร้อมช่วยเหลือคุณ" />
+          <SectionHeading eyebrow="ทีมงาน" title={home.team_title} subtitle={home.team_subtitle} />
           {team.rows.length ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {team.rows.slice(0, 6).map((m) => <TeamCard key={m.id} m={m} />)}
@@ -125,6 +132,7 @@ export default function Home() {
       </section>
 
       <ContactBlock />
+      <AdPopup />
     </>
   );
 }

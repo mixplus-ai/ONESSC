@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { AdSlot, PageBanner } from "../../components/banners";
 import { AddToList, PriceTag, StockBadge } from "../../components/catalog";
 import { BoxIcon } from "../../components/icons";
 import { Empty, Loading } from "../../components/ui";
@@ -28,9 +29,10 @@ export default function Promotions() {
   const { price, stock } = usePricing(variants.rows);
 
   return (
-    <div className="container-x py-10">
-      <h1 className="text-3xl font-bold text-navy-900">โปรโมชั่นและแพ็กเกจ</h1>
-      <p className="mt-1 text-slate-500">ราคาโปรโมชั่นเป็นราคาเดียวกันสำหรับลูกค้าทุกคน</p>
+    <>
+      <PageBanner page="promotions" />
+      <AdSlot placement="promotions" className="mt-6" />
+      <div className="container-x pt-2 pb-10">
 
       {promos.loading ? (
         <Loading />
@@ -101,6 +103,7 @@ export default function Promotions() {
         </div>
       )}
     </div>
+    </>
   );
 }
 

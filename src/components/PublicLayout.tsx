@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useSiteSettings } from "../lib/content";
 import { cx } from "./ui";
+import { AnnouncementBar } from "./banners";
 import { CartIcon, ChatIcon, MailIcon, MenuIcon, PhoneIcon, PinIcon, SunIcon, XIcon } from "./icons";
 import { useCart } from "../lib/cart";
 
@@ -21,9 +22,13 @@ export function Logo({ light = false }: { light?: boolean }) {
   const { company } = useSiteSettings();
   return (
     <Link to="/" className="flex items-center gap-2.5" aria-label="หน้าแรก">
-      <span className="grid h-9 w-9 place-items-center rounded-xl bg-navy-900 text-sun-500 ring-1 ring-white/10">
-        <SunIcon className="h-5 w-5" />
-      </span>
+      {company.logo_url ? (
+        <img src={company.logo_url} alt="" className="h-9 w-auto max-w-[3.5rem] rounded-lg object-contain" />
+      ) : (
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-navy-900 text-sun-500 ring-1 ring-white/10">
+          <SunIcon className="h-5 w-5" />
+        </span>
+      )}
       <span className={cx("text-lg font-bold tracking-tight", light ? "text-white" : "text-navy-900")}>
         {company.name_th}
         <span className={cx("ml-1.5 text-xs font-medium", light ? "text-navy-200" : "text-slate-500")}>One App</span>
@@ -185,6 +190,7 @@ export default function PublicLayout() {
   }, [pathname]);
   return (
     <div className="flex min-h-screen flex-col">
+      <AnnouncementBar />
       <Header />
       <main className="flex-1">
         <Outlet />

@@ -89,7 +89,7 @@ export default function AppLayout() {
     {
       title: "หน้าเว็บ",
       items: [
-        { to: "/app/admin/content", label: "เนื้อหาหน้าเว็บ", icon: EditIcon, show: can("site_content") },
+        { to: "/app/admin/content", label: "เนื้อหาเว็บและโฆษณา", icon: EditIcon, show: can("site_content") },
         { to: "/app/admin/portfolio", label: "ผลงาน", icon: ImageIcon, show: can("site_content") },
         { to: "/app/admin/team", label: "ทีมงาน", icon: UsersIcon, show: can("site_content") },
       ],

@@ -102,6 +102,7 @@ export interface CompanySettings {
   facebook_url: string;
   map_embed_url: string;
   office_hours: string;
+  logo_url: string;
 }
 
 export interface HeroSettings {
@@ -121,10 +122,55 @@ export interface AboutSettings {
   certificates: string[];
 }
 
+export type PageKey = "about" | "products" | "promotions" | "training" | "portfolio" | "claims" | "team" | "contact";
+
+/** Banner/heading shown at the top of each public page. */
+export interface PageBannerSettings {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  image_url: string;
+}
+
+export interface HomeSettings {
+  badge: string;
+  modules: { title: string; text: string }[];
+  about_title: string;
+  products_title: string;
+  products_text: string;
+  products_button: string;
+  portfolio_title: string;
+  portfolio_subtitle: string;
+  team_title: string;
+  team_subtitle: string;
+}
+
+export type AdPlacement = "home_top" | "home_middle" | "products" | "promotions" | "training" | "claims" | "popup";
+
+export interface AdBanner {
+  id: string;
+  title: string;
+  image_url: string;
+  mobile_image_url: string;
+  href: string;
+  placements: AdPlacement[];
+  active: boolean;
+  starts_at: string; // yyyy-mm-dd or ""
+  ends_at: string;
+}
+
+export interface AdsSettings {
+  announcement: { text: string; href: string; active: boolean };
+  banners: AdBanner[];
+}
+
 export interface SiteSettings {
   company: CompanySettings;
   hero: HeroSettings;
   about: AboutSettings;
+  home: HomeSettings;
+  pages: Record<PageKey, PageBannerSettings>;
+  ads: AdsSettings;
 }
 
 export const ROLE_LABEL: Record<AppRole, string> = { admin: "Admin", staff: "Staff", user: "User" };

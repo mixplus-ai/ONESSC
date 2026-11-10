@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { AdSlot, PageBanner } from "../../components/banners";
 import { ProductCard } from "../../components/catalog";
 import { Empty, Input, Loading, cx } from "../../components/ui";
 import { usePricing, type Brand, type Category, type PriceInfo, type Product } from "../../lib/catalog";
@@ -49,16 +50,12 @@ export default function Products() {
   const usedBrands = brands.rows.filter((b) => products.rows.some((p) => p.brand_id === b.id));
 
   return (
-    <div className="container-x py-10">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-navy-900">สินค้า</h1>
-          <p className="mt-1 text-slate-500">ราคาและสต๊อกอัปเดตจากระบบคลังสินค้า เข้าสู่ระบบเพื่อดูราคาเฉพาะบริษัทของคุณ</p>
-        </div>
-        <div className="flex gap-2">
-          <Link to="/promotions" className="rounded-lg bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100">โปรโมชั่นและแพ็กเกจ</Link>
-        </div>
-      </div>
+    <>
+      <PageBanner page="products">
+        <Link to="/promotions" className="inline-flex rounded-lg bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100">โปรโมชั่นและแพ็กเกจ</Link>
+      </PageBanner>
+      <AdSlot placement="products" className="mt-6" />
+      <div className="container-x pb-10">
 
       <div className="mt-6 grid gap-3 md:grid-cols-[1fr_auto]">
         <Input type="search" placeholder="ค้นหาชื่อสินค้า รุ่น หรือรหัสสินค้า" value={q} onChange={(e) => set("q", e.target.value)} />
@@ -103,6 +100,7 @@ export default function Products() {
         )}
       </div>
     </div>
+    </>
   );
 }
 
