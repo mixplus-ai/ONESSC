@@ -19,6 +19,8 @@ import NotFound from "./pages/public/NotFound";
 import Portfolio, { PortfolioDetail } from "./pages/public/Portfolio";
 import Privacy from "./pages/public/Privacy";
 import Team from "./pages/public/Team";
+import Training from "./pages/public/Training";
+import VerifyCert from "./pages/public/VerifyCert";
 import { Loading } from "./components/ui";
 
 // back-office pages load on demand so the public site stays light
@@ -38,6 +40,13 @@ const Pricing = lazy(() => import("./pages/app/admin/Pricing"));
 const PromotionsAdmin = lazy(() => import("./pages/app/admin/PromotionsAdmin"));
 const StockAdmin = lazy(() => import("./pages/app/admin/StockAdmin"));
 const RequestsAdmin = lazy(() => import("./pages/app/admin/RequestsAdmin"));
+const MyTraining = lazy(() => import("./pages/app/training/MyTraining"));
+const Book = lazy(() => import("./pages/app/training/Book"));
+const CheckIn = lazy(() => import("./pages/app/training/CheckIn"));
+const Points = lazy(() => import("./pages/app/Points"));
+const TrainingAdmin = lazy(() => import("./pages/app/admin/training/TrainingAdmin"));
+const CompanyPoints = lazy(() => import("./pages/app/admin/CompanyPoints"));
+const PointsAdmin = lazy(() => import("./pages/app/admin/PointsAdmin"));
 
 export default function App() {
   return (
@@ -58,7 +67,9 @@ export default function App() {
             <Route path="products/:slug" element={<ProductDetail />} />
             <Route path="promotions" element={<Promotions />} />
             <Route path="packages/:slug" element={<PackageDetail />} />
-            <Route path="training" element={<ModulePage module="training" />} />
+            <Route path="training" element={<Training />} />
+            <Route path="verify" element={<VerifyCert />} />
+            <Route path="verify/:certNo" element={<VerifyCert />} />
             <Route path="claims" element={<ModulePage module="claims" />} />
             <Route path="*" element={<NotFound />} />
           </Route>
@@ -71,6 +82,14 @@ export default function App() {
             <Route path="profile" element={<Profile />} />
             <Route path="cart" element={<Cart />} />
             <Route path="requests" element={<MyRequests />} />
+            <Route path="training" element={<MyTraining />} />
+            <Route path="training/book" element={<Book />} />
+            <Route path="training/book/:sessionId" element={<Book />} />
+            <Route path="training/checkin" element={<CheckIn />} />
+            <Route path="points" element={<Points />} />
+            <Route path="admin/training" element={<TrainingAdmin />} />
+            <Route path="admin/company-points" element={<CompanyPoints />} />
+            <Route path="admin/points" element={<PointsAdmin />} />
             <Route path="admin/products" element={<ProductsAdmin />} />
             <Route path="admin/pricing" element={<Pricing />} />
             <Route path="admin/promotions" element={<PromotionsAdmin />} />

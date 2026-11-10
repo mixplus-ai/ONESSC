@@ -2,7 +2,7 @@ import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps 
 import { Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABEL } from "../lib/types";
-import { BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, TagIcon, UserIcon, UsersIcon, XIcon } from "./icons";
+import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, StarIcon, TagIcon, UserIcon, UsersIcon, XIcon } from "./icons";
 import { useCart } from "../lib/cart";
 import { Logo } from "./PublicLayout";
 import { Alert, Loading, cx } from "./ui";
@@ -19,7 +19,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const { session, loading, profile } = useAuth();
   const loc = useLocation();
   if (loading) return <Loading />;
-  if (!session) return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
+  if (!session) return <Navigate to="/login" replace state={{ from: loc.pathname + loc.search }} />;
   if (profile && !profile.is_active)
     return (
       <div className="container-x py-20"><Alert>บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ</Alert></div>
@@ -51,6 +51,16 @@ export default function AppLayout() {
         { to: "/app/profile", label: "ข้อมูลส่วนตัว", icon: UserIcon, show: true },
         { to: "/app/cart", label: count ? `รายการสินค้า (${count})` : "รายการสินค้า", icon: CartIcon, show: true },
         { to: "/app/requests", label: "ใบเสนอราคาและการจอง", icon: FileIcon, show: true },
+        { to: "/app/training", label: "การอบรมของฉัน", icon: AcademicIcon, show: true },
+        { to: "/app/points", label: "แต้มและของรางวัล", icon: GiftIcon, show: true },
+      ],
+    },
+    {
+      title: "อบรมและแต้ม",
+      items: [
+        { to: "/app/admin/training", label: "อบรมและกิจกรรม", icon: AcademicIcon, show: isStaff },
+        { to: "/app/admin/company-points", label: "แต้มบริษัท", icon: StarIcon, show: isStaff },
+        { to: "/app/admin/points", label: "คูปองและของรางวัล", icon: GiftIcon, show: isStaff },
       ],
     },
     {
