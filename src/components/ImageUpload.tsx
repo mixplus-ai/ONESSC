@@ -5,7 +5,9 @@ import { ImageIcon, XIcon } from "./icons";
 import { Spinner } from "./ui";
 
 /** Single image picker that uploads to the site-media bucket and returns the public URL. */
-export function ImageUpload({ value, onChange, folder, label = "อัปโหลดรูป" }: { value: string; onChange: (url: string) => void; folder: string; label?: string }) {
+type Uploader = (file: File, folder: string) => Promise<string>;
+
+export function ImageUpload({ value, onChange, folder, label = "อัปโหลดรูป", upload = uploadSiteImage }: { value: string; onChange: (url: string) => void; folder: string; label?: string; upload?: Uploader }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -39,7 +41,7 @@ export function ImageUpload({ value, onChange, folder, label = "อัปโห�
           setBusy(true);
           setErr("");
           try {
-            onChange(await uploadSiteImage(file, folder));
+            onChange(await upload(file, folder));
           } catch (x) {
             setErr(errorMessage(x));
           } finally {
@@ -53,7 +55,7 @@ export function ImageUpload({ value, onChange, folder, label = "อัปโห�
 }
 
 /** Multi-image gallery editor. */
-export function GalleryUpload({ value, onChange, folder }: { value: string[]; onChange: (urls: string[]) => void; folder: string }) {
+export function GalleryUpload({ value, onChange, folder, upload = uploadSiteImage }: { value: string[]; onChange: (urls: string[]) => void; folder: string; upload?: Uploader }) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -88,9 +90,53 @@ export function GalleryUpload({ value, onChange, folder }: { value: string[]; on
             const urls: string[] = [];
             for (const f of files) {
               if (f.size > 5 * 1024 * 1024) throw new Error(`${f.name} ใหญ่เกิน 5 MB`);
-              urls.push(await uploadSiteImage(f, folder));
+              urls.push(await upload(f, folder));
             }
             onChange([...value, ...urls]);
+          } catch (x) {
+            setErr(errorMessage(x));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+    </div>
+  );
+}
+
+/** URL field with an "upload file" button (PDF datasheets, manuals, quotation files). */
+export function FileUpload({ value, onChange, folder, upload, accept = "application/pdf", maxMb = 20 }: { value: string; onChange: (url: string) => void; folder: string; upload: Uploader; accept?: string; maxMb?: number }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  return (
+    <div>
+      <div className="flex gap-2">
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="วางลิงก์ หรืออัปโหลดไฟล์"
+          className="block w-full min-w-0 rounded-lg border-0 px-3 py-2.5 text-sm ring-1 ring-slate-300 ring-inset focus:ring-2 focus:ring-navy-600"
+        />
+        <button type="button" onClick={() => ref.current?.click()} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium ring-1 ring-slate-300 hover:bg-slate-50">
+          {busy && <Spinner className="h-4 w-4" />} อัปโหลด
+        </button>
+      </div>
+      <input
+        ref={ref}
+        type="file"
+        accept={accept}
+        hidden
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          if (file.size > maxMb * 1024 * 1024) return setErr(`ไฟล์ใหญ่เกิน ${maxMb} MB`);
+          setBusy(true);
+          setErr("");
+          try {
+            onChange(await upload(file, folder));
           } catch (x) {
             setErr(errorMessage(x));
           } finally {

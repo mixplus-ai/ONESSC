@@ -3,7 +3,8 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useSiteSettings } from "../lib/content";
 import { cx } from "./ui";
-import { ChatIcon, MailIcon, MenuIcon, PhoneIcon, PinIcon, SunIcon, XIcon } from "./icons";
+import { CartIcon, ChatIcon, MailIcon, MenuIcon, PhoneIcon, PinIcon, SunIcon, XIcon } from "./icons";
+import { useCart } from "../lib/cart";
 
 export const NAV = [
   { to: "/", label: "หน้าแรก", end: true },
@@ -34,6 +35,7 @@ export function Logo({ light = false }: { light?: boolean }) {
 function Header() {
   const [open, setOpen] = useState(false);
   const { session, profile } = useAuth();
+  const { count } = useCart();
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
 
@@ -69,6 +71,15 @@ function Header() {
           ))}
         </nav>
         <div className="flex items-center gap-2">
+          <Link
+            to={session ? "/app/cart" : "/login"}
+            state={session ? undefined : { from: "/app/cart" }}
+            className="relative rounded-lg p-2 text-slate-700 hover:bg-slate-100"
+            aria-label={`รายการสินค้า ${count} รายการ`}
+          >
+            <CartIcon />
+            {count > 0 && <span className="absolute -top-0.5 -right-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-sun-500 px-1 text-xs font-bold text-navy-950">{count}</span>}
+          </Link>
           <div className="hidden sm:block">{account}</div>
           <button
             className="rounded-lg p-2 text-slate-700 hover:bg-slate-100 lg:hidden"

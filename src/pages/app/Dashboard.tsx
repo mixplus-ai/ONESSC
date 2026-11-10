@@ -74,7 +74,14 @@ function UserDashboard() {
         </Card>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        <ComingCard icon={BoxIcon} title="การจองและใบเสนอราคา" text="ติดตามใบเสนอราคาและสถานะการจองสินค้าของคุณ" phase="เฟส 2" />
+        <Link to="/app/requests">
+          <Card className="h-full transition hover:ring-navy-200">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-sun-500/15 text-sun-600"><BoxIcon /></span>
+            <h3 className="mt-4 font-semibold text-navy-900">ใบเสนอราคาและการจอง</h3>
+            <p className="mt-1 text-sm text-slate-500">ติดตามคำขอใบเสนอราคาและสถานะการจองสินค้าของคุณ</p>
+            <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700">ดูรายการ <ArrowRightIcon className="h-4 w-4" /></span>
+          </Card>
+        </Link>
         <ComingCard icon={AcademicIcon} title="แต้มและการอบรม" text="แต้มส่วนตัว แต้มบริษัท ประวัติอบรม และใบประกาศ" phase="เฟส 3" href={LEGACY.training} />
         <ComingCard icon={WrenchIcon} title="สถานะเคลมของฉัน" text="แจ้งเคลมและติดตาม 3 ขั้นตอนได้จากที่นี่" phase="เฟส 4" />
       </div>
@@ -84,7 +91,7 @@ function UserDashboard() {
 
 function StaffDashboard() {
   const { isAdmin, can } = useAuth();
-  const [stats, setStats] = useState({ pending: 0, messages: 0, users: 0, staff: 0, companies: 0 });
+  const [stats, setStats] = useState({ pending: 0, messages: 0, users: 0, staff: 0, companies: 0, quotes: 0, reservations: 0 });
   useEffect(() => {
     const count = (q: PromiseLike<{ count: number | null }>) => Promise.resolve(q).then((r) => r.count ?? 0);
     Promise.all([
@@ -93,20 +100,23 @@ function StaffDashboard() {
       count(supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "user")),
       count(supabase.from("profiles").select("id", { count: "exact", head: true }).in("role", ["staff", "admin"])),
       count(supabase.from("companies").select("id", { count: "exact", head: true })),
-    ]).then(([pending, messages, users, staff, companies]) => setStats({ pending, messages, users, staff, companies }));
+      count(supabase.from("quote_requests").select("id", { count: "exact", head: true }).in("status", ["new", "in_progress"])),
+      count(supabase.from("reservations").select("id", { count: "exact", head: true }).in("status", ["pending", "confirmed"]).gt("expires_at", new Date().toISOString())),
+    ]).then(([pending, messages, users, staff, companies, quotes, reservations]) => setStats({ pending, messages, users, staff, companies, quotes, reservations }));
   }, [can]);
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="คำขอใบเสนอราคาที่เปิดอยู่" value={stats.quotes} to="/app/admin/requests" icon={InboxIcon} />
+        <Stat label="การจองที่รอดำเนินการ" value={stats.reservations} to="/app/admin/requests" icon={BoxIcon} />
         <Stat label="รออนุมัติผูกบริษัท" value={stats.pending} to="/app/admin/companies" icon={BuildingIcon} />
         {can("contact_messages") && <Stat label="ข้อความใหม่" value={stats.messages} to="/app/admin/messages" icon={InboxIcon} />}
         <Stat label="ลูกค้า (User)" value={stats.users} to={isAdmin ? "/app/admin/users" : undefined} icon={UsersIcon} />
         <Stat label="บริษัทลูกค้า" value={stats.companies} to="/app/admin/companies" icon={BuildingIcon} />
         {isAdmin && <Stat label="Staff / Admin" value={stats.staff} to="/app/admin/users" icon={UsersIcon} />}
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <ComingCard icon={BoxIcon} title="สต๊อกและการจอง" text="สต๊อกคงเหลือจาก Google Sheet และสถานะการจองทั้งหมด" phase="เฟส 2" />
+      <div className="grid gap-4 md:grid-cols-2">
         <ComingCard icon={AcademicIcon} title="เพิ่มแต้มบริษัท" text="บันทึกยอดซื้อและคำนวณแต้มตามกติกาที่ Admin ตั้ง" phase="เฟส 3" />
         <ComingCard icon={WrenchIcon} title="งานเคลมค้าง / ใหม่" text="ผัง 5 ขั้นภายในและคิวเคลมจากลูกค้า" phase="เฟส 4" />
       </div>
