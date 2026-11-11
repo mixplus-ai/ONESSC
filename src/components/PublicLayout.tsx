@@ -7,6 +7,7 @@ import { AnnouncementBar } from "./banners";
 import { CartIcon, ChatIcon, MailIcon, MenuIcon, PhoneIcon, PinIcon, SunIcon, XIcon } from "./icons";
 import { useCart } from "../lib/cart";
 import { MobileTabBar, hidesTabBar } from "./MobileTabBar";
+import { SocialLinks } from "./Social";
 
 export const NAV = [
   { to: "/", label: "หน้าแรก", end: true },
@@ -130,6 +131,7 @@ function Footer() {
         <div>
           <Logo light />
           <p className="mt-4 max-w-xs text-sm text-navy-200">{company.tagline}</p>
+          <SocialLinks company={company} className="mt-5" />
         </div>
         <div className="space-y-3 text-sm">
           <p className="font-semibold text-white">ติดต่อบริษัท</p>
@@ -157,9 +159,6 @@ function Footer() {
             ))}
             <Link to="/team" className="text-navy-200 hover:text-white">ทีมงาน</Link>
             <Link to="/privacy" className="text-navy-200 hover:text-white">นโยบายความเป็นส่วนตัว</Link>
-            {company.facebook_url && (
-              <a href={company.facebook_url} target="_blank" rel="noreferrer" className="text-navy-200 hover:text-white">Facebook</a>
-            )}
           </div>
         </div>
       </div>

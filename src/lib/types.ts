@@ -104,6 +104,11 @@ export interface CompanySettings {
   email: string;
   line_oa_url: string;
   facebook_url: string;
+  youtube_url?: string;
+  tiktok_url?: string;
+  instagram_url?: string;
+  x_url?: string;
+  website_url?: string;
   map_embed_url: string;
   office_hours: string;
   logo_url: string;
