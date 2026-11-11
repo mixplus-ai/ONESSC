@@ -1,3 +1,4 @@
+import type { HomeSection } from "./homeSections";
 export type AppRole = "admin" | "staff" | "user";
 export type CompanyLinkStatus = "none" | "pending" | "approved" | "rejected";
 
@@ -146,6 +147,8 @@ export interface HomeSettings {
   portfolio_subtitle: string;
   team_title: string;
   team_subtitle: string;
+  /** home page builder blocks; empty/missing = the classic layout built from the fields above */
+  sections?: HomeSection[];
 }
 
 export type AdPlacement = "home_top" | "home_middle" | "products" | "promotions" | "training" | "claims" | "popup";

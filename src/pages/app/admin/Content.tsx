@@ -7,6 +7,8 @@ import { DEFAULT_SETTINGS, PAGE_LABEL, PLACEMENT_LABEL, loadSettings } from "../
 import { errorMessage, supabase } from "../../../lib/supabase";
 import type { AdBanner, AdPlacement, PageKey, SiteSettings } from "../../../lib/types";
 import { Tabs } from "../MyRequests";
+import { HomeBuilder } from "./HomeBuilder";
+import { defaultSections, homeSections } from "../../../lib/homeSections";
 
 type Tab = "company" | "home" | "pages" | "ads";
 
@@ -20,8 +22,6 @@ const PAGE_PATH: Record<PageKey, string> = {
   team: "/team",
   contact: "/contact",
 };
-
-const MODULE_LABEL = ["การ์ด 1 (ลิงก์ไปหน้าสินค้า)", "การ์ด 2 (ลิงก์ไปหน้าอบรม)", "การ์ด 3 (ลิงก์ไปหน้าแจ้งเคลม)", "การ์ด 4 (ลิงก์ไปหน้าสมัครสมาชิก)"];
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -61,8 +61,6 @@ export default function Content() {
     update((prev) => ({ ...prev, [k]: { ...prev[k], [field]: v } }));
   const setPageField = (key: PageKey, field: keyof SiteSettings["pages"][PageKey], v: string) =>
     update((prev) => ({ ...prev, pages: { ...prev.pages, [key]: { ...prev.pages[key], [field]: v } } }));
-  const setModule = (i: number, field: "title" | "text", v: string) =>
-    update((prev) => ({ ...prev, home: { ...prev.home, modules: prev.home.modules.map((m, n) => (n === i ? { ...m, [field]: v } : m)) } }));
   const setAnnouncement = (field: keyof SiteSettings["ads"]["announcement"], v: unknown) =>
     update((prev) => ({ ...prev, ads: { ...prev.ads, announcement: { ...prev.ads.announcement, [field]: v } } }));
   const setBanners = (fn: (list: AdBanner[]) => AdBanner[]) => update((prev) => ({ ...prev, ads: { ...prev.ads, banners: fn(prev.ads.banners) } }));
@@ -153,46 +151,11 @@ export default function Content() {
       )}
 
       {tab === "home" && (
-        <div className="space-y-6">
-          <Card>
-            <h3 className="mb-4 font-semibold text-navy-900">แบนเนอร์หลัก (Hero)</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2"><Field label="ป้ายเล็กเหนือหัวข้อ"><Input value={s.home.badge} onChange={(e) => set("home", "badge", e.target.value)} /></Field></div>
-              <div className="sm:col-span-2"><Field label="ข้อความหลัก"><Input value={s.hero.title} onChange={(e) => set("hero", "title", e.target.value)} /></Field></div>
-              <div className="sm:col-span-2"><Field label="ข้อความรอง"><Textarea rows={2} value={s.hero.subtitle} onChange={(e) => set("hero", "subtitle", e.target.value)} /></Field></div>
-              <div className="sm:col-span-2"><Field label="ภาพพื้นหลัง" hint="แนะนำ 1920×800 px ขึ้นไป ไม่เกิน 5 MB"><ImageUpload folder="hero" value={s.hero.image_url} onChange={(v) => set("hero", "image_url", v)} /></Field></div>
-              <Field label="ปุ่มหลัก: ข้อความ"><Input value={s.hero.cta_primary_label} onChange={(e) => set("hero", "cta_primary_label", e.target.value)} /></Field>
-              <Field label="ปุ่มหลัก: ลิงก์"><Input value={s.hero.cta_primary_href} onChange={(e) => set("hero", "cta_primary_href", e.target.value)} /></Field>
-              <Field label="ปุ่มรอง: ข้อความ"><Input value={s.hero.cta_secondary_label} onChange={(e) => set("hero", "cta_secondary_label", e.target.value)} /></Field>
-              <Field label="ปุ่มรอง: ลิงก์"><Input value={s.hero.cta_secondary_href} onChange={(e) => set("hero", "cta_secondary_href", e.target.value)} /></Field>
-            </div>
-          </Card>
-          <Card>
-            <h3 className="mb-4 font-semibold text-navy-900">การ์ด 4 ช่องใต้แบนเนอร์</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {s.home.modules.map((m, i) => (
-                <div key={i} className="space-y-2 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
-                  <p className="text-xs font-medium text-slate-500">{MODULE_LABEL[i]}</p>
-                  <Input value={m.title} onChange={(e) => setModule(i, "title", e.target.value)} placeholder="หัวข้อ" />
-                  <Textarea rows={2} value={m.text} onChange={(e) => setModule(i, "text", e.target.value)} placeholder="คำอธิบาย" />
-                </div>
-              ))}
-            </div>
-          </Card>
-          <Card>
-            <h3 className="mb-4 font-semibold text-navy-900">หัวข้อแต่ละส่วนในหน้าแรก</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2"><Field label="หัวข้อส่วนเกี่ยวกับเรา"><Input value={s.home.about_title} onChange={(e) => set("home", "about_title", e.target.value)} /></Field></div>
-              <Field label="กล่องสินค้า: หัวข้อ"><Input value={s.home.products_title} onChange={(e) => set("home", "products_title", e.target.value)} /></Field>
-              <Field label="กล่องสินค้า: ข้อความปุ่ม"><Input value={s.home.products_button} onChange={(e) => set("home", "products_button", e.target.value)} /></Field>
-              <div className="sm:col-span-2"><Field label="กล่องสินค้า: คำอธิบาย"><Textarea rows={2} value={s.home.products_text} onChange={(e) => set("home", "products_text", e.target.value)} /></Field></div>
-              <Field label="ผลงาน: หัวข้อ"><Input value={s.home.portfolio_title} onChange={(e) => set("home", "portfolio_title", e.target.value)} /></Field>
-              <Field label="ผลงาน: คำอธิบาย"><Input value={s.home.portfolio_subtitle} onChange={(e) => set("home", "portfolio_subtitle", e.target.value)} /></Field>
-              <Field label="ทีมงาน: หัวข้อ"><Input value={s.home.team_title} onChange={(e) => set("home", "team_title", e.target.value)} /></Field>
-              <Field label="ทีมงาน: คำอธิบาย"><Input value={s.home.team_subtitle} onChange={(e) => set("home", "team_subtitle", e.target.value)} /></Field>
-            </div>
-          </Card>
-        </div>
+        <HomeBuilder
+          value={homeSections(s)}
+          onChange={(v) => update((prev) => ({ ...prev, home: { ...prev.home, sections: v } }))}
+          onReset={() => update((prev) => ({ ...prev, home: { ...prev.home, sections: defaultSections(prev) } }))}
+        />
       )}
 
       {tab === "pages" && (
