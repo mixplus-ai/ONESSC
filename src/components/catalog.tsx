@@ -38,6 +38,7 @@ export const discountPct = (info?: PriceInfo | null) =>
 
 export function ProductCard({ p, price, stockSummary }: { p: Product; price?: PriceInfo | null; stockSummary?: StockInfo }) {
   const img = productImage(p);
+  const alt = (p.images ?? []).find((u) => u && u !== img);
   const vs = p.product_variants ?? [];
   const n = vs.length;
   const off = discountPct(price);
@@ -49,7 +50,12 @@ export function ProductCard({ p, price, stockSummary }: { p: Product; price?: Pr
         {p.is_featured && <span className="rounded-md bg-emerald-500 px-1.5 py-0.5 text-[11px] font-bold text-white">แนะนำ</span>}
       </div>
       <Link to={href} className="grid aspect-square place-items-center overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100 sm:aspect-[4/3]">
-        {img ? <img src={img} alt="" loading="lazy" className="h-full w-full object-contain p-3 transition group-hover:scale-105" /> : <BoxIcon className="h-10 w-10 text-slate-300" />}
+        {img ? (
+          <span className="relative h-full w-full">
+            <img src={img} alt="" loading="lazy" className={cx("absolute inset-0 h-full w-full object-contain p-3 transition duration-300 group-hover:scale-105", alt && "lg:group-hover:opacity-0")} />
+            {alt && <img src={alt} alt="" loading="lazy" className="absolute inset-0 hidden h-full w-full object-contain p-3 opacity-0 transition duration-300 group-hover:scale-105 lg:block lg:group-hover:opacity-100" />}
+          </span>
+        ) : <BoxIcon className="h-10 w-10 text-slate-300" />}
       </Link>
       <div className="flex flex-1 flex-col gap-0.5 p-3 sm:gap-1 sm:p-4">
         <p className="truncate text-[11px] font-semibold tracking-wide text-sun-600 sm:text-xs">{p.brands?.name ?? ""}{p.product_categories ? ` · ${p.product_categories.name}` : ""}</p>
