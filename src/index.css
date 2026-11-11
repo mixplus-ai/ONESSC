@@ -45,3 +45,7 @@ body { @apply bg-slate-50 text-slate-800 antialiased; }
   .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
   .kenburns, .hero-in, .marquee, .float-slow, .scroll-cue { animation: none !important; }
 }
+
+/* horizontal chip rows on phones */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

@@ -9,6 +9,7 @@ import type { AdBanner, AdPlacement, CompanyLocation, PageKey, SiteSettings } fr
 import { Tabs } from "../MyRequests";
 import { HomeBuilder } from "./HomeBuilder";
 import { aboutSections, defaultAboutSections, defaultSections, homeSections } from "../../../lib/homeSections";
+import { SOCIALS } from "../../../components/Social";
 
 type Tab = "company" | "home" | "about" | "pages" | "ads";
 
@@ -182,10 +183,23 @@ export default function Content() {
               <div className="sm:col-span-2"><Field label="สโลแกน"><Input value={s.company.tagline} onChange={(e) => set("company", "tagline", e.target.value)} /></Field></div>
               <Field label="เบอร์โทรกลาง"><Input value={s.company.phone} onChange={(e) => set("company", "phone", e.target.value)} /></Field>
               <Field label="อีเมล"><Input type="email" value={s.company.email} onChange={(e) => set("company", "email", e.target.value)} /></Field>
-              <Field label="ลิงก์ LINE OA" hint="ใช้กับปุ่ม “คุยกับเซลล์”"><Input value={s.company.line_oa_url} onChange={(e) => set("company", "line_oa_url", e.target.value)} /></Field>
-              <Field label="ลิงก์ Facebook"><Input value={s.company.facebook_url} onChange={(e) => set("company", "facebook_url", e.target.value)} /></Field>
               <Field label="เวลาทำการ (ทั่วไป)"><Input value={s.company.office_hours} onChange={(e) => set("company", "office_hours", e.target.value)} /></Field>
             </div>
+          </Card>
+          <Card>
+            <h3 className="font-semibold text-navy-900">โซเชียลมีเดีย</h3>
+            <p className="mb-4 text-sm text-slate-500">ใส่ลิงก์เต็ม (https://…) ช่องไหนเว้นว่าง ไอคอนนั้นจะไม่แสดง โลโก้จะแสดงที่ท้ายเว็บทุกหน้าและหน้าติดต่อเรา</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {SOCIALS.map((so) => (
+                <Field key={so.key} label={so.name}>
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white" style={{ background: so.color }}><svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">{so.icon}</svg></span>
+                    <Input placeholder="https://" value={s.company[so.key] ?? ""} onChange={(e) => set("company", so.key, e.target.value)} />
+                  </div>
+                </Field>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-slate-500">ลิงก์ LINE ใช้กับปุ่ม “คุยกับเซลล์” ด้วย</p>
           </Card>
           <Card>
             <h3 className="font-semibold text-navy-900">สถานที่ตั้งและแผนที่</h3>

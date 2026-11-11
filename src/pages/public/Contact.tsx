@@ -7,6 +7,7 @@ import { Alert, Button, Field, Input, Select, Textarea } from "../../components/
 import { useAuth } from "../../lib/auth";
 import { companyLocations, mapEmbedSrc, mapLink, usePublishedTeam, useSiteSettings } from "../../lib/content";
 import type { CompanyLocation } from "../../lib/types";
+import { SOCIALS, SocialLinks } from "../../components/Social";
 import { errorMessage, supabase, supabaseConfigured } from "../../lib/supabase";
 
 const TOPICS: Record<string, string> = {
@@ -157,6 +158,12 @@ export function ContactBlock({ heading = true }: { heading?: boolean }) {
               </div>
             </div>
           ))}
+          {SOCIALS.some((so) => (company[so.key] ?? "").trim()) && (
+            <div className="pt-2">
+              <p className="mb-2 text-xs text-slate-500">ติดตามเรา</p>
+              <SocialLinks company={company} tone="light" />
+            </div>
+          )}
         </div>
         <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <ContactForm />

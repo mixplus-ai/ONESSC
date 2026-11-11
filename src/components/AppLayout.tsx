@@ -7,6 +7,7 @@ import { useCart } from "../lib/cart";
 import { Logo } from "./PublicLayout";
 import { Alert, Loading, cx } from "./ui";
 import { Avatar } from "./Avatar";
+import { MobileTabBar } from "./MobileTabBar";
 
 interface Item {
   to: string;
@@ -45,6 +46,7 @@ export default function AppLayout() {
     setOpen(false);
   }, [loc.pathname]);
 
+  const isCustomer = profile?.role === "user";
   const groups: { title?: string; items: Item[] }[] = [
     {
       items: [
@@ -174,9 +176,10 @@ export default function AppLayout() {
             </aside>
           </div>
         )}
-        <main className="min-w-0 px-4 py-6 sm:px-8 sm:py-8">
+        <main className={cx("min-w-0 px-4 py-6 sm:px-8 sm:py-8", isCustomer && "pb-24 lg:pb-8")}>
           <div className="mx-auto max-w-6xl"><Outlet /></div>
         </main>
+        {isCustomer && <MobileTabBar />}
       </div>
     </RequireAuth>
   );

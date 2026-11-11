@@ -12,6 +12,7 @@ import {
 const FEED_HINT: Partial<Record<SectionType, string>> = {
   about: "ข้อความดึงจากแท็บ “ข้อมูลบริษัท → เกี่ยวกับเรา”",
   products: "แสดงลิงก์สินค้า/โปรโมชั่น และรอบอบรมที่กำลังจะมาถึง",
+  shop: "ช่องค้นหา + ไอคอนหมวดสินค้า + สินค้าที่ติดดาว “แนะนำ” ในเมนูสินค้า",
   training: "การ์ดดึงจากรอบอบรมที่เปิดรับสมัคร",
   portfolio: "ผลงานแก้ที่เมนู “ผลงาน”",
   team: "รายชื่อแก้ที่เมนู “ทีมงาน”",
@@ -428,7 +429,7 @@ function Editor({ s, set }: { s: HomeSection; set: (p: Partial<HomeSection>) => 
       return (
         <div className="space-y-3">
           {s.type !== "contact" && <Heads s={s} set={p} />}
-          {(s.type === "portfolio" || s.type === "team" || s.type === "training") && (
+          {(s.type === "portfolio" || s.type === "team" || s.type === "training" || s.type === "shop") && (
             <Field label="จำนวนที่แสดง"><Input type="number" min={1} max={24} value={s.limit} onChange={(e) => p({ limit: Number(e.target.value) })} /></Field>
           )}
           <p className="text-sm text-slate-500">{FEED_HINT[s.type]}</p>
