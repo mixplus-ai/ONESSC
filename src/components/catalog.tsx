@@ -44,7 +44,7 @@ export function ProductCard({ p, price, stockSummary }: { p: Product; price?: Pr
   const href = `/products/${p.slug}`;
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md">
-      <div className="absolute top-2 left-2 z-10 flex flex-col items-start gap-1">
+      <div className="absolute top-2 left-2 z-10 flex flex-wrap items-start gap-1 pr-2">
         {off > 0 && <span className="rounded-md bg-red-500 px-1.5 py-0.5 text-[11px] font-bold text-white">ลด {off}%</span>}
         {p.is_featured && <span className="rounded-md bg-emerald-500 px-1.5 py-0.5 text-[11px] font-bold text-white">แนะนำ</span>}
       </div>
