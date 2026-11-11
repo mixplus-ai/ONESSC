@@ -13,6 +13,7 @@ import {
   todayBkk,
   uploadPointFile,
   type Bonus,
+  type BrandPointRule,
   type LedgerRow,
   type Redemption,
   type Reward,
@@ -20,41 +21,98 @@ import {
 import type { Company } from "../../../lib/types";
 import { isValidThaiTaxId } from "../Profile";
 
-interface Calc { points: number; base: number; tier_multiplier: number; bonus_multiplier: number; bonus_label: string | null; expires_on: string | null; baht_per_point: number }
+interface Calc { points: number; base: number; tier_multiplier: number; bonus_multiplier: number; bonus_label: string | null; expires_on: string | null; baht_per_point: number; rule: "brand" | "default"; brand_name: string | null }
+interface BrandOpt { id: string; name: string }
+interface Line { key: number; brand: string; amount: string; bonus: string; override: string; calc: Calc | null; err: string }
 
-function PurchaseForm({ company, edit, onDone, onClose }: { company: Company; edit?: LedgerRow; onDone: () => void; onClose: () => void }) {
-  const bonuses = useRows<Bonus>(() => supabase.from("company_point_bonuses").select("*").eq("is_active", true).order("label"));
-  const [invoice, setInvoice] = useState(edit?.invoice_no ?? "");
-  const [date, setDate] = useState(edit?.doc_date ?? todayBkk());
-  const [amount, setAmount] = useState(edit?.amount?.toString() ?? "");
-  const [items, setItems] = useState(edit?.items ?? "");
-  const [bonus, setBonus] = useState((edit?.calc?.bonus_id as string) ?? "");
-  const [override, setOverride] = useState("");
-  const [note, setNote] = useState("");
-  const [reason, setReason] = useState("");
-  const [file, setFile] = useState(edit?.file_path ?? "");
-  const [calc, setCalc] = useState<Calc | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [err, setErr] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
-  const today = todayBkk();
-  const activeBonuses = bonuses.rows.filter((b) => (!b.starts_on || b.starts_on <= date) && (!b.ends_on || b.ends_on >= date));
+let lineKey = 0;
+const blankLine = (brand = ""): Line => ({ key: ++lineKey, brand, amount: "", bonus: "", override: "", calc: null, err: "" });
 
+/** Brands for the picker, plus the brand rule lookup. Shared by the form and the ledger table. */
+function useBrands() {
+  const brands = useRows<BrandOpt>(() => supabase.from("brands").select("id, name").order("sort").order("name"));
+  const rules = useRows<BrandPointRule>(() => supabase.from("brand_point_rules").select("*"));
+  const name = useMemo(() => new Map(brands.rows.map((b) => [b.id, b.name])), [brands.rows]);
+  const rule = useMemo(() => new Map(rules.rows.filter((r) => r.is_active).map((r) => [r.brand_id, r])), [rules.rows]);
+  return { brands: brands.rows, name, rule };
+}
+
+function LineRow({ line, i, date, brands, bonuses, rule, set, remove, canRemove }: {
+  line: Line; i: number; date: string; brands: BrandOpt[]; bonuses: Bonus[]; rule: Map<string, BrandPointRule>;
+  set: (p: Partial<Line>) => void; remove: () => void; canRemove: boolean;
+}) {
+  const r = line.brand ? rule.get(line.brand) : undefined;
+  const usable = bonuses.filter((b) => !b.brand_id || b.brand_id === line.brand);
   useEffect(() => {
-    const n = Number(amount);
-    if (!n || n <= 0) return setCalc(null);
+    const n = Number(line.amount);
+    if (!line.brand || !n || n <= 0) return set({ calc: null, err: "" });
     const t = setTimeout(() => {
-      supabase.rpc("calc_company_points", { p_amount: n, p_bonus_id: bonus || null, p_doc_date: date }).then(({ data, error }) => {
-        if (error) setErr(errorMessage(error));
-        else {
-          setErr("");
-          setCalc(data as Calc);
-        }
+      supabase.rpc("calc_company_points", { p_amount: n, p_bonus_id: line.bonus || null, p_doc_date: date, p_brand_id: line.brand }).then(({ data, error }) => {
+        set(error ? { calc: null, err: errorMessage(error) } : { calc: data as Calc, err: "" });
       });
     }, 300);
     return () => clearTimeout(t);
-  }, [amount, bonus, date]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line.brand, line.amount, line.bonus, date]);
+  const c = line.calc;
+  return (
+    <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+      <div className="grid gap-3 sm:grid-cols-[1.2fr_1fr_1fr_8rem_auto] sm:items-end">
+        <Field label={`แบรนด์ ${i + 1}`} required>
+          <Select value={line.brand} onChange={(e) => set({ brand: e.target.value, bonus: "" })}>
+            <option value="">เลือกแบรนด์</option>
+            {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="ยอดขาย (บาท)" required><Input type="number" min={0} step="0.01" value={line.amount} onChange={(e) => set({ amount: e.target.value })} /></Field>
+        <Field label="โบนัสพิเศษ">
+          <Select value={line.bonus} onChange={(e) => set({ bonus: e.target.value })} disabled={!line.brand}>
+            <option value="">ไม่มี</option>
+            {usable.map((b) => <option key={b.id} value={b.id}>{b.label} (×{b.multiplier})</option>)}
+          </Select>
+        </Field>
+        <Field label="แก้แต้มเอง"><Input type="number" min={0} placeholder="ตามกติกา" value={line.override} onChange={(e) => set({ override: e.target.value })} /></Field>
+        <div className="pb-1 text-right">
+          <p className="text-xs text-slate-500">แต้ม</p>
+          <p className="text-xl font-bold text-emerald-700">{c ? formatPoints(line.override === "" ? c.points : Number(line.override)) : "–"}</p>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-2 text-xs text-slate-600">
+        <span>
+          {line.brand && (r ? `กติกา ${c?.brand_name ?? "แบรนด์"}: ${Number(r.baht_per_point).toLocaleString("th-TH")} บาท = 1 แต้ม` : "แบรนด์นี้ยังไม่ตั้งกติกา ใช้กติกากลาง")}
+          {c && <> · {Number(line.amount).toLocaleString("th-TH")} ÷ {Number(c.baht_per_point).toLocaleString("th-TH")} = {c.base}
+            {Number(c.tier_multiplier) !== 1 && ` × ขั้นบันได ${c.tier_multiplier}`}
+            {Number(c.bonus_multiplier) !== 1 && ` × ${c.bonus_label} ${c.bonus_multiplier}`} (ปัดเศษลง)</>}
+          {r?.terms && <span className="block text-slate-500">เงื่อนไข: {r.terms}</span>}
+        </span>
+        {canRemove && <button type="button" className="text-red-600 hover:underline" onClick={remove}>ลบแบรนด์นี้</button>}
+      </div>
+      {line.err && <p className="mt-1 text-xs text-red-600">{line.err}</p>}
+    </div>
+  );
+}
+
+function PurchaseForm({ company, edit, onDone, onClose }: { company: Company; edit?: LedgerRow; onDone: () => void; onClose: () => void }) {
+  const bonuses = useRows<Bonus>(() => supabase.from("company_point_bonuses").select("*").eq("is_active", true).order("label"));
+  const { brands, rule } = useBrands();
+  const [invoice, setInvoice] = useState(edit?.invoice_no ?? "");
+  const [date, setDate] = useState(edit?.doc_date ?? todayBkk());
+  const [lines, setLines] = useState<Line[]>(() => [{ ...blankLine(edit?.brand_id ?? ""), amount: edit?.amount?.toString() ?? "", bonus: (edit?.calc?.bonus_id as string) ?? "" }]);
+  const [items, setItems] = useState(edit?.items ?? "");
+  const [note, setNote] = useState("");
+  const [reason, setReason] = useState("");
+  const [file, setFile] = useState(edit?.file_path ?? "");
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState("");
+  const [saved, setSaved] = useState<string[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const today = todayBkk();
+  const activeBonuses = bonuses.rows.filter((b) => (!b.starts_on || b.starts_on <= date) && (!b.ends_on || b.ends_on >= date));
+  const brandName = (id: string) => brands.find((b) => b.id === id)?.name ?? "";
+  const setLine = (key: number, p: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...p } : l)));
+  const total = lines.reduce((sum, l) => sum + (l.calc ? (l.override === "" ? l.calc.points : Number(l.override)) : 0), 0);
+  const totalAmount = lines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
 
   async function upload(f: File) {
     if (f.size > 20 * 1024 * 1024) return setErr("ไฟล์ใหญ่เกิน 20 MB");
@@ -69,62 +127,75 @@ function PurchaseForm({ company, edit, onDone, onClose }: { company: Company; ed
   }
 
   async function save() {
-    if (!invoice.trim()) return setErr("กรุณากรอกเลขที่ใบกำกับ/PI");
-    if (!Number(amount)) return setErr("กรุณากรอกยอดซื้อ");
-    if (override && !note.trim()) return setErr("กรุณาระบุเหตุผลเมื่อแก้จำนวนแต้มเอง");
+    if (!invoice.trim()) return setErr("กรุณากรอกเลขที่ใบกำกับภาษี");
+    if (lines.some((l) => !l.brand)) return setErr("กรุณาเลือกแบรนด์ทุกบรรทัด");
+    if (new Set(lines.map((l) => l.brand)).size !== lines.length) return setErr("เลือกแบรนด์ซ้ำในใบเดียวกัน รวมยอดเป็นบรรทัดเดียว");
+    if (lines.some((l) => !Number(l.amount))) return setErr("กรุณากรอกยอดขายทุกบรรทัด");
+    if (lines.some((l) => l.override !== "") && !note.trim()) return setErr("กรุณาระบุเหตุผลในหมายเหตุเมื่อแก้จำนวนแต้มเอง");
     if (edit && !reason.trim()) return setErr("กรุณาระบุเหตุผลที่แก้ไข");
     setBusy(true);
     setErr("");
-    const common = {
-      p_invoice_no: invoice, p_doc_date: date, p_amount: Number(amount), p_items: items || null, p_file_path: file || null,
-      p_bonus_id: bonus || null, p_note: note || null, p_points_override: override === "" ? null : Number(override),
-    };
-    const { error } = edit
-      ? await supabase.rpc("edit_company_purchase", { p_id: edit.id, p_reason: reason, ...common })
-      : await supabase.rpc("add_company_purchase", { p_company_id: company.id, ...common });
+    const done: string[] = [];
+    for (const l of lines) {
+      const common = {
+        p_invoice_no: invoice, p_doc_date: date, p_amount: Number(l.amount), p_items: items || null, p_file_path: file || null,
+        p_bonus_id: l.bonus || null, p_note: note || null, p_points_override: l.override === "" ? null : Number(l.override), p_brand_id: l.brand,
+      };
+      const { error } = edit
+        ? await supabase.rpc("edit_company_purchase", { p_id: edit.id, p_reason: reason, ...common })
+        : await supabase.rpc("add_company_purchase", { p_company_id: company.id, ...common });
+      if (error) {
+        setBusy(false);
+        setSaved(done);
+        // keep only the lines that did not save, so pressing save again does not duplicate
+        setLines((ls) => ls.filter((x) => !done.includes(x.brand)));
+        return setErr(`${brandName(l.brand)}: ${errorMessage(error)}${done.length ? ` (บันทึกแล้ว: ${done.map(brandName).join(", ")})` : ""}`);
+      }
+      done.push(l.brand);
+    }
     setBusy(false);
-    if (error) return setErr(errorMessage(error));
     onDone();
   }
 
   return (
     <Card className="mb-4 ring-navy-200">
-      <h3 className="mb-4 font-semibold text-navy-900">{edit ? `แก้ไขยอดซื้อ ${edit.invoice_no}` : "เพิ่มแต้มบริษัทจากยอดซื้อ"}</h3>
+      <h3 className="mb-1 font-semibold text-navy-900">{edit ? `แก้ไขยอดขาย ${edit.invoice_no}` : "เพิ่มแต้มบริษัทจากใบกำกับภาษี"}</h3>
+      {!edit && <p className="mb-4 text-sm text-slate-500">เลือกแบรนด์และใส่ยอดขาย แต้มคำนวณตามกติกาของแต่ละแบรนด์ ใบเดียวมีหลายแบรนด์ได้</p>}
       <div className="grid gap-4 sm:grid-cols-4">
-        <Field label="เลขที่ใบกำกับ / PI" required><Input value={invoice} onChange={(e) => setInvoice(e.target.value)} /></Field>
-        <Field label="วันที่เอกสาร" required><Input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-        <Field label="ยอดซื้อ (บาท)" required><Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
-        <Field label="โบนัสพิเศษ">
-          <Select value={bonus} onChange={(e) => setBonus(e.target.value)}>
-            <option value="">ไม่มี</option>
-            {activeBonuses.map((b) => <option key={b.id} value={b.id}>{b.label} (×{b.multiplier})</option>)}
-          </Select>
-        </Field>
-        <div className="sm:col-span-4"><Field label="รายการสินค้า (ไม่บังคับ)"><Textarea rows={2} value={items} onChange={(e) => setItems(e.target.value)} /></Field></div>
-        <Field label="แนบไฟล์">
+        <div className="sm:col-span-2"><Field label="เลขที่ใบกำกับภาษี" required><Input value={invoice} onChange={(e) => setInvoice(e.target.value)} /></Field></div>
+        <Field label="วันที่ใบกำกับ" required><Input type="date" max={today} value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        <Field label="แนบไฟล์ใบกำกับ">
           <div className="flex items-center gap-2">
             <Button type="button" variant="secondary" onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading && <Spinner className="h-4 w-4" />}{file ? "เปลี่ยนไฟล์" : "เลือกไฟล์"}</Button>
             {file && <button type="button" className="text-sm text-navy-700 underline" onClick={() => openPrivateFile("point-files", file)}>ดู</button>}
           </div>
           <input ref={fileRef} type="file" hidden accept="application/pdf,image/*" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }} />
         </Field>
-        <Field label="แก้จำนวนแต้มเอง" hint="ว่าง = ตามกติกา"><Input type="number" min={0} value={override} onChange={(e) => setOverride(e.target.value)} /></Field>
-        <div className="sm:col-span-2"><Field label="หมายเหตุ / เหตุผล"><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field></div>
-        {edit && <div className="sm:col-span-4"><Field label="เหตุผลที่แก้ไข" required><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field></div>}
       </div>
-      {calc && (
-        <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">
-          <p className="text-2xl font-bold">{formatPoints(override === "" ? calc.points : Number(override))} แต้ม</p>
-          <p>
-            {Number(amount).toLocaleString("th-TH")} ÷ {Number(calc.baht_per_point).toLocaleString("th-TH")} = {calc.base}
-            {Number(calc.tier_multiplier) !== 1 && ` × ขั้นบันได ${calc.tier_multiplier}`}
-            {Number(calc.bonus_multiplier) !== 1 && ` × ${calc.bonus_label} ${calc.bonus_multiplier}`} (ปัดเศษลง)
-          </p>
-          <p className="text-xs">หมดอายุ {calc.expires_on ? formatThaiDate(calc.expires_on) : "ไม่มีวันหมดอายุ"}</p>
+      <div className="mt-4 space-y-2">
+        {lines.map((l, i) => (
+          <LineRow key={l.key} line={l} i={i} date={date} brands={brands} bonuses={activeBonuses} rule={rule}
+            set={(p) => setLine(l.key, p)} remove={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} canRemove={lines.length > 1} />
+        ))}
+        {!edit && <button type="button" className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => setLines((ls) => [...ls, blankLine()])}>+ เพิ่มแบรนด์ในใบนี้</button>}
+      </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <Field label="รายการสินค้า (ไม่บังคับ)"><Textarea rows={2} value={items} onChange={(e) => setItems(e.target.value)} /></Field>
+        <Field label="หมายเหตุ / เหตุผล"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        {edit && <div className="sm:col-span-2"><Field label="เหตุผลที่แก้ไข" required><Input value={reason} onChange={(e) => setReason(e.target.value)} /></Field></div>}
+      </div>
+      {total > 0 && (
+        <div className="mt-4 flex flex-wrap items-end justify-between gap-2 rounded-xl bg-emerald-50 p-4 text-emerald-900">
+          <div>
+            <p className="text-sm">รวม {lines.length} แบรนด์ · ยอดขาย ฿{totalAmount.toLocaleString("th-TH")}</p>
+            {lines[0]?.calc && <p className="text-xs">หมดอายุ {lines[0].calc.expires_on ? formatThaiDate(lines[0].calc.expires_on) : "ไม่มีวันหมดอายุ"}</p>}
+          </div>
+          <p className="text-2xl font-bold">{formatPoints(total)} แต้ม</p>
         </div>
       )}
+      {saved.length > 0 && <div className="mt-3"><Alert tone="amber">บันทึกแล้ว: {saved.map(brandName).join(", ")} · บรรทัดที่เหลือยังไม่บันทึก</Alert></div>}
       {err && <div className="mt-3"><Alert>{err}</Alert></div>}
-      <div className="mt-4 flex gap-2"><Button onClick={save} loading={busy}>บันทึกแต้ม</Button><Button variant="ghost" onClick={onClose}>ปิด</Button></div>
+      <div className="mt-4 flex gap-2"><Button onClick={save} loading={busy}>บันทึกแต้ม</Button><Button variant="ghost" onClick={saved.length ? onDone : onClose}>ปิด</Button></div>
     </Card>
   );
 }
@@ -179,6 +250,7 @@ function RedeemForm({ company, balance, onDone, onClose }: { company: Company; b
 }
 
 function CompanyDetail({ company }: { company: Company }) {
+  const { name: brandName } = useBrands();
   const ledger = useRows<LedgerRow>(() => supabase.from("point_ledger").select("*").eq("wallet", "company").eq("company_id", company.id).order("created_at", { ascending: false }), [company.id]);
   const redemptions = useRows<Redemption>(() => supabase.from("redemptions").select("*").eq("wallet", "company").eq("company_id", company.id).order("created_at", { ascending: false }), [company.id]);
   const members = useRows<{ id: string; full_name: string | null; email: string }>(() => supabase.from("profiles").select("id, full_name, email").eq("company_id", company.id).eq("company_status", "approved"), [company.id]);
@@ -205,6 +277,7 @@ function CompanyDetail({ company }: { company: Company }) {
     return {
       earned: live.filter((l) => l.points > 0).reduce((s, l) => s + Number(l.points), 0),
       purchases: live.filter((l) => l.kind === "purchase").reduce((s, l) => s + Number(l.amount ?? 0), 0),
+      byBrand: [...live.filter((l) => l.kind === "purchase" && l.brand_id).reduce((m, l) => m.set(l.brand_id!, (m.get(l.brand_id!) ?? 0) + Number(l.points)), new Map<string, number>())],
     };
   }, [ledger.rows]);
 
@@ -231,6 +304,7 @@ function CompanyDetail({ company }: { company: Company }) {
             <p className="text-lg font-semibold text-navy-900">{company.name}</p>
             <p className="text-sm text-slate-500">เลขผู้เสียภาษี {company.tax_id} · สมาชิก {members.rows.length} คน{members.rows.length ? `: ${members.rows.map((m) => m.full_name || m.email).join(", ")}` : ""}</p>
             <p className="mt-1 text-xs text-slate-500">แต้มที่เคยได้ทั้งหมด {formatPoints(totals.earned)} · ยอดซื้อที่บันทึก ฿{totals.purchases.toLocaleString("th-TH")}</p>
+            {totals.byBrand.length > 0 && <p className="mt-1 text-xs text-slate-500">แต้มจากยอดขายแยกแบรนด์: {totals.byBrand.map(([id, pts]) => `${brandName.get(id) ?? "?"} ${formatPoints(pts)}`).join(" · ")}</p>}
           </div>
           <div className="text-right">
             <p className="text-xs text-slate-500">แต้มคงเหลือ</p>
@@ -238,7 +312,7 @@ function CompanyDetail({ company }: { company: Company }) {
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button onClick={() => { setEdit(null); setMode("add"); }}>+ เพิ่มแต้มจากยอดซื้อ</Button>
+          <Button onClick={() => { setEdit(null); setMode("add"); }}>+ เพิ่มแต้มจากใบกำกับภาษี</Button>
           <Button variant="secondary" onClick={() => { setEdit(null); setMode("redeem"); }} disabled={balance <= 0}>ตัดแต้ม</Button>
         </div>
       </Card>
@@ -270,7 +344,7 @@ function CompanyDetail({ company }: { company: Company }) {
         <div className="overflow-x-auto rounded-2xl bg-white ring-1 ring-slate-200">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
-              <tr><th className="px-3 py-2 font-medium">วันที่</th><th className="px-3 py-2 font-medium">รายการ</th><th className="px-3 py-2 font-medium">เอกสาร</th><th className="px-3 py-2 text-right font-medium">ยอดซื้อ</th><th className="px-3 py-2 text-right font-medium">แต้ม</th><th className="px-3 py-2 font-medium">หมดอายุ</th><th className="px-3 py-2" /></tr>
+              <tr><th className="px-3 py-2 font-medium">วันที่</th><th className="px-3 py-2 font-medium">รายการ</th><th className="px-3 py-2 font-medium">แบรนด์</th><th className="px-3 py-2 font-medium">เอกสาร</th><th className="px-3 py-2 text-right font-medium">ยอดซื้อ</th><th className="px-3 py-2 text-right font-medium">แต้ม</th><th className="px-3 py-2 font-medium">หมดอายุ</th><th className="px-3 py-2" /></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {ledger.rows.map((l) => (
@@ -283,6 +357,7 @@ function CompanyDetail({ company }: { company: Company }) {
                     {l.replaces_id && <span className="block text-xs text-slate-500">แก้ไขจากรายการ #{l.replaces_id}</span>}
                     {l.voided_at && <span className="block text-xs">ยกเลิก {formatThaiDate(l.voided_at)}: {l.void_reason}</span>}
                   </td>
+                  <td className="whitespace-nowrap px-3 py-2">{l.brand_id ? brandName.get(l.brand_id) ?? "-" : "-"}</td>
                   <td className="px-3 py-2">
                     {l.invoice_no ?? l.ref_doc ?? "-"}
                     {l.file_path && <button className="ml-2 text-xs text-navy-700 underline" onClick={() => openPrivateFile("point-files", l.file_path!)}>ไฟล์</button>}
@@ -336,7 +411,7 @@ export default function CompanyPoints() {
 
   return (
     <Gate allow={can("company_points")}>
-      <PageTitle title="แต้มบริษัท" subtitle="บันทึกยอดซื้อเป็นแต้มตามกติกา ตัดแต้มเป็นส่วนลด · ทุกการแก้ไข/ยกเลิกเก็บผู้ทำและเหตุผล" />
+      <PageTitle title="แต้มบริษัท" subtitle="เลือกแบรนด์ กรอกเลขใบกำกับภาษีและยอดขาย แต้มคิดตามกติกาแต่ละแบรนด์ ตัดแต้มเป็นส่วนลด · ทุกการแก้ไข/ยกเลิกเก็บผู้ทำและเหตุผล" />
       <div className="grid gap-6 lg:grid-cols-[18rem_1fr]">
         <div>
           <Input placeholder="ค้นหาชื่อบริษัทหรือเลขผู้เสียภาษี" value={q} onChange={(e) => setQ(e.target.value)} />

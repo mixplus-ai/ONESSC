@@ -212,6 +212,7 @@ export interface LedgerRow {
   wallet: "personal" | "company";
   user_id: string | null;
   company_id: string | null;
+  brand_id: string | null;
   points: number;
   kind: "earn" | "purchase" | "adjust" | "redeem" | "lucky" | "refund";
   expires_on: string | null;
@@ -238,6 +239,16 @@ export interface Bonus {
   multiplier: number;
   starts_on: string | null;
   ends_on: string | null;
+  is_active: boolean;
+  brand_id: string | null; // null = every brand
+}
+
+/** Company points rule for one brand (brand_point_rules). Brands without a rule use points_config. */
+export interface BrandPointRule {
+  brand_id: string;
+  baht_per_point: number;
+  tiers: { min: number; multiplier: number }[];
+  terms: string | null;
   is_active: boolean;
 }
 
