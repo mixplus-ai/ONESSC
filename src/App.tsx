@@ -27,6 +27,7 @@ import { Loading } from "./components/ui";
 const Dashboard = lazy(() => import("./pages/app/Dashboard"));
 const Profile = lazy(() => import("./pages/app/Profile"));
 const Companies = lazy(() => import("./pages/app/admin/Companies"));
+const Customers = lazy(() => import("./pages/app/admin/Customers"));
 const Content = lazy(() => import("./pages/app/admin/Content"));
 const Logs = lazy(() => import("./pages/app/admin/Logs"));
 const Messages = lazy(() => import("./pages/app/admin/Messages"));
@@ -107,6 +108,7 @@ export default function App() {
             <Route path="admin/requests" element={<RequestsAdmin />} />
             <Route path="admin/users" element={<Users />} />
             <Route path="admin/companies" element={<Companies />} />
+            <Route path="admin/customers" element={<Customers />} />
             <Route path="admin/messages" element={<Messages />} />
             <Route path="admin/content" element={<Content />} />
             <Route path="admin/portfolio" element={<PortfolioAdmin />} />

@@ -34,6 +34,8 @@ export interface Company {
   phone: string | null;
   note: string | null;
   created_at: string;
+  sales_member_id?: string | null;
+  support_member_id?: string | null;
 }
 
 export interface PermissionKey {

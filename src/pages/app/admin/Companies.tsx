@@ -4,6 +4,7 @@ import { Alert, Badge, Button, Card, Empty, Input, Loading, PageTitle, cx } from
 import { useAuth } from "../../../lib/auth";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
+import { CareTeamPicker } from "../../../components/CareTeam";
 import type { Company, Profile } from "../../../lib/types";
 
 function PendingList({ onChange }: { onChange: () => void }) {
@@ -99,6 +100,10 @@ function CompanyRow({ c, members, onSaved }: { c: Company; members: Profile[]; o
           <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="ที่อยู่" />
           {err && <div className="sm:col-span-3"><Alert>{err}</Alert></div>}
           <div className="sm:col-span-3"><Button onClick={save} loading={busy}>บันทึก</Button></div>
+          <div className="border-t border-slate-200 pt-3 sm:col-span-3">
+            <p className="mb-2 text-sm font-semibold text-navy-900">ทีมงานที่ดูแล</p>
+            <CareTeamPicker company={c} onSaved={onSaved} />
+          </div>
         </div>
       )}
     </Card>
