@@ -41,22 +41,28 @@ export default function AppLayout() {
   const { profile, isAdmin, can, signOut } = useAuth();
   const { count } = useCart();
   const [open, setOpen] = useState(false);
+  const [mineOpen, setMineOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => {
     setOpen(false);
   }, [loc.pathname]);
 
   const isCustomer = profile?.role === "user";
-  const groups: { title?: string; items: Item[] }[] = [
+  const mine: Item[] = [
+        { to: "/app/cart", label: count ? `ตะกร้า (${count})` : "ตะกร้า", icon: CartIcon, show: true },
+        { to: "/app/requests", label: "คำขอของฉัน", icon: FileIcon, show: true },
+        { to: "/app/training", label: "การอบรมของฉัน", icon: AcademicIcon, show: true },
+        { to: "/app/claims", label: "งานเคลมของฉัน", icon: WrenchIcon, show: true },
+        { to: "/app/points", label: "แต้มและของรางวัล", icon: GiftIcon, show: true },
+  ];
+  // Staff/Admin: their own customer pages fold into a collapsible "ของฉัน" group so work menus come first
+  const inMine = mine.some((m) => loc.pathname.startsWith(m.to));
+  const groups: { title?: string; items: Item[]; fold?: boolean }[] = [
     {
       items: [
         { to: "/app", label: "แดชบอร์ด", icon: HomeIcon, show: true, end: true },
         { to: "/app/profile", label: "ข้อมูลส่วนตัว", icon: UserIcon, show: true },
-        { to: "/app/cart", label: count ? `รายการสินค้า (${count})` : "รายการสินค้า", icon: CartIcon, show: true },
-        { to: "/app/requests", label: "ใบเสนอราคาและการจอง", icon: FileIcon, show: true },
-        { to: "/app/training", label: "การอบรมของฉัน", icon: AcademicIcon, show: true },
-        { to: "/app/claims", label: "งานเคลมของฉัน", icon: WrenchIcon, show: true },
-        { to: "/app/points", label: "แต้มและของรางวัล", icon: GiftIcon, show: true },
+        ...(isCustomer ? mine : []),
       ],
     },
     {
@@ -68,7 +74,7 @@ export default function AppLayout() {
       items: [
         { to: "/app/admin/training", label: "อบรมและกิจกรรม", icon: AcademicIcon, show: can("training.view") || can("courses") },
         { to: "/app/admin/company-points", label: "แต้มบริษัท", icon: StarIcon, show: can("company_points") },
-        { to: "/app/admin/points", label: "คูปองและของรางวัล", icon: GiftIcon, show: can("rewards") },
+        { to: "/app/admin/points", label: "แต้มส่วนตัวและของรางวัล", icon: GiftIcon, show: can("rewards") },
       ],
     },
     {
@@ -86,6 +92,7 @@ export default function AppLayout() {
       title: "จัดการ",
       items: [
         { to: "/app/admin/users", label: "ผู้ใช้และสิทธิ์", icon: UsersIcon, show: isAdmin },
+        { to: "/app/admin/customers", label: "ลูกค้า", icon: UserIcon, show: can("companies") },
         { to: "/app/admin/companies", label: "บริษัทลูกค้า", icon: BuildingIcon, show: can("companies") },
         { to: "/app/admin/messages", label: "ข้อความติดต่อ", icon: InboxIcon, show: can("contact_messages") },
       ],
@@ -102,6 +109,7 @@ export default function AppLayout() {
       { to: "/app/admin/reports", label: "รายงานและส่งออก", icon: ChartIcon, show: can("reports") },
       { to: "/app/admin/logs", label: "Log การใช้งาน", icon: LogIcon, show: isAdmin },
     ] },
+    ...(isCustomer ? [] : [{ title: "ของฉัน (ในฐานะลูกค้า)", items: mine, fold: true }]),
   ];
 
   const nav = (
@@ -111,8 +119,14 @@ export default function AppLayout() {
         if (!items.length) return null;
         return (
           <div key={i}>
-            {g.title && <p className="mb-2 px-3 text-xs font-semibold tracking-wide text-navy-200/70">{g.title}</p>}
-            <div className="grid gap-1">
+            {g.title && !g.fold && <p className="mb-2 px-3 text-xs font-semibold tracking-wide text-navy-200/70">{g.title}</p>}
+            {g.fold && (
+              <button type="button" onClick={() => setMineOpen((v) => !v)} aria-expanded={mineOpen || inMine} className="mb-2 flex w-full items-center justify-between px-3 text-xs font-semibold tracking-wide text-navy-200/70 hover:text-white">
+                {g.title}
+                <span className={cx("transition", (mineOpen || inMine) && "rotate-180")}>▾</span>
+              </button>
+            )}
+            {(!g.fold || mineOpen || inMine) && <div className="grid gap-1">
               {items.map(({ to, label, icon: Icon, end }) => (
                 <NavLink
                   key={to}
@@ -129,7 +143,7 @@ export default function AppLayout() {
                   {label}
                 </NavLink>
               ))}
-            </div>
+            </div>}
           </div>
         );
       })}
@@ -161,7 +175,8 @@ export default function AppLayout() {
         </aside>
         <div className="sticky top-0 z-30 flex h-14 items-center justify-between bg-navy-900 px-4 lg:hidden">
           <Logo light />
-          <button onClick={() => setOpen(true)} className="rounded-lg p-2 text-white" aria-label="เปิดเมนู"><MenuIcon /></button>
+          {/* customers use the bottom tab bar + the account hub on the dashboard instead of a second menu */}
+          {!isCustomer && <button onClick={() => setOpen(true)} className="rounded-lg p-2 text-white" aria-label="เปิดเมนู"><MenuIcon /></button>}
         </div>
         {open && (
           <div className="fixed inset-0 z-50 lg:hidden">

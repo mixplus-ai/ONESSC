@@ -4,6 +4,7 @@ import { Alert, Badge, Button, Card, Field, Input, PageTitle, Spinner, Textarea 
 import { useAuth } from "../../lib/auth";
 import { errorMessage, supabase } from "../../lib/supabase";
 import { BILLING_TYPE, type Billing } from "../../lib/training";
+import { MyCareTeam } from "../../components/CareTeam";
 import { COMPANY_STATUS_LABEL, DEPARTMENT_LABEL, ROLE_LABEL } from "../../lib/types";
 
 /** Thai tax ID checksum (13 digits, mod 11). */
@@ -70,6 +71,7 @@ export default function Profile() {
     <>
       <PageTitle title="ข้อมูลส่วนตัว" subtitle={`${profile.email} · ${ROLE_LABEL[profile.role]}${profile.department ? ` · ${DEPARTMENT_LABEL[profile.department]}` : ""}`} />
       <AvatarCard />
+      {profile.role === "user" && <MyCareTeam />}
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <Card>
           <form onSubmit={save} className="grid gap-4 sm:grid-cols-2">

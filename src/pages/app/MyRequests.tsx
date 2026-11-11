@@ -80,7 +80,7 @@ export default function MyRequests() {
 
   return (
     <>
-      <PageTitle title="ใบเสนอราคาและการจอง" subtitle="ติดตามสถานะคำขอที่ส่งถึงทีมขาย" />
+      <PageTitle title="คำขอของฉัน" subtitle="ติดตามใบเสนอราคาและการจองสินค้าที่ส่งถึงทีมขาย" />
       {created?.created && <div className="mb-4"><Alert tone="green">ส่งรายการ {created.created} เรียบร้อย ทีมงานจะติดต่อกลับโดยเร็ว</Alert></div>}
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       <Tabs
