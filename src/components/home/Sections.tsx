@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AdSlot } from "../banners";
 import { PortfolioCard, SectionHeading, TeamCard } from "../cards";
 import {
-  AcademicIcon, ArrowRightIcon, BoltIcon, BoxIcon, BuildingIcon, ChartIcon, GiftIcon, ShieldIcon, StarIcon, SunIcon, TruckIcon, UsersIcon, WrenchIcon, XIcon,
+  AcademicIcon, ArrowRightIcon, BoltIcon, BoxIcon, BuildingIcon, ChartIcon, GiftIcon, SearchIcon, ShieldIcon, StarIcon, SunIcon, TruckIcon, UsersIcon, WrenchIcon, XIcon,
 } from "../icons";
 import { ButtonLink, Empty, cx } from "../ui";
-import { usePublishedPortfolio, usePublishedTeam, useSiteSettings } from "../../lib/content";
+import { usePublishedPortfolio, usePublishedTeam, useRows, useSiteSettings } from "../../lib/content";
+import { productImage, usePricing, type Category, type PriceInfo, type Product } from "../../lib/catalog";
+import { supabase } from "../../lib/supabase";
+import { ProductCard } from "../catalog";
+import { PRODUCT_SELECT } from "../../pages/public/Products";
 import {
   embedUrl, type AdSection, type Anim, type Bg, type CardsSection, type CtaSection, type FeedSection, type GallerySection, type HeroSection,
   type HomeSection, type IconKey, type ImageTextSection, type LogosSection, type ModulesSection, type StatsSection, type TextSection, type VideoSection,
@@ -131,7 +135,7 @@ function Hero({ s }: { s: HeroSection }) {
     const t = setInterval(() => setI((n) => (n + 1) % slides.length), 7000);
     return () => clearInterval(t);
   }, [slides.length]);
-  const h = s.height === "full" ? "min-h-[calc(100svh-4rem)]" : s.height === "large" ? "min-h-[78vh] md:min-h-[640px]" : "min-h-[440px]";
+  const h = s.height === "full" ? "min-h-[calc(100svh-4rem)]" : s.height === "large" ? "min-h-[62vh] md:min-h-[640px]" : "min-h-[440px]";
   const center = s.align === "center";
   return (
     <section id={`s-${s.id}`} className={cx("relative isolate flex items-center overflow-hidden bg-navy-950 text-white", h)}>
@@ -445,6 +449,68 @@ function About({ s }: { s: FeedSection }) {
   );
 }
 
+/** App-style shop strip: search, category icons, featured products in a swipeable row. */
+function Shop({ s }: { s: FeedSection }) {
+  const nav = useNavigate();
+  const [q, setQ] = useState("");
+  const cats = useRows<Category>(() => supabase.from("product_categories").select("*").is("parent_id", null).order("sort").order("name"));
+  const prods = useRows<Product>(() =>
+    supabase.from("products").select(PRODUCT_SELECT).eq("is_published", true).order("is_featured", { ascending: false }).order("sort").limit(Math.max(s.limit || 8, 1) * 3),
+  );
+  const list = useMemo(
+    () => prods.rows.map((p) => ({ ...p, product_variants: (p.product_variants ?? []).filter((v) => v.is_active) })),
+    [prods.rows],
+  );
+  const featured = list.slice(0, s.limit || 8);
+  const { price, stock } = usePricing(useMemo(() => featured.flatMap((p) => p.product_variants ?? []), [featured]));
+  const catImage = (id: string) => { const p = list.find((x) => x.category_id === id); return p ? productImage(p) : ""; };
+  const dark = isDark(s.bg);
+  return (
+    <Shell s={s} pad="py-10 sm:py-16">
+      <div className="container-x">
+        <form onSubmit={(e) => { e.preventDefault(); nav(`/products${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`); }} className="relative mx-auto max-w-2xl">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-4 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="ค้นหาสินค้า รุ่น หรือรหัสสินค้า" className="w-full rounded-2xl border-0 bg-slate-100 py-3.5 pr-4 pl-12 text-sm ring-1 ring-slate-200 focus:bg-white focus:ring-2 focus:ring-navy-500" />
+        </form>
+        {cats.rows.length > 0 && (
+          <div className="no-scrollbar -mx-4 mt-6 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-4 sm:overflow-visible lg:grid-cols-6">
+            {cats.rows.slice(0, 12).map((c, n) => {
+              const img = catImage(c.id);
+              return (
+                <Reveal key={c.id} anim={s.anim} delay={(n % 6) * 60} className="w-24 shrink-0 sm:w-auto">
+                  <Link to={`/products?category=${c.slug}`} className="flex h-full flex-col items-center gap-2 rounded-2xl bg-navy-50/60 p-3 text-center ring-1 ring-navy-100 transition hover:bg-navy-50 hover:ring-navy-300">
+                    <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-xl bg-white">{img ? <img src={img} alt="" loading="lazy" className="h-full w-full object-contain p-1" /> : <BoxIcon className="h-7 w-7 text-navy-400" />}</span>
+                    <span className="line-clamp-2 text-xs font-medium text-navy-900">{c.name}</span>
+                  </Link>
+                </Reveal>
+              );
+            })}
+          </div>
+        )}
+        {featured.length > 0 && (
+          <>
+            <div className="mt-10 mb-4 flex items-end justify-between gap-3">
+              <div>
+                {s.eyebrow && <p className={cx("text-sm font-semibold", dark ? "text-sun-300" : "text-sun-600")}>{s.eyebrow}</p>}
+                {s.title && <h2 className={cx("text-xl font-bold sm:text-3xl", dark ? "text-white" : "text-navy-900")}>{s.title}</h2>}
+              </div>
+              <Link to="/products" className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-navy-700 hover:underline">ดูทั้งหมด <ArrowRightIcon className="h-4 w-4" /></Link>
+            </div>
+            <div className="no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-5 sm:overflow-visible sm:px-0 lg:grid-cols-4">
+              {featured.map((p) => {
+                const vs = p.product_variants ?? [];
+                const ps = vs.map((v) => price(v)).filter((x) => x.price != null);
+                const lowest: PriceInfo | null = ps.length ? ps.reduce((a, b) => ((b.price as number) < (a.price as number) ? b : a)) : vs.length ? { price: null, base: null, kind: "ask" } : null;
+                return <div key={p.id} className="w-44 shrink-0 snap-start sm:w-auto"><ProductCard p={p} price={lowest} stockSummary={vs.length === 1 ? stock.get(vs[0].sku) : undefined} /></div>;
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </Shell>
+  );
+}
+
 function ProductsTeaser({ s }: { s: FeedSection }) {
   const { rows, seats } = useUpcomingSessions(s.limit || 3);
   return (
@@ -574,6 +640,7 @@ function Block({ s, afterHero }: { s: HomeSection; afterHero: boolean }) {
     case "text": return <TextBlock s={s} />;
     case "about": return <About s={s} />;
     case "products": return <ProductsTeaser s={s} />;
+    case "shop": return <Shop s={s} />;
     case "training": return <Training s={s} />;
     case "portfolio": return <Portfolio s={s} />;
     case "team": return <Team s={s} />;

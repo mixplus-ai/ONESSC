@@ -6,6 +6,7 @@ import { cx } from "./ui";
 import { AnnouncementBar } from "./banners";
 import { CartIcon, ChatIcon, MailIcon, MenuIcon, PhoneIcon, PinIcon, SunIcon, XIcon } from "./icons";
 import { useCart } from "../lib/cart";
+import { MobileTabBar, hidesTabBar } from "./MobileTabBar";
 
 export const NAV = [
   { to: "/", label: "หน้าแรก", end: true },
@@ -171,16 +172,17 @@ function Footer() {
 
 function LineButton() {
   const { company } = useSiteSettings();
-  if (!company.line_oa_url) return null;
+  const { pathname } = useLocation();
+  if (!company.line_oa_url || hidesTabBar(pathname)) return null;
   return (
     <a
       href={company.line_oa_url}
       target="_blank"
       rel="noreferrer"
-      className="fixed right-4 bottom-4 z-40 inline-flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-black/20 transition hover:brightness-110 sm:right-6 sm:bottom-6"
+      className="fixed right-4 bottom-20 z-40 inline-flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-3 lg:bottom-6 text-sm font-semibold text-white shadow-lg shadow-black/20 transition hover:brightness-110 sm:right-6 sm:bottom-6"
     >
       <ChatIcon className="h-5 w-5" />
-      คุยกับเซลล์
+      <span className="hidden sm:inline">คุยกับเซลล์</span>
     </a>
   );
 }
@@ -198,8 +200,11 @@ export default function PublicLayout() {
       <main className="flex-1">
         <Outlet />
       </main>
-      <Footer />
+      <div className={hidesTabBar(pathname) ? "pb-24 lg:pb-0" : "pb-16 lg:pb-0"}>
+        <Footer />
+      </div>
       <LineButton />
+      <MobileTabBar />
     </div>
   );
 }

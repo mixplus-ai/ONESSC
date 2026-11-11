@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { formatBaht, formatQty, productImage, STOCK_LABEL, type PriceInfo, type Product, type StockInfo } from "../lib/catalog";
 import { useCart, type CartLine } from "../lib/cart";
-import { BoxIcon } from "./icons";
+import { BoxIcon, CartIcon } from "./icons";
 import { Badge, cx } from "./ui";
 
 export function PriceTag({ info, unit, size = "md" }: { info: PriceInfo; unit?: string; size?: "sm" | "md" | "lg" }) {
@@ -32,32 +32,69 @@ export function StockBadge({ info }: { info?: StockInfo }) {
   );
 }
 
+/** Discount in % when a promo/company price is below the base price. */
+export const discountPct = (info?: PriceInfo | null) =>
+  info && info.price != null && info.base != null && info.price < info.base ? Math.round((1 - info.price / info.base) * 100) : 0;
+
 export function ProductCard({ p, price, stockSummary }: { p: Product; price?: PriceInfo | null; stockSummary?: StockInfo }) {
   const img = productImage(p);
-  const n = p.product_variants?.length ?? 0;
+  const vs = p.product_variants ?? [];
+  const n = vs.length;
+  const off = discountPct(price);
+  const href = `/products/${p.slug}`;
   return (
-    <Link to={`/products/${p.slug}`} className="group flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md">
-      <div className="grid aspect-[4/3] place-items-center overflow-hidden bg-slate-100">
-        {img ? <img src={img} alt="" loading="lazy" className="h-full w-full object-contain p-3 transition group-hover:scale-105" /> : <BoxIcon className="h-10 w-10 text-slate-300" />}
+    <div className="group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="absolute top-2 left-2 z-10 flex flex-col items-start gap-1">
+        {off > 0 && <span className="rounded-md bg-red-500 px-1.5 py-0.5 text-[11px] font-bold text-white">ลด {off}%</span>}
+        {p.is_featured && <span className="rounded-md bg-emerald-500 px-1.5 py-0.5 text-[11px] font-bold text-white">แนะนำ</span>}
       </div>
-      <div className="flex flex-1 flex-col gap-1 p-4">
-        <p className="text-xs font-semibold tracking-wide text-sun-600">{p.brands?.name ?? ""}{p.product_categories ? ` · ${p.product_categories.name}` : ""}</p>
-        <h3 className="line-clamp-2 font-semibold text-navy-900">{p.name}</h3>
-        {p.summary && <p className="line-clamp-2 text-sm text-slate-500">{p.summary}</p>}
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3">
-          {price ? (
-            <span className="text-sm">
-              {n > 1 && price.kind !== "ask" && <span className="mr-1 text-xs text-slate-500">เริ่ม</span>}
-              <PriceTag info={price} size="sm" />
-            </span>
+      <Link to={href} className="grid aspect-square place-items-center overflow-hidden bg-gradient-to-b from-slate-50 to-slate-100 sm:aspect-[4/3]">
+        {img ? <img src={img} alt="" loading="lazy" className="h-full w-full object-contain p-3 transition group-hover:scale-105" /> : <BoxIcon className="h-10 w-10 text-slate-300" />}
+      </Link>
+      <div className="flex flex-1 flex-col gap-0.5 p-3 sm:gap-1 sm:p-4">
+        <p className="truncate text-[11px] font-semibold tracking-wide text-sun-600 sm:text-xs">{p.brands?.name ?? ""}{p.product_categories ? ` · ${p.product_categories.name}` : ""}</p>
+        <Link to={href} className="line-clamp-2 text-sm font-semibold text-navy-900 hover:underline sm:text-base">{p.name}</Link>
+        {p.summary && <p className="line-clamp-1 text-xs text-slate-500 sm:line-clamp-2 sm:text-sm">{p.summary}</p>}
+        <div className="mt-auto pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-1">
+            {price ? (
+              <span className="text-sm">
+                {n > 1 && price.kind !== "ask" && <span className="mr-1 text-xs text-slate-500">เริ่ม</span>}
+                <PriceTag info={price} size="sm" />
+              </span>
+            ) : <span />}
+            {n > 1 && <span className="text-[11px] text-slate-500">{n} รุ่น</span>}
+          </div>
+          {stockSummary && n <= 1 && <div className="mt-1"><StockBadge info={stockSummary} /></div>}
+          {n === 1 ? (
+            <QuickAdd line={{ kind: "variant", id: vs[0].id, label: p.name, sku: vs[0].sku, detail: vs[0].name !== vs[0].sku ? vs[0].name : vs[0].detail ?? undefined, image: img, href }} />
           ) : (
-            <span />
+            <Link to={href} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-navy-50 py-2 text-xs font-semibold text-navy-800 ring-1 ring-navy-100 hover:bg-navy-100 sm:text-sm">
+              {n ? "เลือกรุ่น" : "ดูรายละเอียด"}
+            </Link>
           )}
-          {n > 1 && <span className="text-xs text-slate-500">{n} รุ่น</span>}
-          {stockSummary && n <= 1 && <StockBadge info={stockSummary} />}
         </div>
       </div>
-    </Link>
+    </div>
+  );
+}
+
+/** One-tap "ใส่ตะกร้า" for cards (qty 1). */
+export function QuickAdd({ line }: { line: Omit<CartLine, "qty"> }) {
+  const { add } = useCart();
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        add({ ...line, qty: 1 });
+        setDone(true);
+        setTimeout(() => setDone(false), 1500);
+      }}
+      className={cx("mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition sm:text-sm", done ? "bg-emerald-600 text-white" : "bg-navy-700 text-white hover:bg-navy-600")}
+    >
+      {done ? "เพิ่มแล้ว ✓" : <><CartIcon className="h-4 w-4" /> ใส่ตะกร้า</>}
+    </button>
   );
 }
 
@@ -80,11 +117,29 @@ export function QtyInput({ value, onChange, max }: { value: number; onChange: (n
 }
 
 /** Qty + "เพิ่มในรายการ" button. Lines are later sent as a quote request or a reservation. */
-export function AddToList({ line, compact }: { line: Omit<CartLine, "qty">; compact?: boolean }) {
+export function AddToList({ line, compact, big }: { line: Omit<CartLine, "qty">; compact?: boolean; big?: boolean }) {
   const { add } = useCart();
   const { session } = useAuth();
   const [qty, setQty] = useState(1);
   const [done, setDone] = useState(false);
+  if (big)
+    return (
+      <div className="flex items-center gap-3">
+        <QtyInput value={qty} onChange={setQty} />
+        <button
+          type="button"
+          onClick={() => {
+            add({ ...line, qty });
+            setDone(true);
+            setTimeout(() => setDone(false), 1800);
+          }}
+          className={cx("flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white transition", done ? "bg-emerald-600" : "bg-navy-700 hover:bg-navy-600")}
+        >
+          {done ? "เพิ่มแล้ว ✓" : <><CartIcon className="h-5 w-5" /> ใส่ตะกร้า</>}
+        </button>
+        {done && <Link to={session ? "/app/cart" : "/login"} state={session ? undefined : { from: "/app/cart" }} className="text-sm font-semibold text-navy-700">ดูตะกร้า</Link>}
+      </div>
+    );
   return (
     <div className="flex flex-wrap items-center gap-2">
       <QtyInput value={qty} onChange={setQty} />

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AdSlot, PageBanner } from "../../components/banners";
 import { ProductCard } from "../../components/catalog";
+import { SearchIcon } from "../../components/icons";
 import { Empty, Input, Loading, cx } from "../../components/ui";
 import { usePricing, type Brand, type Category, type PriceInfo, type Product } from "../../lib/catalog";
 import { useRows } from "../../lib/content";
@@ -57,21 +58,24 @@ export default function Products() {
       <AdSlot placement="products" className="mt-6" />
       <div className="container-x pb-10">
 
-      <div className="mt-6 grid gap-3 md:grid-cols-[1fr_auto]">
-        <Input type="search" placeholder="ค้นหาชื่อสินค้า รุ่น หรือรหัสสินค้า" value={q} onChange={(e) => set("q", e.target.value)} />
+      <div className="sticky top-16 z-20 -mx-4 mt-4 bg-slate-50/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
+        <div className="relative">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <Input type="search" className="!rounded-xl !py-3 !pl-11" placeholder="ค้นหาชื่อสินค้า รุ่น หรือรหัสสินค้า" value={q} onChange={(e) => set("q", e.target.value)} />
+        </div>
         {usedCategories.length > 0 && (
-          <select value={category} onChange={(e) => set("category", e.target.value)} className="rounded-lg border-0 px-3 py-2.5 text-sm ring-1 ring-slate-300 ring-inset">
-            <option value="">ทุกหมวดหมู่</option>
-            {usedCategories.map((c) => <option key={c.id} value={c.slug}>{c.name}</option>)}
-          </select>
+          <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto sm:flex-wrap" role="group" aria-label="เลือกหมวดหมู่">
+            <Chip active={!category} onClick={() => set("category", "")}>ทั้งหมด</Chip>
+            {usedCategories.map((c) => <Chip key={c.id} active={category === c.slug} onClick={() => set("category", category === c.slug ? "" : c.slug)}>{c.name}</Chip>)}
+          </div>
         )}
       </div>
 
       {usedBrands.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="เลือกแบรนด์">
-          <Chip active={!brand} onClick={() => set("brand", "")}>ทุกแบรนด์</Chip>
+        <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto sm:flex-wrap" role="group" aria-label="เลือกแบรนด์">
+          <Chip active={!brand} onClick={() => set("brand", "")} soft>ทุกแบรนด์</Chip>
           {usedBrands.map((b) => (
-            <Chip key={b.id} active={brand === b.slug} onClick={() => set("brand", brand === b.slug ? "" : b.slug)}>
+            <Chip key={b.id} active={brand === b.slug} onClick={() => set("brand", brand === b.slug ? "" : b.slug)} soft>
               {b.logo_url && <img src={b.logo_url} alt="" className="h-4 w-auto" />}
               {b.name}
             </Chip>
@@ -79,11 +83,13 @@ export default function Products() {
         </div>
       )}
 
-      <div className="mt-8">
+      {!products.loading && <p className="mt-5 text-sm text-slate-500">พบ {visible.length.toLocaleString("th-TH")} รายการ</p>}
+
+      <div className="mt-3">
         {products.loading ? (
           <Loading />
         ) : visible.length ? (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
             {visible.map((p) => {
               const vs = p.product_variants ?? [];
               const prices = vs.map((v) => price(v)).filter((x) => x.price != null);
@@ -104,15 +110,15 @@ export default function Products() {
   );
 }
 
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function Chip({ active, onClick, children, soft }: { active: boolean; onClick: () => void; children: React.ReactNode; soft?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
       className={cx(
-        "inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium ring-1 transition",
-        active ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-700 ring-slate-300 hover:ring-navy-600",
+        "inline-flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium whitespace-nowrap ring-1 transition",
+        active ? (soft ? "bg-sun-500 text-navy-950 ring-sun-500" : "bg-navy-700 text-white ring-navy-700") : "bg-white text-slate-700 ring-slate-200 hover:ring-navy-600",
       )}
     >
       {children}

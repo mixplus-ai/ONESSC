@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Alert, Badge, Button, Card, Empty, Loading, PageTitle, cx } from "../../components/ui";
+import { Stepper } from "../../components/Stepper";
 import { useAuth } from "../../lib/auth";
 import {
   formatBaht,
@@ -34,6 +35,18 @@ export function Tabs<T extends string>({ value, onChange, tabs }: { value: T; on
       ))}
     </div>
   );
+}
+
+function QuoteSteps({ status }: { status: QuoteRequest["status"] }) {
+  const steps = ["ส่งคำขอ", "กำลังจัดทำ", "ได้ใบเสนอราคา", "สั่งซื้อ"];
+  const at = { new: 0, in_progress: 1, quoted: 2, won: 3, lost: 3, cancelled: 1 }[status];
+  return <Stepper steps={steps} current={at} stopped={status === "lost" ? "ไม่ได้สั่งซื้อ" : status === "cancelled" ? "ยกเลิกคำขอแล้ว" : undefined} />;
+}
+
+function ReservationSteps({ state }: { state: ReturnType<typeof reservationState> }) {
+  const steps = ["ส่งคำจอง", "ยืนยันการจอง", "บันทึกเข้าสต๊อก"];
+  const at = { pending: 0, confirmed: 1, closed: 2, cancelled: 1, expired: 1 }[state];
+  return <Stepper steps={steps} current={at} stopped={state === "cancelled" ? "ยกเลิกการจองแล้ว" : state === "expired" ? "การจองหมดอายุ" : undefined} />;
 }
 
 export default function MyRequests() {
@@ -100,6 +113,7 @@ export default function MyRequests() {
                     </li>
                   ))}
                 </ul>
+                <QuoteSteps status={q.status} />
                 {q.project_note && <p className="mt-2 text-sm text-slate-500">หมายเหตุ: {q.project_note}</p>}
                 {(q.quoted_total != null || q.quote_file_path || q.staff_note) && (
                   <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">
@@ -141,6 +155,7 @@ export default function MyRequests() {
                       <li key={i.id} className="flex justify-between gap-3"><span>{i.label}</span><span className="shrink-0 text-slate-500">× {formatQty(i.qty)}</span></li>
                     ))}
                   </ul>
+                  <ReservationSteps state={st} />
                   {r.note && <p className="mt-2 text-sm text-slate-500">หมายเหตุ: {r.note}</p>}
                   {r.staff_note && <p className="mt-2 rounded-lg bg-navy-50 p-3 text-sm text-navy-800">{r.staff_note}</p>}
                   {(st === "pending" || st === "confirmed") && (

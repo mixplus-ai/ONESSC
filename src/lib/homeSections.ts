@@ -89,7 +89,7 @@ export interface TextSection extends Base {
 }
 /** Blocks whose content comes from elsewhere in the system. */
 export interface FeedSection extends Base {
-  type: "about" | "products" | "training" | "portfolio" | "team" | "contact";
+  type: "about" | "products" | "shop" | "training" | "portfolio" | "team" | "contact";
   eyebrow: string;
   title: string;
   subtitle: string;
@@ -127,6 +127,7 @@ export const SECTION_TYPES: { type: SectionType; label: string; desc: string; gr
   { type: "text", label: "ข้อความ", desc: "หัวข้อและย่อหน้า", group: "ออกแบบเอง" },
   { type: "about", label: "เกี่ยวกับเรา", desc: "ประวัติและวิสัยทัศน์จากแท็บข้อมูลบริษัท", group: "ดึงข้อมูลจากระบบ" },
   { type: "products", label: "สินค้าและอบรมล่าสุด", desc: "ลิงก์สินค้า/โปรโมชั่น และรอบอบรมที่กำลังจะมาถึง", group: "ดึงข้อมูลจากระบบ" },
+  { type: "shop", label: "ร้านค้า: ค้นหา หมวด สินค้าแนะนำ", desc: "ช่องค้นหา ไอคอนหมวดสินค้า และสินค้าแนะนำเลื่อนดูได้ แบบแอปมือถือ", group: "ดึงข้อมูลจากระบบ" },
   { type: "training", label: "รอบอบรมที่เปิดรับ", desc: "การ์ดรอบอบรมจากระบบอบรม", group: "ดึงข้อมูลจากระบบ" },
   { type: "portfolio", label: "ผลงาน", desc: "โครงการจากหน้าผลงาน", group: "ดึงข้อมูลจากระบบ" },
   { type: "team", label: "ทีมงาน", desc: "รายชื่อจากหน้าทีมงาน", group: "ดึงข้อมูลจากระบบ" },
@@ -167,6 +168,8 @@ export function newSection(type: SectionType): HomeSection {
       return feed("about", "เกี่ยวกับเรา", "พลังงานสะอาด เริ่มที่อุปกรณ์คุณภาพ");
     case "products":
       return { ...feed("products", "", "สินค้าแนะนำและโปรโมชั่น", "ดูสินค้า ราคา สต๊อก และโปรโมชั่นล่าสุด พร้อมขอใบเสนอราคาออนไลน์"), bg: "white" };
+    case "shop":
+      return { ...feed("shop", "สินค้า", "สินค้าแนะนำ", "", 8), bg: "white" };
     case "training":
       return feed("training", "อบรมและกิจกรรม", "รอบอบรมที่เปิดรับสมัคร", "", 3);
     case "portfolio":
@@ -192,6 +195,7 @@ export function defaultSections(s: SiteSettings): HomeSection[] {
       height: "large", align: "left", overlay: 60, show_brands: true,
     },
     { id: "modules", type: "modules", anim: "fade-up", items: h.modules.map((m, i) => ({ icon: icons[i] ?? "sun", title: m.title, text: m.text, href: hrefs[i] ?? "/" })) },
+    { id: "shop", type: "shop", bg: "white", anim: "fade-up", eyebrow: "สินค้า", title: "สินค้าแนะนำ", subtitle: "", limit: 8 },
     { id: "ad-top", type: "ad", placement: "home_top" },
     { id: "about", type: "about", anim: "fade-up", eyebrow: "เกี่ยวกับเรา", title: h.about_title, subtitle: "", limit: 0 },
     { id: "products", type: "products", bg: "white", anim: "fade-up", eyebrow: "", title: h.products_title, subtitle: h.products_text, limit: 3 },

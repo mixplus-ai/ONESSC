@@ -75,3 +75,8 @@ export const StarIcon = (p: SVGProps<SVGSVGElement>) => (
 export const TruckIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7M7 19a2 2 0 100-4 2 2 0 000 4zM17 19a2 2 0 100-4 2 2 0 000 4z" /></svg>
 );
+export const SearchIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>;
+export const HeartIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M12 20s-7-4.5-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.5-7 10-7 10z" /></svg>;
+export const ShareIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M12 3v12M7 8l5-5 5 5M5 13v6a1 1 0 001 1h12a1 1 0 001-1v-6" /></svg>;
+export const ChevronLeftIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M15 6l-6 6 6 6" /></svg>;
+export const TrashIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>;
