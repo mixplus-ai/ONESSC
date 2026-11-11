@@ -4,10 +4,11 @@ import { FileUpload, GalleryUpload, ImageUpload } from "../../../components/Imag
 import { BoxIcon, XIcon } from "../../../components/icons";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Textarea, cx } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
-import { formatBaht, productImage, slugify, uploadProductFile, type Brand, type Category, type Product, type Spec, type Variant } from "../../../lib/catalog";
+import { formatBaht, productImage, slugify, specialPrice, uploadProductFile, type Brand, type Category, type Product, type Spec, type Variant } from "../../../lib/catalog";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 import { Tabs } from "../MyRequests";
+import { PriceDialog } from "./PriceDialog";
 import { StockPicker } from "./StockPicker";
 
 // ---------------------------------------------------------------------------
@@ -364,19 +365,22 @@ export default function ProductsAdmin() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const knownSkus = useMemo(() => new Set(list.rows.flatMap((p) => (p.product_variants ?? []).map((v) => v.sku))), [list.rows]);
   const selling = (p: Product) => (p.product_variants ?? []).some((v) => v.is_active);
+  const priceShown = (p: Product) => (p.product_variants ?? []).some((v) => v.show_price !== false);
+  const [pricing, setPricing] = useState<Product | null>(null);
 
   /** แสดง/ซ่อน on the website (products.is_published) and เปิด/ปิดขาย (every SKU's is_active) for one or many products. */
-  async function setFlag(ids: string[], what: "publish" | "sell", on: boolean) {
+  async function setFlag(ids: string[], what: "publish" | "sell" | "price", on: boolean) {
     if (!ids.length) return;
     setBulkBusy(true);
     setErr("");
     const { error } =
       what === "publish"
         ? await supabase.from("products").update({ is_published: on }).in("id", ids)
-        : await supabase.from("product_variants").update({ is_active: on }).in("product_id", ids);
+        : await supabase.from("product_variants").update(what === "sell" ? { is_active: on } : { show_price: on }).in("product_id", ids);
     setBulkBusy(false);
     if (error) return setErr(errorMessage(error));
-    setMsg(`${what === "publish" ? (on ? "แสดงบนเว็บ" : "ซ่อนจากเว็บ") : on ? "เปิดขาย" : "ปิดขาย"} ${ids.length.toLocaleString("th-TH")} รายการแล้ว`);
+    const label = { publish: on ? "แสดงบนเว็บ" : "ซ่อนจากเว็บ", sell: on ? "เปิดขาย" : "ปิดขาย", price: on ? "แสดงราคา" : "ซ่อนราคา" }[what];
+    setMsg(`${label} ${ids.length.toLocaleString("th-TH")} รายการแล้ว`);
     list.reload();
   }
   const toggleCheck = (id: string) => setChecked((s) => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x; });
@@ -402,6 +406,7 @@ export default function ProductsAdmin() {
         <>
           {msg && <div className="mb-4"><Alert tone="green">{msg}</Alert></div>}
           {err && <div className="mb-4"><Alert>{err}</Alert></div>}
+          {pricing && <PriceDialog product={pricing} onClose={(saved) => { setPricing(null); if (saved) { setMsg(`บันทึกราคา ${pricing.name} แล้ว`); list.reload(); } }} />}
           {picking && !editing && (
             <StockPicker
               brands={brands.rows}
@@ -441,6 +446,8 @@ export default function ProductsAdmin() {
                     <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "publish", false)}>ซ่อน</Button>
                     <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "sell", true)}>เปิดขาย</Button>
                     <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "sell", false)}>ปิดขาย</Button>
+                    <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "price", true)}>แสดงราคา</Button>
+                    <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "price", false)}>ซ่อนราคา</Button>
                     <button type="button" onClick={() => setChecked(new Set())} className="px-2 text-slate-500 hover:text-navy-800">ยกเลิก</button>
                   </div>
                 )}
@@ -450,6 +457,7 @@ export default function ProductsAdmin() {
                   const vs = p.product_variants ?? [];
                   const prices = vs.map((v) => v.base_price).filter((x): x is number => x != null);
                   const on = selling(p);
+                  const sp = vs.map((v) => specialPrice(v)).filter((x): x is number => x != null);
                   return (
                     <li key={p.id} className={cx("flex items-center gap-3 p-3", checked.has(p.id) && "bg-navy-50/60")}>
                       <input type="checkbox" checked={checked.has(p.id)} onChange={() => toggleCheck(p.id)} aria-label={p.name} />
@@ -459,11 +467,21 @@ export default function ProductsAdmin() {
                       <div className="min-w-0 flex-1">
                         <p className={cx("truncate font-semibold", p.is_published ? "text-navy-900" : "text-slate-400")}>{p.name}</p>
                         <p className="truncate font-mono text-xs text-slate-500">{vs.map((v) => v.sku).join(" · ") || "ยังไม่มีรหัสสินค้า"}</p>
-                        <p className="text-xs text-slate-500">{p.brands?.name ?? "ไม่มีแบรนด์"}{p.product_categories && ` · ${p.product_categories.name}`} · {prices.length ? formatBaht(Math.min(...prices)) : "ไม่มีราคา"}</p>
+                        <p className="text-xs text-slate-500">
+                          {p.brands?.name ?? "ไม่มีแบรนด์"}{p.product_categories && ` · ${p.product_categories.name}`} ·{" "}
+                          <span className={cx(sp.length > 0 && "text-slate-400 line-through")}>{prices.length ? formatBaht(Math.min(...prices)) : "ไม่มีราคา"}</span>
+                          {sp.length > 0 && <span className="ml-1 font-semibold text-red-600">ราคาพิเศษ {formatBaht(Math.min(...sp))}</span>}
+                          {!priceShown(p) && vs.length > 0 && <span className="ml-1 font-semibold text-amber-700">· ซ่อนราคา</span>}
+                        </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
                         <Toggle on={p.is_published} disabled={bulkBusy} onChange={(v) => setFlag([p.id], "publish", v)} label={p.is_published ? "แสดง" : "ซ่อน"} />
                         {vs.length > 0 && <Toggle on={on} disabled={bulkBusy} onChange={(v) => setFlag([p.id], "sell", v)} label={on ? "เปิดขาย" : "ปิดขาย"} />}
+                        {vs.length > 0 && (
+                          <button type="button" onClick={() => setPricing(p)} className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-100 hover:bg-red-100 sm:ml-1">
+                            ราคา / ส่วนลด
+                          </button>
+                        )}
                         <button onClick={() => { setEditing(p); setPicking(false); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="text-sm font-semibold text-navy-700 hover:underline sm:ml-2">แก้ไข</button>
                       </div>
                     </li>

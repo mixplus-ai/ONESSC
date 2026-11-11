@@ -15,7 +15,7 @@ export function PriceTag({ info, unit, size = "md" }: { info: PriceInfo; unit?: 
       <span className={cx("font-bold", big, info.kind === "promo" ? "text-red-600" : "text-navy-900")}>{formatBaht(info.price)}</span>
       {unit && <span className="text-xs text-slate-500">/{unit}</span>}
       {showBase && <span className="text-sm text-slate-400 line-through">{formatBaht(info.base)}</span>}
-      {info.kind === "promo" && <Badge tone="red">โปรโมชั่น</Badge>}
+      {info.kind === "promo" && <Badge tone="red">{info.special ? "ราคาพิเศษ" : "โปรโมชั่น"}</Badge>}
       {info.kind === "company" && <Badge tone="navy">ราคาบริษัทคุณ</Badge>}
     </span>
   );

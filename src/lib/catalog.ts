@@ -39,6 +39,11 @@ export interface Variant {
   base_price: number | null;
   is_active: boolean;
   sort: number;
+  /** false = the website shows "สอบถามราคา" (migration 17; undefined on older rows = shown) */
+  show_price?: boolean;
+  /** ราคาพิเศษ for everyone, acts like a promotion price until special_ends_at */
+  special_price?: number | null;
+  special_ends_at?: string | null;
 }
 
 export interface Product {
@@ -202,7 +207,13 @@ export interface PriceInfo {
   price: number | null;
   base: number | null;
   kind: PriceKind;
+  /** the promo price comes from the product's own ราคาพิเศษ, not a promotion */
+  special?: boolean;
 }
+
+/** Running special price of a SKU, or null. */
+export const specialPrice = (v: Pick<Variant, "special_price" | "special_ends_at">, now = new Date()) =>
+  v.special_price != null && (!v.special_ends_at || new Date(v.special_ends_at) > now) ? Number(v.special_price) : null;
 
 export interface PriceBook {
   promo: Map<string, number>;
@@ -249,9 +260,14 @@ supabase.auth.onAuthStateChange(() => {
   companyCache = null;
 });
 
-export function priceFor(v: Pick<Variant, "id" | "base_price">, book: PriceBook): PriceInfo {
+export type PricedVariant = Pick<Variant, "id" | "base_price"> & Partial<Pick<Variant, "show_price" | "special_price" | "special_ends_at">>;
+
+export function priceFor(v: PricedVariant, book: PriceBook): PriceInfo {
+  if (v.show_price === false) return { price: null, base: null, kind: "ask" };
   const base = v.base_price == null ? null : Number(v.base_price);
   const promo = book.promo.get(v.id);
+  const special = specialPrice(v);
+  if (special != null && (promo == null || special <= promo)) return { price: special, base, kind: "promo", special: true };
   if (promo != null) return { price: promo, base, kind: "promo" };
   const company = book.company.get(v.id);
   if (company != null) return { price: company, base, kind: "company" };
@@ -293,7 +309,7 @@ export function usePricing(variants: Pick<Variant, "id" | "sku">[]) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, tick]);
-  const price = useCallback((v: Pick<Variant, "id" | "base_price">) => priceFor(v, book), [book]);
+  const price = useCallback((v: PricedVariant) => priceFor(v, book), [book]);
   return { price, stock, book };
 }
 
