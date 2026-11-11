@@ -11,6 +11,7 @@ import {
   loadPointsConfig,
   qrDataUrl,
   REDEMPTION_STATUS,
+  type BrandPointRule,
   type LedgerRow,
   type PointsConfig,
   type Redemption,
@@ -28,6 +29,30 @@ function CouponQr({ code }: { code: string }) {
 }
 
 /** Ledger table shared by the customer page and the back office. */
+/** How each brand turns sales into company points (shown to customers). */
+function BrandRules() {
+  const rules = useRows<BrandPointRule & { brands: { name: string } | null }>(() => supabase.from("brand_point_rules").select("*, brands(name)").eq("is_active", true));
+  if (!rules.rows.length) return null;
+  return (
+    <div>
+      <h3 className="mb-1 font-semibold text-navy-900">กติกาแต้มแต่ละแบรนด์</h3>
+      <p className="mb-3 text-sm text-slate-500">เจ้าหน้าที่บันทึกแต้มให้จากใบกำกับภาษี ตามยอดขายของแต่ละแบรนด์</p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {[...rules.rows].sort((a, b) => (a.brands?.name ?? "").localeCompare(b.brands?.name ?? "")).map((r) => (
+          <div key={r.brand_id} className="rounded-xl bg-white p-4 text-sm ring-1 ring-slate-200">
+            <p className="font-semibold text-navy-900">{r.brands?.name}</p>
+            <p className="mt-1 text-slate-700">ยอดขาย {Number(r.baht_per_point).toLocaleString("th-TH")} บาท = 1 แต้ม</p>
+            {[...r.tiers].sort((a, b) => a.min - b.min).filter((t) => t.min > 0).map((t) => (
+              <p key={t.min} className="text-xs text-slate-500">ยอดต่อใบตั้งแต่ ฿{t.min.toLocaleString("th-TH")} ได้แต้ม ×{t.multiplier}</p>
+            ))}
+            {r.terms && <p className="mt-1 text-xs text-slate-500">{r.terms}</p>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function LedgerTable({ rows, showDoc }: { rows: LedgerRow[]; showDoc?: boolean }) {
   if (!rows.length) return <Empty>ยังไม่มีรายการแต้ม</Empty>;
   const today = new Date().toISOString().slice(0, 10);
@@ -56,6 +81,7 @@ export function LedgerTable({ rows, showDoc }: { rows: LedgerRow[]; showDoc?: bo
                 </td>
                 {showDoc && (
                   <td className="px-4 py-2 text-slate-600">
+                    {typeof l.calc?.brand_name === "string" && <span className="block font-medium text-slate-700">{l.calc.brand_name}</span>}
                     {l.invoice_no ?? l.ref_doc ?? "-"}
                     {l.amount != null && <span className="block text-xs">฿{Number(l.amount).toLocaleString("th-TH")}</span>}
                   </td>
@@ -263,6 +289,7 @@ export default function Points() {
                 </div>
               </div>
             )}
+            <BrandRules />
             <div>
               <h3 className="mb-3 font-semibold text-navy-900">ประวัติแต้มบริษัท</h3>
               {companyLedger.loading ? <Loading /> : <LedgerTable rows={companyLedger.rows} showDoc />}
