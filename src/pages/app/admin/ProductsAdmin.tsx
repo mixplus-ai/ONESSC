@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Gate } from "../../../components/AppLayout";
-import { FileUpload, GalleryUpload, ImageUpload } from "../../../components/ImageUpload";
+import { FileUpload, GalleryUpload, IMAGE_SIZES, ImageUpload } from "../../../components/ImageUpload";
 import { BoxIcon, XIcon } from "../../../components/icons";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Textarea, cx } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
@@ -165,8 +165,8 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <Field label="รูปหลัก (ใช้ร่วมกันทุกรหัส)"><ImageUpload folder="products" upload={uploadProductFile} value={p.cover_url ?? ""} onChange={(v) => set("cover_url", v)} /></Field>
-          <Field label="รูปเพิ่มเติม"><GalleryUpload folder="products" upload={uploadProductFile} value={p.images} onChange={(v) => set("images", v)} /></Field>
+          <Field label="รูปหลัก (ใช้ร่วมกันทุกรหัส)"><ImageUpload folder="products" upload={uploadProductFile} size={IMAGE_SIZES.product} value={p.cover_url ?? ""} onChange={(v) => set("cover_url", v)} /></Field>
+          <Field label="รูปเพิ่มเติม"><GalleryUpload folder="products" upload={uploadProductFile} size={IMAGE_SIZES.product} value={p.images} onChange={(v) => set("images", v)} /></Field>
           <Field label="Datasheet (PDF)"><FileUpload folder="docs" upload={uploadProductFile} value={p.datasheet_url ?? ""} onChange={(v) => set("datasheet_url", v)} /></Field>
           <Field label="คู่มือ (PDF)"><FileUpload folder="docs" upload={uploadProductFile} value={p.manual_url ?? ""} onChange={(v) => set("manual_url", v)} /></Field>
           <Field label="ลิงก์วิดีโอ"><Input value={p.video_url ?? ""} onChange={(e) => set("video_url", e.target.value)} placeholder="https://youtube.com/..." /></Field>
@@ -260,7 +260,7 @@ function BrandsTab() {
             <Field label="slug"><Input value={edit.slug ?? ""} placeholder={slugify(edit.name ?? "brand")} onChange={(e) => setEdit({ ...edit, slug: e.target.value.toLowerCase() })} /></Field>
             <Field label="กลุ่มในไฟล์สต๊อก" hint="เช่น SLE-IVT, SLE-SPP"><Input value={groups} onChange={(e) => setGroups(e.target.value)} /></Field>
             <Field label="ลำดับ"><Input type="number" value={edit.sort ?? 0} onChange={(e) => setEdit({ ...edit, sort: Number(e.target.value) || 0 })} /></Field>
-            <div className="sm:col-span-2"><Field label="โลโก้"><ImageUpload folder="brands" upload={uploadProductFile} value={edit.logo_url ?? ""} onChange={(v) => setEdit({ ...edit, logo_url: v })} /></Field></div>
+            <div className="sm:col-span-2"><Field label="โลโก้"><ImageUpload folder="brands" upload={uploadProductFile} size={IMAGE_SIZES.brandLogo} value={edit.logo_url ?? ""} onChange={(v) => setEdit({ ...edit, logo_url: v })} /></Field></div>
             <div className="sm:col-span-2"><Field label="คำอธิบาย"><Textarea rows={2} value={edit.description ?? ""} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field></div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={edit.is_published ?? true} onChange={(e) => setEdit({ ...edit, is_published: e.target.checked })} /> แสดงบนหน้าเว็บ</label>
             {err && <div className="sm:col-span-2 lg:col-span-4"><Alert>{err}</Alert></div>}
