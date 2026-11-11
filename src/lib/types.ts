@@ -124,6 +124,8 @@ export interface AboutSettings {
   vision: string;
   brands: string[];
   certificates: string[];
+  /** Blocks of the public About page; empty = built from the fields above. */
+  sections?: HomeSection[];
 }
 
 export type PageKey = "about" | "products" | "promotions" | "training" | "portfolio" | "claims" | "team" | "contact";

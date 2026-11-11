@@ -204,6 +204,32 @@ export function defaultSections(s: SiteSettings): HomeSection[] {
 
 export const homeSections = (s: SiteSettings): HomeSection[] => (s.home.sections?.length ? s.home.sections : defaultSections(s));
 
+/** The About page as it looked before the builder, rebuilt from the "about" banner and company fields. */
+export function defaultAboutSections(s: SiteSettings): HomeSection[] {
+  const pg = s.pages.about;
+  const list: HomeSection[] = [
+    {
+      id: "about-hero", type: "hero", anim: "fade-up",
+      slides: [{ image_url: pg.image_url, video_url: "" }],
+      badge: pg.eyebrow, title: pg.title || s.company.name_th, subtitle: pg.subtitle || s.company.tagline,
+      buttons: [{ label: "ติดต่อเรา", href: "/contact" }],
+      height: "medium", align: "left", overlay: 60, show_brands: false,
+    },
+    { id: "about-story", type: "about", anim: "fade-up", eyebrow: "ประวัติบริษัท", title: s.home.about_title, subtitle: "", limit: 0 },
+  ];
+  if (s.about.brands.length) list.push({ id: "about-brands", type: "logos", bg: "white", anim: "fade", title: "แบรนด์ที่เป็นตัวแทนจำหน่าย", logos: [], marquee: true });
+  if (s.about.certificates.length) {
+    list.push({ id: "about-certs", type: "text", anim: "fade-up", eyebrow: "มาตรฐาน", title: "ใบรับรอง", body: s.about.certificates.map((c) => `• ${c}`).join("\n"), align: "center" });
+  }
+  list.push(
+    { id: "about-team", type: "team", bg: "white", anim: "fade-up", eyebrow: "ทีมงาน", title: s.home.team_title, subtitle: s.home.team_subtitle, limit: 6 },
+    { id: "about-cta", type: "cta", bg: "brand", anim: "zoom", title: "อยากคุยกับทีมงานของเรา", text: "สอบถามสินค้า ขอใบเสนอราคา หรือนัดอบรม ติดต่อได้ทุกช่องทาง", image_url: "", buttons: [{ label: "ติดต่อเรา", href: "/contact" }] },
+  );
+  return list;
+}
+
+export const aboutSections = (s: SiteSettings): HomeSection[] => (s.about.sections?.length ? s.about.sections : defaultAboutSections(s));
+
 /** YouTube / Vimeo link → embed URL; null for a direct video file. */
 export function embedUrl(url: string, autoplay = false): string | null {
   const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/);

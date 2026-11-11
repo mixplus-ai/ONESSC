@@ -8,9 +8,9 @@ import { errorMessage, supabase } from "../../../lib/supabase";
 import type { AdBanner, AdPlacement, PageKey, SiteSettings } from "../../../lib/types";
 import { Tabs } from "../MyRequests";
 import { HomeBuilder } from "./HomeBuilder";
-import { defaultSections, homeSections } from "../../../lib/homeSections";
+import { aboutSections, defaultAboutSections, defaultSections, homeSections } from "../../../lib/homeSections";
 
-type Tab = "company" | "home" | "pages" | "ads";
+type Tab = "company" | "home" | "about" | "pages" | "ads";
 
 const PAGE_PATH: Record<PageKey, string> = {
   about: "/about",
@@ -107,6 +107,7 @@ export default function Content() {
         tabs={[
           { key: "company", label: "ข้อมูลบริษัท" },
           { key: "home", label: "หน้าแรก" },
+          { key: "about", label: "หน้าเกี่ยวกับเรา" },
           { key: "pages", label: "แบนเนอร์แต่ละหน้า" },
           { key: "ads", label: "โฆษณา", count: activeCount },
         ]}
@@ -155,6 +156,15 @@ export default function Content() {
           value={homeSections(s)}
           onChange={(v) => update((prev) => ({ ...prev, home: { ...prev.home, sections: v } }))}
           onReset={() => update((prev) => ({ ...prev, home: { ...prev.home, sections: defaultSections(prev) } }))}
+        />
+      )}
+
+      {tab === "about" && (
+        <HomeBuilder
+          page="about"
+          value={aboutSections(s)}
+          onChange={(v) => update((prev) => ({ ...prev, about: { ...prev.about, sections: v } }))}
+          onReset={() => update((prev) => ({ ...prev, about: { ...prev.about, sections: defaultAboutSections(prev) } }))}
         />
       )}
 

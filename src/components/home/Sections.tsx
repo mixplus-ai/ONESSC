@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { AdSlot } from "../banners";
 import { PortfolioCard, SectionHeading, TeamCard } from "../cards";
 import {
@@ -430,14 +430,15 @@ function TextBlock({ s }: { s: TextSection }) {
 // ---------- blocks fed by the rest of the system ----------
 function About({ s }: { s: FeedSection }) {
   const { about } = useSiteSettings();
+  const onAboutPage = useLocation().pathname === "/about";
   return (
     <Shell s={s}>
       <div className="container-x grid gap-10 md:grid-cols-2">
         <Reveal anim={s.anim}><SectionHeading eyebrow={s.eyebrow} title={s.title} subtitle={s.subtitle} /></Reveal>
         <Reveal anim={s.anim} delay={150} className="space-y-4 text-slate-600">
-          <p className="text-lg leading-relaxed">{about.history}</p>
-          <p className="border-l-4 border-sun-500 pl-4 font-medium text-navy-800">{about.vision}</p>
-          <Link to="/about" className="inline-flex items-center gap-1 text-sm font-semibold text-navy-700 hover:underline">อ่านเพิ่มเติม <ArrowRightIcon className="h-4 w-4" /></Link>
+          <p className="whitespace-pre-line text-lg leading-relaxed">{about.history}</p>
+          <p className="whitespace-pre-line border-l-4 border-sun-500 pl-4 font-medium text-navy-800">{about.vision}</p>
+          {!onAboutPage && <Link to="/about" className="inline-flex items-center gap-1 text-sm font-semibold text-navy-700 hover:underline">อ่านเพิ่มเติม <ArrowRightIcon className="h-4 w-4" /></Link>}
         </Reveal>
       </div>
     </Shell>

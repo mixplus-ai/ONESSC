@@ -30,7 +30,10 @@ function summary(s: HomeSection): string {
   return "";
 }
 
-export function HomeBuilder({ value, onChange, onReset }: { value: HomeSection[]; onChange: (v: HomeSection[]) => void; onReset: () => void }) {
+const PAGE_NAME = { home: "หน้าแรก", about: "หน้าเกี่ยวกับเรา" } as const;
+
+export function HomeBuilder({ value, onChange, onReset, page = "home" }: { value: HomeSection[]; onChange: (v: HomeSection[]) => void; onReset: () => void; page?: keyof typeof PAGE_NAME }) {
+  const pageName = PAGE_NAME[page];
   const [open, setOpen] = useState<string | null>(null);
   const [adding, setAdding] = useState<number | null>(null); // insert position
   const [preview, setPreview] = useState(false);
@@ -64,7 +67,7 @@ export function HomeBuilder({ value, onChange, onReset }: { value: HomeSection[]
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-navy-50 p-4 ring-1 ring-navy-100">
         <p className="max-w-2xl text-sm text-navy-800">
-          หน้าแรกประกอบด้วยบล็อกเรียงจากบนลงล่าง กด <b>เพิ่มบล็อก</b> เพื่อใส่ภาพ วิดีโอ ตัวเลข การ์ด หรือแกลเลอรี ใช้ลูกศรสลับลำดับ กดชื่อบล็อกเพื่อแก้ไข แล้วกด <b>บันทึกทั้งหมด</b>
+          {pageName}ประกอบด้วยบล็อกเรียงจากบนลงล่าง กด <b>เพิ่มบล็อก</b> เพื่อใส่ภาพ วิดีโอ ตัวเลข การ์ด หรือแกลเลอรี ใช้ลูกศรสลับลำดับ กดชื่อบล็อกเพื่อแก้ไข แล้วกด <b>บันทึกทั้งหมด</b>
         </p>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => setPreview(true)}>ดูตัวอย่าง</Button>
@@ -111,8 +114,8 @@ export function HomeBuilder({ value, onChange, onReset }: { value: HomeSection[]
       {!value.length && <p className="rounded-2xl bg-slate-50 p-6 text-center text-sm text-slate-500">ยังไม่มีบล็อก กด “เพิ่มบล็อก”</p>}
 
       <div className="flex justify-end">
-        <button type="button" className="text-xs text-slate-500 hover:text-red-600 hover:underline" onClick={() => { if (confirm("คืนค่าหน้าแรกเป็นแบบเริ่มต้น? บล็อกที่เพิ่มเองจะหายเมื่อกดบันทึก")) { onReset(); setOpen(null); } }}>
-          คืนค่าหน้าแรกเริ่มต้น
+        <button type="button" className="text-xs text-slate-500 hover:text-red-600 hover:underline" onClick={() => { if (confirm(`คืนค่า${pageName}เป็นแบบเริ่มต้น? บล็อกที่เพิ่มเองจะหายเมื่อกดบันทึก`)) { onReset(); setOpen(null); } }}>
+          คืนค่า{pageName}เริ่มต้น
         </button>
       </div>
 
@@ -133,9 +136,9 @@ export function HomeBuilder({ value, onChange, onReset }: { value: HomeSection[]
       </Modal>
 
       {preview && (
-        <div className="fixed inset-0 z-[70] flex flex-col bg-white" role="dialog" aria-modal="true" aria-label="ตัวอย่างหน้าแรก">
+        <div className="fixed inset-0 z-[70] flex flex-col bg-white" role="dialog" aria-modal="true" aria-label={`ตัวอย่าง${pageName}`}>
           <div className="flex items-center justify-between gap-3 bg-navy-900 px-4 py-2 text-white">
-            <span className="text-sm">ตัวอย่างหน้าแรก (ยังไม่บันทึก)</span>
+            <span className="text-sm">ตัวอย่าง{pageName} (ยังไม่บันทึก)</span>
             <button type="button" onClick={() => setPreview(false)} className="rounded-lg bg-white/10 px-3 py-1 text-sm hover:bg-white/20">ปิดตัวอย่าง</button>
           </div>
           <div className="flex-1 overflow-y-auto" id="home-preview">
