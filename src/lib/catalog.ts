@@ -98,7 +98,13 @@ export interface Package {
   ends_at: string | null;
   is_published: boolean;
   sort: number;
-  package_items?: { variant_id: string; qty: number; sort: number }[];
+  package_items?: { variant_id: string; qty: number; sort: number; product_variants?: Pick<Variant, "base_price" | "show_price"> | null }[];
+}
+
+/** ราคาเต็ม of a package = its items at normal price; 0 when any item has no shown price (then no discount is claimed). */
+export function packageFullPrice(items: { qty: number | string; base_price?: number | null; show_price?: boolean }[]): number {
+  if (!items.length || items.some((i) => i.base_price == null || i.show_price === false)) return 0;
+  return items.reduce((s, i) => s + Number(i.base_price) * Number(i.qty), 0);
 }
 
 export type StockState = "in_stock" | "low" | "out" | "incoming" | "unknown";

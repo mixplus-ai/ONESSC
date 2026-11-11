@@ -21,6 +21,23 @@ export function PriceTag({ info, unit, size = "md" }: { info: PriceInfo; unit?: 
   );
 }
 
+/** Package price: ราคาลด, struck ราคาเต็ม and "ลด x%" when the set is cheaper than buying its items one by one. */
+export function PackagePrice({ price, full, size = "md" }: { price: number | null; full: number; size?: "md" | "lg" }) {
+  const off = price != null && full > price ? Math.round((1 - price / full) * 100) : 0;
+  return (
+    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <span className={cx("font-bold", off ? "text-red-600" : "text-navy-900", size === "lg" ? "text-3xl" : "text-lg")}>{formatBaht(price)}</span>
+      {off > 0 && (
+        <>
+          <span className={cx("text-slate-400 line-through", size === "lg" ? "text-base" : "text-sm")}>{formatBaht(full)}</span>
+          <span className="rounded-md bg-red-500 px-1.5 py-0.5 text-xs font-bold text-white">ลด {off}%</span>
+          {size === "lg" && <span className="text-sm font-semibold text-red-600">ประหยัด {formatBaht(full - (price as number))}</span>}
+        </>
+      )}
+    </span>
+  );
+}
+
 /** Stock state for customers. Zero or negative stock never shows a number: it reads "สั่งจอง / ขอใบเสนอราคา". */
 export function StockBadge({ info }: { info?: StockInfo }) {
   if (!info) return <Badge>กำลังโหลดสต๊อก</Badge>;

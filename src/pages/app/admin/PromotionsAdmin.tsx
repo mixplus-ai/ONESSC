@@ -231,7 +231,28 @@ function PackageEditor({ initial, variants, onClose }: { initial: Partial<Packag
         <div className="sm:col-span-2"><Field label="ชื่อแพ็กเกจ" required><Input required value={p.name ?? ""} onChange={(e) => setP({ ...p, name: e.target.value })} /></Field></div>
         <Field label="รหัสแพ็กเกจ" hint="ใช้เหมือนรหัสสินค้า เช่น PKG-10K"><Input className="font-mono" value={p.code ?? ""} placeholder="PKG-001" pattern="[A-Za-z0-9][A-Za-z0-9._/\-]{0,39}" onChange={(e) => setP({ ...p, code: e.target.value.toUpperCase() })} /></Field>
         <Field label="slug"><Input value={p.slug ?? ""} placeholder={slugify(p.name || "package")} onChange={(e) => setP({ ...p, slug: e.target.value.toLowerCase() })} pattern="[a-z0-9][a-z0-9-]*" /></Field>
-        <Field label="ราคาแพ็กเกจ (บาท)" hint={`รวมราคาปกติ ${formatBaht(sumBase)}`}><Input type="number" min="0" step="0.01" value={p.price ?? ""} onChange={(e) => setP({ ...p, price: e.target.value === "" ? null : Number(e.target.value) })} /></Field>
+        <Field
+          label="ราคาแพ็กเกจ (ราคาลด)"
+          hint={
+            <span className="flex flex-wrap items-center gap-x-2">
+              <span>ราคาเต็ม {formatBaht(sumBase)}</span>
+              {sumBase > 0 && p.price != null && p.price < sumBase && <span className="font-semibold text-red-600">ลด {Math.round((1 - p.price / sumBase) * 100)}%</span>}
+              {sumBase > 0 && (
+                <span className="flex items-center gap-1">
+                  · ลด
+                  <input
+                    type="number" min="1" max="99" placeholder="%" aria-label="ลดกี่เปอร์เซ็นต์"
+                    className="w-12 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                    onChange={(e) => { const x = Number(e.target.value); if (x > 0 && x < 100) setP({ ...p, price: Math.round(sumBase * (1 - x / 100)) }); }}
+                  />
+                  %
+                </span>
+              )}
+            </span>
+          }
+        >
+          <Input type="number" min="0" step="0.01" value={p.price ?? ""} onChange={(e) => setP({ ...p, price: e.target.value === "" ? null : Number(e.target.value) })} />
+        </Field>
         <div className="sm:col-span-2 lg:col-span-4"><Field label="คำอธิบายสั้น"><Input value={p.summary ?? ""} onChange={(e) => setP({ ...p, summary: e.target.value })} /></Field></div>
         <div className="sm:col-span-2 lg:col-span-4"><Field label="รายละเอียด"><Textarea rows={3} value={p.description ?? ""} onChange={(e) => setP({ ...p, description: e.target.value })} /></Field></div>
         <Field label="เริ่ม"><Input type="datetime-local" value={toLocal(p.starts_at)} onChange={(e) => setP({ ...p, starts_at: fromLocal(e.target.value) })} /></Field>
