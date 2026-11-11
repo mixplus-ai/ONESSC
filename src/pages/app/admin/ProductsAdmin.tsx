@@ -2,12 +2,14 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Gate } from "../../../components/AppLayout";
 import { FileUpload, GalleryUpload, ImageUpload } from "../../../components/ImageUpload";
 import { BoxIcon, XIcon } from "../../../components/icons";
-import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Textarea } from "../../../components/ui";
+import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Textarea, cx } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
-import { formatBaht, productImage, slugify, uploadProductFile, type Brand, type Category, type Product, type Spec, type Variant } from "../../../lib/catalog";
+import { formatBaht, productImage, slugify, specialPrice, uploadProductFile, type Brand, type Category, type Product, type Spec, type Variant } from "../../../lib/catalog";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 import { Tabs } from "../MyRequests";
+import { PriceDialog } from "./PriceDialog";
+import { StockPicker } from "./StockPicker";
 
 // ---------------------------------------------------------------------------
 // Spec rows editor
@@ -347,7 +349,6 @@ export default function ProductsAdmin() {
   const [state, setState] = useState<"" | "published" | "draft">("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
-  const [importing, setImporting] = useState(false);
 
   const rows = useMemo(() => {
     const n = q.trim().toLowerCase();
@@ -359,17 +360,32 @@ export default function ProductsAdmin() {
     );
   }, [list.rows, q, brand, state]);
 
-  async function importFromStock() {
-    if (!confirm("สร้างสินค้าแบบร่างสำหรับรหัสในไฟล์สต๊อกที่ยังไม่มีในแคตตาล็อก (1 รหัส = 1 สินค้า ยังไม่แสดงบนเว็บ)?")) return;
-    setImporting(true);
+  const [picking, setPicking] = useState(false);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const knownSkus = useMemo(() => new Set(list.rows.flatMap((p) => (p.product_variants ?? []).map((v) => v.sku))), [list.rows]);
+  const selling = (p: Product) => (p.product_variants ?? []).some((v) => v.is_active);
+  const priceShown = (p: Product) => (p.product_variants ?? []).some((v) => v.show_price !== false);
+  const [pricing, setPricing] = useState<Product | null>(null);
+
+  /** แสดง/ซ่อน on the website (products.is_published) and เปิด/ปิดขาย (every SKU's is_active) for one or many products. */
+  async function setFlag(ids: string[], what: "publish" | "sell" | "price", on: boolean) {
+    if (!ids.length) return;
+    setBulkBusy(true);
     setErr("");
-    const { data, error } = await supabase.rpc("import_products_from_stock");
-    setImporting(false);
+    const { error } =
+      what === "publish"
+        ? await supabase.from("products").update({ is_published: on }).in("id", ids)
+        : await supabase.from("product_variants").update(what === "sell" ? { is_active: on } : { show_price: on }).in("product_id", ids);
+    setBulkBusy(false);
     if (error) return setErr(errorMessage(error));
-    setMsg(`สร้างสินค้าแบบร่าง ${data} รายการ จัดกลุ่มรหัสที่เป็นรุ่นเดียวกันด้วยปุ่ม “ดึงเข้า” ในหน้าแก้ไข แล้วเปิด “แสดงบนหน้าเว็บ”`);
+    const label = { publish: on ? "แสดงบนเว็บ" : "ซ่อนจากเว็บ", sell: on ? "เปิดขาย" : "ปิดขาย", price: on ? "แสดงราคา" : "ซ่อนราคา" }[what];
+    setMsg(`${label} ${ids.length.toLocaleString("th-TH")} รายการแล้ว`);
     list.reload();
-    brands.reload();
   }
+  const toggleCheck = (id: string) => setChecked((s) => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x; });
+  const allChecked = rows.length > 0 && rows.every((p) => checked.has(p.id));
+  const ids = rows.filter((p) => checked.has(p.id)).map((p) => p.id);
 
   return (
     <Gate allow={can("products")}>
@@ -378,7 +394,7 @@ export default function ProductsAdmin() {
         subtitle="แคตตาล็อก รูป สเปก ราคาปกติ และรหัสสินค้าที่ผูกกับสต๊อก"
         actions={tab === "products" && !editing && (
           <>
-            <Button variant="secondary" onClick={importFromStock} loading={importing}>สร้างจากไฟล์สต๊อก</Button>
+            <Button variant="secondary" onClick={() => { setPicking(true); setMsg(""); }}>+ เพิ่มจากสต๊อก</Button>
             <Button onClick={() => setEditing({})}>+ เพิ่มสินค้า</Button>
           </>
         )}
@@ -390,6 +406,16 @@ export default function ProductsAdmin() {
         <>
           {msg && <div className="mb-4"><Alert tone="green">{msg}</Alert></div>}
           {err && <div className="mb-4"><Alert>{err}</Alert></div>}
+          {pricing && <PriceDialog product={pricing} onClose={(saved) => { setPricing(null); if (saved) { setMsg(`บันทึกราคา ${pricing.name} แล้ว`); list.reload(); } }} />}
+          {picking && !editing && (
+            <StockPicker
+              brands={brands.rows}
+              categories={categories.rows}
+              knownSkus={knownSkus}
+              onClose={() => setPicking(false)}
+              onDone={(n) => { setPicking(false); setMsg(`สร้างสินค้า ${n.toLocaleString("th-TH")} รายการแล้ว กด “แก้ไข” เพื่อใส่รูป รายละเอียด และราคา รหัสที่เป็นรุ่นเดียวกันรวมได้ด้วยปุ่ม “ดึงเข้า”`); list.reload(); brands.reload(); }}
+            />
+          )}
           {editing && (
             <ProductEditor key={editing.id ?? "new"} initial={editing} brands={brands.rows} categories={categories.rows} onClose={(saved) => { setEditing(null); if (saved) list.reload(); }} />
           )}
@@ -402,30 +428,61 @@ export default function ProductsAdmin() {
             <Select value={state} onChange={(e) => setState(e.target.value as typeof state)}>
               <option value="">ทุกสถานะ</option>
               <option value="published">แสดงบนเว็บ</option>
-              <option value="draft">แบบร่าง</option>
+              <option value="draft">ซ่อนอยู่</option>
             </Select>
           </div>
           {list.loading ? (
             <Loading />
           ) : rows.length ? (
             <Card className="!p-0">
+              <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 p-3 text-sm">
+                <label className="flex items-center gap-2 font-medium text-slate-600">
+                  <input type="checkbox" checked={allChecked} onChange={() => setChecked(allChecked ? new Set() : new Set(rows.map((p) => p.id)))} />
+                  {ids.length ? `เลือก ${ids.length.toLocaleString("th-TH")} รายการ` : `${rows.length.toLocaleString("th-TH")} รายการ`}
+                </label>
+                {ids.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "publish", true)}>แสดงบนเว็บ</Button>
+                    <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "publish", false)}>ซ่อน</Button>
+                    <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "sell", true)}>เปิดขาย</Button>
+                    <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "sell", false)}>ปิดขาย</Button>
+                    <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "price", true)}>แสดงราคา</Button>
+                    <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "price", false)}>ซ่อนราคา</Button>
+                    <button type="button" onClick={() => setChecked(new Set())} className="px-2 text-slate-500 hover:text-navy-800">ยกเลิก</button>
+                  </div>
+                )}
+              </div>
               <ul className="divide-y divide-slate-100">
                 {rows.map((p) => {
                   const vs = p.product_variants ?? [];
                   const prices = vs.map((v) => v.base_price).filter((x): x is number => x != null);
+                  const on = selling(p);
+                  const sp = vs.map((v) => specialPrice(v)).filter((x): x is number => x != null);
                   return (
-                    <li key={p.id} className="flex items-center gap-3 p-3">
+                    <li key={p.id} className={cx("flex items-center gap-3 p-3", checked.has(p.id) && "bg-navy-50/60")}>
+                      <input type="checkbox" checked={checked.has(p.id)} onChange={() => toggleCheck(p.id)} aria-label={p.name} />
                       <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-slate-100">
                         {productImage(p) ? <img src={productImage(p)} alt="" className="h-full w-full object-contain" /> : <BoxIcon className="text-slate-300" />}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-semibold text-navy-900">{p.name}</p>
+                        <p className={cx("truncate font-semibold", p.is_published ? "text-navy-900" : "text-slate-400")}>{p.name}</p>
                         <p className="truncate font-mono text-xs text-slate-500">{vs.map((v) => v.sku).join(" · ") || "ยังไม่มีรหัสสินค้า"}</p>
-                        <p className="text-xs text-slate-500">{p.brands?.name ?? "ไม่มีแบรนด์"}{p.product_categories && ` · ${p.product_categories.name}`} · {prices.length ? formatBaht(Math.min(...prices)) : "ไม่มีราคา"}</p>
+                        <p className="text-xs text-slate-500">
+                          {p.brands?.name ?? "ไม่มีแบรนด์"}{p.product_categories && ` · ${p.product_categories.name}`} ·{" "}
+                          <span className={cx(sp.length > 0 && "text-slate-400 line-through")}>{prices.length ? formatBaht(Math.min(...prices)) : "ไม่มีราคา"}</span>
+                          {sp.length > 0 && <span className="ml-1 font-semibold text-red-600">ราคาพิเศษ {formatBaht(Math.min(...sp))}</span>}
+                          {!priceShown(p) && vs.length > 0 && <span className="ml-1 font-semibold text-amber-700">· ซ่อนราคา</span>}
+                        </p>
                       </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        {p.is_published ? <Badge tone="green">แสดง</Badge> : <Badge>ร่าง</Badge>}
-                        <button onClick={() => { setEditing(p); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="text-sm font-semibold text-navy-700 hover:underline">แก้ไข</button>
+                      <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+                        <Toggle on={p.is_published} disabled={bulkBusy} onChange={(v) => setFlag([p.id], "publish", v)} label={p.is_published ? "แสดง" : "ซ่อน"} />
+                        {vs.length > 0 && <Toggle on={on} disabled={bulkBusy} onChange={(v) => setFlag([p.id], "sell", v)} label={on ? "เปิดขาย" : "ปิดขาย"} />}
+                        {vs.length > 0 && (
+                          <button type="button" onClick={() => setPricing(p)} className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-100 hover:bg-red-100 sm:ml-1">
+                            ราคา / ส่วนลด
+                          </button>
+                        )}
+                        <button onClick={() => { setEditing(p); setPicking(false); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="text-sm font-semibold text-navy-700 hover:underline sm:ml-2">แก้ไข</button>
                       </div>
                     </li>
                   );
@@ -433,10 +490,22 @@ export default function ProductsAdmin() {
               </ul>
             </Card>
           ) : (
-            <Empty>{list.rows.length ? "ไม่พบสินค้าตามเงื่อนไข" : "ยังไม่มีสินค้า ซิงก์สต๊อกก่อน แล้วกด “สร้างจากไฟล์สต๊อก” หรือเพิ่มสินค้าเอง"}</Empty>
+            <Empty>{list.rows.length ? "ไม่พบสินค้าตามเงื่อนไข" : "ยังไม่มีสินค้า ซิงก์สต๊อกก่อน แล้วกด “เพิ่มจากสต๊อก” หรือเพิ่มสินค้าเอง"}</Empty>
           )}
         </>
       )}
     </Gate>
+  );
+}
+
+/** Small on/off switch with its current state as the label. */
+function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} disabled={disabled} onClick={() => onChange(!on)} className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 disabled:opacity-50">
+      <span className={cx("relative h-5 w-9 rounded-full transition", on ? "bg-emerald-500" : "bg-slate-300")}>
+        <span className={cx("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all", on ? "left-[1.125rem]" : "left-0.5")} />
+      </span>
+      <span className="w-12">{label}</span>
+    </button>
   );
 }

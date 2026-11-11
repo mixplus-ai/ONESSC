@@ -39,6 +39,11 @@ export interface Variant {
   base_price: number | null;
   is_active: boolean;
   sort: number;
+  /** false = the website shows "สอบถามราคา" (migration 17; undefined on older rows = shown) */
+  show_price?: boolean;
+  /** ราคาพิเศษ for everyone, acts like a promotion price until special_ends_at */
+  special_price?: number | null;
+  special_ends_at?: string | null;
 }
 
 export interface Product {
@@ -81,6 +86,8 @@ export interface Promotion {
 
 export interface Package {
   id: string;
+  /** รหัสแพ็กเกจ, used like a SKU (migration 18) */
+  code?: string | null;
   name: string;
   slug: string;
   summary: string | null;
@@ -91,7 +98,13 @@ export interface Package {
   ends_at: string | null;
   is_published: boolean;
   sort: number;
-  package_items?: { variant_id: string; qty: number; sort: number }[];
+  package_items?: { variant_id: string; qty: number; sort: number; product_variants?: Pick<Variant, "base_price" | "show_price"> | null }[];
+}
+
+/** ราคาเต็ม of a package = its items at normal price; 0 when any item has no shown price (then no discount is claimed). */
+export function packageFullPrice(items: { qty: number | string; base_price?: number | null; show_price?: boolean }[]): number {
+  if (!items.length || items.some((i) => i.base_price == null || i.show_price === false)) return 0;
+  return items.reduce((s, i) => s + Number(i.base_price) * Number(i.qty), 0);
 }
 
 export type StockState = "in_stock" | "low" | "out" | "incoming" | "unknown";
@@ -165,7 +178,7 @@ export const STOCK_LABEL: Record<StockState, { label: string; tone: "slate" | "g
   in_stock: { label: "มีสินค้า", tone: "green" },
   low: { label: "เหลือน้อย", tone: "amber" },
   incoming: { label: "รอของเข้า", tone: "navy" },
-  out: { label: "สินค้าหมด", tone: "red" },
+  out: { label: "สั่งจอง / ขอใบเสนอราคา", tone: "amber" },
   unknown: { label: "สอบถามสต๊อก", tone: "slate" },
 };
 
@@ -202,7 +215,13 @@ export interface PriceInfo {
   price: number | null;
   base: number | null;
   kind: PriceKind;
+  /** the promo price comes from the product's own ราคาพิเศษ, not a promotion */
+  special?: boolean;
 }
+
+/** Running special price of a SKU, or null. */
+export const specialPrice = (v: Pick<Variant, "special_price" | "special_ends_at">, now = new Date()) =>
+  v.special_price != null && (!v.special_ends_at || new Date(v.special_ends_at) > now) ? Number(v.special_price) : null;
 
 export interface PriceBook {
   promo: Map<string, number>;
@@ -249,9 +268,14 @@ supabase.auth.onAuthStateChange(() => {
   companyCache = null;
 });
 
-export function priceFor(v: Pick<Variant, "id" | "base_price">, book: PriceBook): PriceInfo {
+export type PricedVariant = Pick<Variant, "id" | "base_price"> & Partial<Pick<Variant, "show_price" | "special_price" | "special_ends_at">>;
+
+export function priceFor(v: PricedVariant, book: PriceBook): PriceInfo {
+  if (v.show_price === false) return { price: null, base: null, kind: "ask" };
   const base = v.base_price == null ? null : Number(v.base_price);
   const promo = book.promo.get(v.id);
+  const special = specialPrice(v);
+  if (special != null && (promo == null || special <= promo)) return { price: special, base, kind: "promo", special: true };
   if (promo != null) return { price: promo, base, kind: "promo" };
   const company = book.company.get(v.id);
   if (company != null) return { price: company, base, kind: "company" };
@@ -293,7 +317,7 @@ export function usePricing(variants: Pick<Variant, "id" | "sku">[]) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, tick]);
-  const price = useCallback((v: Pick<Variant, "id" | "base_price">) => priceFor(v, book), [book]);
+  const price = useCallback((v: PricedVariant) => priceFor(v, book), [book]);
   return { price, stock, book };
 }
 

@@ -1,43 +1,75 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Gate } from "../../../components/AppLayout";
 import { ImageUpload } from "../../../components/ImageUpload";
 import { XIcon } from "../../../components/icons";
-import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Textarea } from "../../../components/ui";
+import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Textarea } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
-import { formatBaht, formatDate, isRunning, slugify, uploadProductFile, type Package, type Promotion, type Variant } from "../../../lib/catalog";
+import { formatBaht, formatDate, formatQty, isRunning, slugify, uploadProductFile, type Package, type Promotion, type Variant } from "../../../lib/catalog";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 import { Tabs } from "../MyRequests";
 
-type VRow = Variant & { products: { name: string } };
+type VRow = Variant & { products: { name: string; brands: { id: string; name: string } | null } };
 
 /** datetime-local ⇄ ISO */
 const toLocal = (iso: string | null | undefined) => (iso ? new Date(new Date(iso).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "");
 const fromLocal = (v: string) => (v ? new Date(v).toISOString() : null);
 
+/** Pick a SKU: choose a brand, then the product from a list that shows the sellable stock after each name (typing still searches). */
 function VariantPicker({ variants, exclude, onPick }: { variants: VRow[]; exclude: Set<string>; onPick: (v: VRow) => void }) {
+  const [brand, setBrand] = useState("");
   const [q, setQ] = useState("");
-  const hits = useMemo(() => {
+  const stock = useStockBoard();
+  const brands = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const v of variants) if (v.products?.brands) m.set(v.products.brands.id, v.products.brands.name);
+    return [...m.entries()].sort((x, y) => x[1].localeCompare(y[1]));
+  }, [variants]);
+  const list = useMemo(() => {
     const n = q.trim().toLowerCase();
-    if (n.length < 2) return [];
-    return variants.filter((v) => !exclude.has(v.id) && [v.sku, v.name, v.products?.name].join(" ").toLowerCase().includes(n)).slice(0, 8);
-  }, [q, variants, exclude]);
+    return variants
+      .filter((v) => !exclude.has(v.id) && (!brand || (brand === "-" ? !v.products?.brands : v.products?.brands?.id === brand)) && (!n || [v.sku, v.name, v.products?.name].join(" ").toLowerCase().includes(n)))
+      .sort((x, y) => (x.products?.name ?? "").localeCompare(y.products?.name ?? "") || x.sku.localeCompare(y.sku));
+  }, [variants, exclude, brand, q]);
+  const stockText = (sku: string) => {
+    const s = stock.get(sku);
+    if (s == null) return "ไม่มีในสต๊อก";
+    return s > 0 ? `คงเหลือ ${formatQty(s)}` : `สต๊อก ${formatQty(s)}`;
+  };
   return (
-    <div className="relative">
-      <Input placeholder="พิมพ์รหัสหรือชื่อสินค้าเพื่อเพิ่ม (อย่างน้อย 2 ตัวอักษร)" value={q} onChange={(e) => setQ(e.target.value)} />
-      {hits.length > 0 && (
-        <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-slate-200">
-          {hits.map((v) => (
-            <li key={v.id}>
-              <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-navy-50" onClick={() => { onPick(v); setQ(""); }}>
-                <span className="font-mono text-xs text-slate-500">{v.sku}</span> · {v.products?.name} <span className="text-slate-400">{formatBaht(v.base_price)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="grid gap-2 rounded-lg bg-white p-2 ring-1 ring-slate-200 sm:grid-cols-[11rem_12rem_1fr]">
+      <Select value={brand} onChange={(e) => setBrand(e.target.value)} aria-label="แบรนด์">
+        <option value="">ทุกแบรนด์</option>
+        {brands.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        <option value="-">ไม่มีแบรนด์</option>
+      </Select>
+      <Input type="search" placeholder="ค้นหารหัส/ชื่อ (ไม่บังคับ)" value={q} onChange={(e) => setQ(e.target.value)} />
+      <Select
+        value=""
+        aria-label="เลือกสินค้าเพื่อเพิ่ม"
+        onChange={(e) => {
+          const v = variants.find((x) => x.id === e.target.value);
+          if (v) onPick(v);
+        }}
+      >
+        <option value="">{list.length ? `+ เลือกสินค้าเพื่อเพิ่ม (${list.length.toLocaleString("th-TH")} รายการ)` : "ไม่พบสินค้า"}</option>
+        {list.map((v) => (
+          <option key={v.id} value={v.id}>
+            {v.products?.name}{v.name !== v.sku && v.name !== v.products?.name ? ` ${v.name}` : ""} · {v.sku} — {stockText(v.sku)}
+          </option>
+        ))}
+      </Select>
     </div>
   );
+}
+
+/** Sellable qty per SKU from the staff stock board (sheet available minus holds made in the app). */
+function useStockBoard() {
+  const [m, setM] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    supabase.rpc("stock_board").then(({ data }) => setM(new Map(((data ?? []) as { sku: string; sellable: number }[]).map((r) => [r.sku, Number(r.sellable)]))));
+  }, []);
+  return m;
 }
 
 function PromotionEditor({ initial, variants, onClose }: { initial: Partial<Promotion>; variants: VRow[]; onClose: (saved: boolean) => void }) {
@@ -151,6 +183,7 @@ function PackageEditor({ initial, variants, onClose }: { initial: Partial<Packag
     try {
       const row = {
         name: (p.name ?? "").trim(),
+        code: (p.code ?? "").trim() || null,
         slug: p.slug || slugify(p.name ?? ""),
         summary: p.summary || null,
         description: p.description || null,
@@ -196,8 +229,30 @@ function PackageEditor({ initial, variants, onClose }: { initial: Partial<Packag
     <Card className="mb-6">
       <form onSubmit={save} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="sm:col-span-2"><Field label="ชื่อแพ็กเกจ" required><Input required value={p.name ?? ""} onChange={(e) => setP({ ...p, name: e.target.value })} /></Field></div>
+        <Field label="รหัสแพ็กเกจ" hint="ใช้เหมือนรหัสสินค้า เช่น PKG-10K"><Input className="font-mono" value={p.code ?? ""} placeholder="PKG-001" pattern="[A-Za-z0-9][A-Za-z0-9._/\-]{0,39}" onChange={(e) => setP({ ...p, code: e.target.value.toUpperCase() })} /></Field>
         <Field label="slug"><Input value={p.slug ?? ""} placeholder={slugify(p.name || "package")} onChange={(e) => setP({ ...p, slug: e.target.value.toLowerCase() })} pattern="[a-z0-9][a-z0-9-]*" /></Field>
-        <Field label="ราคาแพ็กเกจ (บาท)" hint={`รวมราคาปกติ ${formatBaht(sumBase)}`}><Input type="number" min="0" step="0.01" value={p.price ?? ""} onChange={(e) => setP({ ...p, price: e.target.value === "" ? null : Number(e.target.value) })} /></Field>
+        <Field
+          label="ราคาแพ็กเกจ (ราคาลด)"
+          hint={
+            <span className="flex flex-wrap items-center gap-x-2">
+              <span>ราคาเต็ม {formatBaht(sumBase)}</span>
+              {sumBase > 0 && p.price != null && p.price < sumBase && <span className="font-semibold text-red-600">ลด {Math.round((1 - p.price / sumBase) * 100)}%</span>}
+              {sumBase > 0 && (
+                <span className="flex items-center gap-1">
+                  · ลด
+                  <input
+                    type="number" min="1" max="99" placeholder="%" aria-label="ลดกี่เปอร์เซ็นต์"
+                    className="w-12 rounded border border-slate-300 px-1 py-0.5 text-xs"
+                    onChange={(e) => { const x = Number(e.target.value); if (x > 0 && x < 100) setP({ ...p, price: Math.round(sumBase * (1 - x / 100)) }); }}
+                  />
+                  %
+                </span>
+              )}
+            </span>
+          }
+        >
+          <Input type="number" min="0" step="0.01" value={p.price ?? ""} onChange={(e) => setP({ ...p, price: e.target.value === "" ? null : Number(e.target.value) })} />
+        </Field>
         <div className="sm:col-span-2 lg:col-span-4"><Field label="คำอธิบายสั้น"><Input value={p.summary ?? ""} onChange={(e) => setP({ ...p, summary: e.target.value })} /></Field></div>
         <div className="sm:col-span-2 lg:col-span-4"><Field label="รายละเอียด"><Textarea rows={3} value={p.description ?? ""} onChange={(e) => setP({ ...p, description: e.target.value })} /></Field></div>
         <Field label="เริ่ม"><Input type="datetime-local" value={toLocal(p.starts_at)} onChange={(e) => setP({ ...p, starts_at: fromLocal(e.target.value) })} /></Field>
@@ -241,7 +296,7 @@ function StatusBadge({ x }: { x: { is_published: boolean; starts_at: string | nu
 export default function PromotionsAdmin() {
   const { can } = useAuth();
   const [tab, setTab] = useState<"promotions" | "packages">("promotions");
-  const variants = useRows<VRow>(() => supabase.from("product_variants").select("*, products(name)").order("sku"));
+  const variants = useRows<VRow>(() => supabase.from("product_variants").select("*, products(name, brands(id, name))").order("sku"));
   const promos = useRows<Promotion>(() => supabase.from("promotions").select("*, promotion_items(variant_id, promo_price)").order("sort").order("created_at", { ascending: false }));
   const packages = useRows<Package>(() => supabase.from("packages").select("*, package_items(variant_id, qty, sort)").order("sort").order("name"));
   const [editPromo, setEditPromo] = useState<Partial<Promotion> | null>(null);
@@ -287,7 +342,7 @@ export default function PromotionsAdmin() {
                 <Card key={p.id} className="!p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold text-navy-900">{p.name}</p>
+                      <p className="font-semibold text-navy-900">{p.code && <span className="mr-1.5 font-mono text-xs text-slate-500">{p.code}</span>}{p.name}</p>
                       <p className="text-xs text-slate-500">{formatBaht(p.price)} · {(p.package_items ?? []).length} รายการ · {period(p)}</p>
                     </div>
                     <StatusBadge x={p} />

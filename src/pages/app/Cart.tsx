@@ -22,7 +22,8 @@ export default function Cart() {
   const idKey = variantLines.map((l) => l.id).join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const variants = useMemo(() => variantLines.map((l) => ({ id: l.id, sku: l.sku ?? "" })), [idKey]);
-  const [basePrices, setBasePrices] = useState<Map<string, number | null>>(new Map());
+  type PriceRow = { id: string; base_price: number | null; show_price?: boolean; special_price?: number | null; special_ends_at?: string | null };
+  const [basePrices, setBasePrices] = useState<Map<string, PriceRow>>(new Map());
   const { price, stock } = usePricing(variants);
 
   // base prices for the price tag (the cart only stores ids)
@@ -30,28 +31,32 @@ export default function Cart() {
     if (!variants.length) return;
     supabase
       .from("product_variants")
-      .select("id, base_price")
+      .select("*")
       .in("id", variants.map((v) => v.id))
-      .then(({ data }) => setBasePrices(new Map((data ?? []).map((r: { id: string; base_price: number | null }) => [r.id, r.base_price]))));
+      .then(({ data }) => setBasePrices(new Map(((data ?? []) as PriceRow[]).map((r) => [r.id, r]))));
   }, [variants]);
 
   const total = variantLines.reduce((sum, l) => {
-    const p = price({ id: l.id, base_price: basePrices.get(l.id) ?? null }).price;
+    const p = price(basePrices.get(l.id) ?? { id: l.id, base_price: null }).price;
     return p == null ? sum : sum + p * l.qty;
   }, 0);
   const hasPackage = lines.some((l) => l.kind === "package");
+  // no stock (zero/negative or still incoming) → cannot be held from stock, goes through a quote instead
+  const noStock = (l: (typeof lines)[number]) => { const st = l.sku ? stock.get(l.sku)?.status : undefined; return st === "out" || st === "incoming"; };
+  const reservable = variantLines.filter((l) => !noStock(l));
+  const waiting = variantLines.length - reservable.length;
 
   async function submit(kind: "quote" | "reserve") {
     setBusy(kind);
     setErr("");
-    const items = (kind === "reserve" ? variantLines : lines).map((l) => (l.kind === "variant" ? { variant_id: l.id, qty: l.qty } : { package_id: l.id, qty: l.qty }));
+    const items = (kind === "reserve" ? reservable : lines).map((l) => (l.kind === "variant" ? { variant_id: l.id, qty: l.qty } : { package_id: l.id, qty: l.qty }));
     const { data, error } =
       kind === "quote"
         ? await supabase.rpc("create_quote_request", { p_items: items, p_note: note, p_contact_name: contactName || null, p_contact_phone: contactPhone || null })
         : await supabase.rpc("create_reservation", { p_items: items, p_note: note });
     setBusy(null);
     if (error) return setErr(errorMessage(error));
-    if (kind === "reserve") variantLines.forEach((l) => remove("variant", l.id));
+    if (kind === "reserve") reservable.forEach((l) => remove("variant", l.id));
     else clear();
     nav("/app/requests", { state: { created: (data as { code: string }).code, kind } });
   }
@@ -78,7 +83,7 @@ export default function Cart() {
         <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
           <div className="space-y-3">
             {lines.map((l) => {
-              const info = l.kind === "variant" ? price({ id: l.id, base_price: basePrices.get(l.id) ?? null }) : null;
+              const info = l.kind === "variant" ? price(basePrices.get(l.id) ?? { id: l.id, base_price: null }) : null;
               const off = discountPct(info);
               return (
                 <div key={l.kind + l.id} className="flex gap-3 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200 sm:gap-4 sm:p-4">
@@ -136,12 +141,17 @@ export default function Cart() {
             </div>
             {err && <Alert>{err}</Alert>}
             <Button className="hidden w-full lg:flex" onClick={() => submit("quote")} loading={busy === "quote"} disabled={!!busy}>ขอใบเสนอราคา</Button>
-            <Button className="w-full" variant="sun" onClick={() => submit("reserve")} loading={busy === "reserve"} disabled={!!busy || !variantLines.length}>
-              จองสินค้าจากสต๊อก
+            <Button className="w-full" variant="sun" onClick={() => submit("reserve")} loading={busy === "reserve"} disabled={!!busy || !reservable.length}>
+              จองสินค้าจากสต๊อก{waiting > 0 && reservable.length > 0 ? ` (${reservable.length} รายการ)` : ""}
             </Button>
             <p className="text-xs text-slate-500">
               การจองจะกันสินค้าไว้ให้ชั่วคราวจนกว่าเจ้าหน้าที่ยืนยันและบันทึกเข้าระบบสต๊อก{hasPackage && " (แพ็กเกจจองไม่ได้ จะคงอยู่ในรายการ)"}
             </p>
+            {waiting > 0 && (
+              <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+                {waiting} รายการยังไม่มีของในสต๊อก กด “ขอใบเสนอราคา” เพื่อสั่งจอง เจ้าหน้าที่จะแจ้งราคาและวันที่ของเข้า
+              </p>
+            )}
           </Card>
         </div>
       )}

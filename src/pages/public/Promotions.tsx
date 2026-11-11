@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { AdSlot, PageBanner } from "../../components/banners";
-import { AddToList, PriceTag, StockBadge } from "../../components/catalog";
+import { AddToList, PackagePrice, PriceTag, StockBadge } from "../../components/catalog";
 import { BoxIcon } from "../../components/icons";
 import { Empty, Loading } from "../../components/ui";
-import { formatBaht, formatDate, formatQty, productImage, usePricing, type Package, type Product, type Promotion, type Variant } from "../../lib/catalog";
+import { formatDate, formatQty, packageFullPrice, productImage, usePricing, type Package, type Product, type Promotion, type Variant } from "../../lib/catalog";
 import { useRows } from "../../lib/content";
 import { supabase, supabaseConfigured } from "../../lib/supabase";
 
@@ -19,7 +19,7 @@ function period(x: { starts_at: string | null; ends_at: string | null }) {
 
 export default function Promotions() {
   const promos = useRows<Promotion>(() => supabase.from("promotions").select("*, promotion_items(variant_id, promo_price)").eq("is_published", true).order("sort").order("created_at", { ascending: false }));
-  const packages = useRows<Package>(() => supabase.from("packages").select("*").eq("is_published", true).order("sort").order("name"));
+  const packages = useRows<Package>(() => supabase.from("packages").select("*, package_items(variant_id, qty, sort, product_variants(base_price, show_price))").eq("is_published", true).order("sort").order("name"));
   const variantIds = useMemo(() => [...new Set(promos.rows.flatMap((p) => (p.promotion_items ?? []).map((i) => i.variant_id)))], [promos.rows]);
   const variants = useRows<VariantWithProduct>(
     () => (variantIds.length ? supabase.from("product_variants").select(VARIANT_SELECT).in("id", variantIds) : Promise.resolve({ data: [], error: null })),
@@ -87,9 +87,12 @@ export default function Promotions() {
                       {pk.cover_url ? <img src={pk.cover_url} alt="" className="h-full w-full object-cover" /> : <BoxIcon className="h-10 w-10 text-slate-300" />}
                     </div>
                     <div className="flex flex-1 flex-col p-4">
+                      {pk.code && <p className="font-mono text-xs text-slate-500">{pk.code}</p>}
                       <h3 className="font-semibold text-navy-900">{pk.name}</h3>
                       {pk.summary && <p className="mt-1 line-clamp-2 text-sm text-slate-500">{pk.summary}</p>}
-                      <p className="mt-auto pt-3 text-lg font-bold text-navy-900">{formatBaht(pk.price)}</p>
+                      <div className="mt-auto pt-3">
+                        <PackagePrice price={pk.price} full={packageFullPrice((pk.package_items ?? []).map((i) => ({ qty: i.qty, base_price: i.product_variants?.base_price, show_price: i.product_variants?.show_price })))} />
+                      </div>
                     </div>
                   </Link>
                 ))}
@@ -134,6 +137,8 @@ export function PackageDetail() {
   }, [slug]);
 
   const { stock } = usePricing(items);
+  // full price of the items bought one by one, to show the saving (only when every item has a price)
+  const sumBase = packageFullPrice(items);
 
   if (loading) return <Loading />;
   if (!pk) return <div className="container-x py-20 text-center text-slate-500">ไม่พบแพ็กเกจนี้</div>;
@@ -145,12 +150,14 @@ export function PackageDetail() {
           {pk.cover_url ? <img src={pk.cover_url} alt={pk.name} className="h-full w-full object-cover" /> : <BoxIcon className="h-16 w-16 text-slate-300" />}
         </div>
         <div>
+          {pk.code && <p className="font-mono text-sm text-slate-500">รหัส {pk.code}</p>}
           <h1 className="text-3xl font-bold text-navy-900">{pk.name}</h1>
           {period(pk) && <p className="mt-1 text-sm font-medium text-red-600">{period(pk)}</p>}
           {pk.summary && <p className="mt-3 text-slate-600">{pk.summary}</p>}
-          <p className="mt-4 text-3xl font-bold text-navy-900">{formatBaht(pk.price)}</p>
+          <div className="mt-4"><PackagePrice price={pk.price} full={sumBase} size="lg" /></div>
+          <p className="mt-1 text-sm text-slate-500">ราคาเดียวทั้งชุด</p>
           <div className="mt-4">
-            <AddToList line={{ kind: "package", id: pk.id, label: `แพ็กเกจ ${pk.name}`, image: pk.cover_url ?? undefined, href: `/packages/${pk.slug}` }} />
+            <AddToList line={{ kind: "package", id: pk.id, label: `แพ็กเกจ ${pk.name}`, sku: pk.code ?? undefined, image: pk.cover_url ?? undefined, href: `/packages/${pk.slug}` }} />
           </div>
           <h2 className="mt-8 text-sm font-semibold text-slate-700">ในแพ็กเกจประกอบด้วย</h2>
           <ul className="mt-2 divide-y divide-slate-100 rounded-xl bg-white ring-1 ring-slate-200">

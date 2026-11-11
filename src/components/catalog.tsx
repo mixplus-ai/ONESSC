@@ -15,19 +15,37 @@ export function PriceTag({ info, unit, size = "md" }: { info: PriceInfo; unit?: 
       <span className={cx("font-bold", big, info.kind === "promo" ? "text-red-600" : "text-navy-900")}>{formatBaht(info.price)}</span>
       {unit && <span className="text-xs text-slate-500">/{unit}</span>}
       {showBase && <span className="text-sm text-slate-400 line-through">{formatBaht(info.base)}</span>}
-      {info.kind === "promo" && <Badge tone="red">โปรโมชั่น</Badge>}
+      {info.kind === "promo" && <Badge tone="red">{info.special ? "ราคาพิเศษ" : "โปรโมชั่น"}</Badge>}
       {info.kind === "company" && <Badge tone="navy">ราคาบริษัทคุณ</Badge>}
     </span>
   );
 }
 
+/** Package price: ราคาลด, struck ราคาเต็ม and "ลด x%" when the set is cheaper than buying its items one by one. */
+export function PackagePrice({ price, full, size = "md" }: { price: number | null; full: number; size?: "md" | "lg" }) {
+  const off = price != null && full > price ? Math.round((1 - price / full) * 100) : 0;
+  return (
+    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <span className={cx("font-bold", off ? "text-red-600" : "text-navy-900", size === "lg" ? "text-3xl" : "text-lg")}>{formatBaht(price)}</span>
+      {off > 0 && (
+        <>
+          <span className={cx("text-slate-400 line-through", size === "lg" ? "text-base" : "text-sm")}>{formatBaht(full)}</span>
+          <span className="rounded-md bg-red-500 px-1.5 py-0.5 text-xs font-bold text-white">ลด {off}%</span>
+          {size === "lg" && <span className="text-sm font-semibold text-red-600">ประหยัด {formatBaht(full - (price as number))}</span>}
+        </>
+      )}
+    </span>
+  );
+}
+
+/** Stock state for customers. Zero or negative stock never shows a number: it reads "สั่งจอง / ขอใบเสนอราคา". */
 export function StockBadge({ info }: { info?: StockInfo }) {
   if (!info) return <Badge>กำลังโหลดสต๊อก</Badge>;
   const s = STOCK_LABEL[info.status];
   return (
     <Badge tone={s.tone}>
       {s.label}
-      {info.available != null && info.status !== "unknown" && ` · ${formatQty(info.available)}`}
+      {info.available != null && info.available > 0 && info.status !== "unknown" && ` · ${formatQty(info.available)}`}
     </Badge>
   );
 }
@@ -68,7 +86,7 @@ export function ProductCard({ p, price, stockSummary }: { p: Product; price?: Pr
                 {n > 1 && price.kind !== "ask" && <span className="mr-1 text-xs text-slate-500">เริ่ม</span>}
                 <PriceTag info={price} size="sm" />
               </span>
-            ) : <span />}
+            ) : !n ? <span className="text-xs font-medium text-slate-500">งดจำหน่ายชั่วคราว</span> : <span />}
             {n > 1 && <span className="text-[11px] text-slate-500">{n} รุ่น</span>}
           </div>
           {stockSummary && n <= 1 && <div className="mt-1"><StockBadge info={stockSummary} /></div>}
