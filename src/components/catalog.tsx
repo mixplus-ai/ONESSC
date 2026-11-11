@@ -21,13 +21,14 @@ export function PriceTag({ info, unit, size = "md" }: { info: PriceInfo; unit?: 
   );
 }
 
+/** Stock state for customers. Zero or negative stock never shows a number: it reads "สั่งจอง / ขอใบเสนอราคา". */
 export function StockBadge({ info }: { info?: StockInfo }) {
   if (!info) return <Badge>กำลังโหลดสต๊อก</Badge>;
   const s = STOCK_LABEL[info.status];
   return (
     <Badge tone={s.tone}>
       {s.label}
-      {info.available != null && info.status !== "unknown" && ` · ${formatQty(info.available)}`}
+      {info.available != null && info.available > 0 && info.status !== "unknown" && ` · ${formatQty(info.available)}`}
     </Badge>
   );
 }

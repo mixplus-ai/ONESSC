@@ -165,7 +165,7 @@ export const STOCK_LABEL: Record<StockState, { label: string; tone: "slate" | "g
   in_stock: { label: "มีสินค้า", tone: "green" },
   low: { label: "เหลือน้อย", tone: "amber" },
   incoming: { label: "รอของเข้า", tone: "navy" },
-  out: { label: "สินค้าหมด", tone: "red" },
+  out: { label: "สั่งจอง / ขอใบเสนอราคา", tone: "amber" },
   unknown: { label: "สอบถามสต๊อก", tone: "slate" },
 };
 
