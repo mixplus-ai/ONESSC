@@ -68,7 +68,7 @@ export function ProductCard({ p, price, stockSummary }: { p: Product; price?: Pr
                 {n > 1 && price.kind !== "ask" && <span className="mr-1 text-xs text-slate-500">เริ่ม</span>}
                 <PriceTag info={price} size="sm" />
               </span>
-            ) : <span />}
+            ) : !n ? <span className="text-xs font-medium text-slate-500">งดจำหน่ายชั่วคราว</span> : <span />}
             {n > 1 && <span className="text-[11px] text-slate-500">{n} รุ่น</span>}
           </div>
           {stockSummary && n <= 1 && <div className="mt-1"><StockBadge info={stockSummary} /></div>}
