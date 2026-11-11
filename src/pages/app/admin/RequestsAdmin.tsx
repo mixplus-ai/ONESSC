@@ -184,7 +184,7 @@ function ReservationCard({ r, onSaved }: { r: Reservation; onSaved: () => void }
 
 export default function RequestsAdmin() {
   const { can } = useAuth();
-  const [tab, setTab] = useState<"quotes" | "reservations">("quotes");
+  const [tab, setTab] = useState<"quotes" | "reservations">(new URLSearchParams(location.search).get("tab") === "reservations" ? "reservations" : "quotes");
   const [show, setShow] = useState<"open" | "all">("open");
   const quotes = useRows<QuoteRequest>(() => supabase.from("quote_requests").select(`*, quote_request_items(*), ${WHO}`).order("created_at", { ascending: false }).limit(300));
   const reservations = useRows<Reservation>(() => supabase.from("reservations").select(`*, reservation_items(*), ${WHO}`).order("created_at", { ascending: false }).limit(300));

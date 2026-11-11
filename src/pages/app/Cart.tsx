@@ -59,7 +59,7 @@ export default function Cart() {
   return (
     <>
       <div className="hidden lg:block">
-        <PageTitle title="ตะกร้าสินค้า" subtitle="ส่งเป็นคำขอใบเสนอราคา หรือจองสินค้าจากสต๊อกที่มีอยู่" actions={<Link to="/products" className="text-sm font-semibold text-navy-700 hover:underline">+ เลือกสินค้าเพิ่ม</Link>} />
+        <PageTitle title="ตะกร้า" subtitle="ส่งเป็นคำขอใบเสนอราคา หรือจองสินค้าจากสต๊อกที่มีอยู่" actions={<Link to="/products" className="text-sm font-semibold text-navy-700 hover:underline">+ เลือกสินค้าเพิ่ม</Link>} />
       </div>
       <div className="relative mb-5 overflow-hidden rounded-2xl bg-gradient-to-r from-navy-50 to-sky-100 p-5 ring-1 ring-navy-100 lg:hidden">
         <div className="flex items-center gap-4">
