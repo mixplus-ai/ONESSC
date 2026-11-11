@@ -86,6 +86,8 @@ export interface Promotion {
 
 export interface Package {
   id: string;
+  /** รหัสแพ็กเกจ, used like a SKU (migration 18) */
+  code?: string | null;
   name: string;
   slug: string;
   summary: string | null;

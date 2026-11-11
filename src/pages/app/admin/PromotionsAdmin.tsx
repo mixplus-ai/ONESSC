@@ -151,6 +151,7 @@ function PackageEditor({ initial, variants, onClose }: { initial: Partial<Packag
     try {
       const row = {
         name: (p.name ?? "").trim(),
+        code: (p.code ?? "").trim() || null,
         slug: p.slug || slugify(p.name ?? ""),
         summary: p.summary || null,
         description: p.description || null,
@@ -196,6 +197,7 @@ function PackageEditor({ initial, variants, onClose }: { initial: Partial<Packag
     <Card className="mb-6">
       <form onSubmit={save} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="sm:col-span-2"><Field label="ชื่อแพ็กเกจ" required><Input required value={p.name ?? ""} onChange={(e) => setP({ ...p, name: e.target.value })} /></Field></div>
+        <Field label="รหัสแพ็กเกจ" hint="ใช้เหมือนรหัสสินค้า เช่น PKG-10K"><Input className="font-mono" value={p.code ?? ""} placeholder="PKG-001" pattern="[A-Za-z0-9][A-Za-z0-9._/\-]{0,39}" onChange={(e) => setP({ ...p, code: e.target.value.toUpperCase() })} /></Field>
         <Field label="slug"><Input value={p.slug ?? ""} placeholder={slugify(p.name || "package")} onChange={(e) => setP({ ...p, slug: e.target.value.toLowerCase() })} pattern="[a-z0-9][a-z0-9-]*" /></Field>
         <Field label="ราคาแพ็กเกจ (บาท)" hint={`รวมราคาปกติ ${formatBaht(sumBase)}`}><Input type="number" min="0" step="0.01" value={p.price ?? ""} onChange={(e) => setP({ ...p, price: e.target.value === "" ? null : Number(e.target.value) })} /></Field>
         <div className="sm:col-span-2 lg:col-span-4"><Field label="คำอธิบายสั้น"><Input value={p.summary ?? ""} onChange={(e) => setP({ ...p, summary: e.target.value })} /></Field></div>
@@ -287,7 +289,7 @@ export default function PromotionsAdmin() {
                 <Card key={p.id} className="!p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold text-navy-900">{p.name}</p>
+                      <p className="font-semibold text-navy-900">{p.code && <span className="mr-1.5 font-mono text-xs text-slate-500">{p.code}</span>}{p.name}</p>
                       <p className="text-xs text-slate-500">{formatBaht(p.price)} · {(p.package_items ?? []).length} รายการ · {period(p)}</p>
                     </div>
                     <StatusBadge x={p} />
