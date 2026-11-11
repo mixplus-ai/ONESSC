@@ -96,7 +96,10 @@ export default function AppLayout() {
         { to: "/app/admin/team", label: "ทีมงาน", icon: UsersIcon, show: can("site_content") },
       ],
     },
-    { title: "ระบบ", items: [{ to: "/app/admin/logs", label: "Log การใช้งาน", icon: LogIcon, show: isAdmin }] },
+    { title: "ระบบ", items: [
+      { to: "/app/admin/reports", label: "รายงานและส่งออก", icon: ChartIcon, show: can("reports") },
+      { to: "/app/admin/logs", label: "Log การใช้งาน", icon: LogIcon, show: isAdmin },
+    ] },
   ];
 
   const nav = (
