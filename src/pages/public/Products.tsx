@@ -132,26 +132,6 @@ export default function Products() {
       <AdSlot placement="products" className="mt-6" />
 
       <div className="container-x pb-12">
-        {/* brands strip */}
-        {usedBrands.length > 1 && !filtering && (
-          <section className="mt-8">
-            <h2 className="text-lg font-bold text-navy-900">เลือกซื้อตามแบรนด์</h2>
-            <div className="no-scrollbar -mx-4 mt-3 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-4 sm:px-0 lg:grid-cols-6">
-              {usedBrands.map((b) => (
-                <button
-                  key={b.id}
-                  type="button"
-                  onClick={() => set("brand", b.slug)}
-                  className="flex h-20 w-32 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl bg-white px-3 ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-sun-400 sm:w-auto"
-                >
-                  {b.logo_url ? <img src={b.logo_url} alt={b.name} className="max-h-8 max-w-full object-contain" /> : <span className="text-base font-bold text-navy-800">{b.name}</span>}
-                  <span className="text-[11px] text-slate-500">{brandCount(b.id)} สินค้า</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
         {/* deals row */}
         {deals.length > 0 && !filtering && (
           <section className="mt-8 overflow-hidden rounded-3xl bg-gradient-to-br from-red-600 via-red-500 to-orange-500 p-4 sm:p-6">
