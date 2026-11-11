@@ -92,6 +92,7 @@ export default function AppLayout() {
       title: "จัดการ",
       items: [
         { to: "/app/admin/users", label: "ผู้ใช้และสิทธิ์", icon: UsersIcon, show: isAdmin },
+        { to: "/app/admin/customers", label: "ลูกค้า", icon: UserIcon, show: can("companies") },
         { to: "/app/admin/companies", label: "บริษัทลูกค้า", icon: BuildingIcon, show: can("companies") },
         { to: "/app/admin/messages", label: "ข้อความติดต่อ", icon: InboxIcon, show: can("contact_messages") },
       ],
