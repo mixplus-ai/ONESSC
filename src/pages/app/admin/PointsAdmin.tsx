@@ -13,6 +13,7 @@ import {
   REDEMPTION_STATUS,
   uploadTrainingMedia,
   type Bonus,
+  type BrandPointRule,
   type LedgerRow,
   type PointsConfig,
   type Redemption,
@@ -311,11 +312,107 @@ function RewardsTab() {
 // ---------------------------------------------------------------------------
 // Point rules (Admin)
 // ---------------------------------------------------------------------------
+
+/** Admin: per-brand "baht per point" + tiers + terms. Brands without a rule use the central rule above. */
+function BrandRulesCard({ isAdmin, fallback }: { isAdmin: boolean; fallback: number }) {
+  const brands = useRows<{ id: string; name: string }>(() => supabase.from("brands").select("id, name").order("sort").order("name"));
+  const rules = useRows<BrandPointRule>(() => supabase.from("brand_point_rules").select("*"));
+  const [draft, setDraft] = useState<Record<string, BrandPointRule>>({});
+  const [open, setOpen] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ tone: "green" | "red"; text: string } | null>(null);
+  const [busy, setBusy] = useState("");
+  useEffect(() => {
+    setDraft(Object.fromEntries(rules.rows.map((r) => [r.brand_id, structuredClone(r)])));
+  }, [rules.rows]);
+  const get = (id: string): BrandPointRule => draft[id] ?? { brand_id: id, baht_per_point: fallback, tiers: [{ min: 0, multiplier: 1 }], terms: "", is_active: true };
+  const put = (id: string, p: Partial<BrandPointRule>) => setDraft((d) => ({ ...d, [id]: { ...get(id), ...p } }));
+  const saved = new Map(rules.rows.map((r) => [r.brand_id, r]));
+
+  async function save(id: string) {
+    const r = get(id);
+    if (!(Number(r.baht_per_point) > 0)) return setMsg({ tone: "red", text: "ยอดขายกี่บาทต่อ 1 แต้มต้องมากกว่า 0" });
+    setBusy(id);
+    const tiers = [...r.tiers].sort((a, b) => a.min - b.min);
+    const { error } = await supabase.from("brand_point_rules").upsert({ brand_id: id, baht_per_point: Number(r.baht_per_point), tiers, terms: r.terms?.trim() || null, is_active: r.is_active });
+    setBusy("");
+    if (error) return setMsg({ tone: "red", text: errorMessage(error) });
+    setMsg({ tone: "green", text: "บันทึกกติกาแบรนด์แล้ว มีผลกับรายการใหม่เท่านั้น" });
+    setOpen(null);
+    rules.reload();
+  }
+  async function removeRule(id: string) {
+    if (!confirm("ลบกติกาของแบรนด์นี้? รายการใหม่จะใช้กติกากลางแทน")) return;
+    const { error } = await supabase.from("brand_point_rules").delete().eq("brand_id", id);
+    if (error) return setMsg({ tone: "red", text: errorMessage(error) });
+    setDraft((d) => { const n = { ...d }; delete n[id]; return n; });
+    rules.reload();
+  }
+
+  return (
+    <Card>
+      <h3 className="font-semibold text-navy-900">กติกาแต้มแยกตามแบรนด์</h3>
+      <p className="text-sm text-slate-500">แต่ละแบรนด์กำหนดเองว่ายอดขายกี่บาทได้ 1 แต้ม และขั้นบันไดตามยอดต่อใบ แบรนด์ที่ยังไม่ตั้งจะใช้กติกากลางด้านบน ({Number(fallback).toLocaleString("th-TH")} บาท = 1 แต้ม)</p>
+      <div className="mt-3 divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200">
+        {brands.rows.map((b) => {
+          const s = saved.get(b.id);
+          const r = get(b.id);
+          const isOpen = open === b.id;
+          const tiers = [...r.tiers].sort((x, y) => x.min - y.min);
+          return (
+            <div key={b.id} className="px-3 py-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="font-medium text-navy-900">{b.name}</span>
+                <span className="flex items-center gap-3">
+                  {s ? (
+                    <span className={s.is_active ? "text-slate-700" : "text-slate-400 line-through"}>
+                      {Number(s.baht_per_point).toLocaleString("th-TH")} บาท = 1 แต้ม{s.tiers.length > 1 ? ` · ขั้นบันได ${s.tiers.length - 1} ขั้น` : ""}
+                    </span>
+                  ) : <Badge>ใช้กติกากลาง</Badge>}
+                  {isAdmin && <button className="text-navy-700 hover:underline" onClick={() => setOpen(isOpen ? null : b.id)}>{isOpen ? "ปิด" : s ? "แก้ไข" : "ตั้งกติกา"}</button>}
+                </span>
+              </div>
+              {s?.terms && !isOpen && <p className="mt-0.5 text-xs text-slate-500">เงื่อนไข: {s.terms}</p>}
+              {isOpen && (
+                <div className="mt-3 space-y-3 rounded-lg bg-slate-50 p-3">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Field label="ยอดขายกี่บาท = 1 แต้ม" required><Input type="number" min={1} value={r.baht_per_point} onChange={(e) => put(b.id, { baht_per_point: Number(e.target.value) })} /></Field>
+                    <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={r.is_active} onChange={(e) => put(b.id, { is_active: e.target.checked })} /> ใช้กติกานี้</label>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">ขั้นบันไดตามยอดต่อใบ</p>
+                    {tiers.map((t, i) => (
+                      <div key={i} className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                        <span>ยอดตั้งแต่</span>
+                        <Input type="number" min={0} value={t.min} className="!w-36" onChange={(e) => put(b.id, { tiers: tiers.map((x, j) => (j === i ? { ...x, min: Number(e.target.value) } : x)) })} />
+                        <span>บาท ได้แต้ม ×</span>
+                        <Input type="number" min={0} step="0.1" value={t.multiplier} className="!w-24" onChange={(e) => put(b.id, { tiers: tiers.map((x, j) => (j === i ? { ...x, multiplier: Number(e.target.value) } : x)) })} />
+                        {tiers.length > 1 && <button className="text-red-600" onClick={() => put(b.id, { tiers: tiers.filter((_, j) => j !== i) })}>ลบ</button>}
+                      </div>
+                    ))}
+                    <button className="mt-2 text-sm font-semibold text-navy-700 hover:underline" onClick={() => put(b.id, { tiers: [...tiers, { min: (tiers.at(-1)?.min ?? 0) + 100000, multiplier: 1.5 }] })}>+ เพิ่มขั้น</button>
+                  </div>
+                  <Field label="เงื่อนไขของแบรนด์ (ไม่บังคับ)" hint="เช่น นับเฉพาะอินเวอร์เตอร์และแบตเตอรี่ ไม่รวมค่าขนส่ง"><Textarea rows={2} value={r.terms ?? ""} onChange={(e) => put(b.id, { terms: e.target.value })} /></Field>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={() => save(b.id)} loading={busy === b.id}>บันทึก</Button>
+                    {s && <Button variant="ghost" onClick={() => removeRule(b.id)}>ลบกติกาแบรนด์ (กลับไปใช้กติกากลาง)</Button>}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {!brands.loading && !brands.rows.length && <p className="px-3 py-3 text-sm text-slate-500">ยังไม่มีแบรนด์ เพิ่มได้ที่เมนูสินค้า</p>}
+      </div>
+      {msg && <div className="mt-3"><Alert tone={msg.tone}>{msg.text}</Alert></div>}
+    </Card>
+  );
+}
 function RulesTab() {
   const { isAdmin } = useAuth();
   const [c, setC] = useState<PointsConfig | null>(null);
   const bonuses = useRows<Bonus>(() => supabase.from("company_point_bonuses").select("*").order("starts_on", { ascending: false }));
-  const [nb, setNb] = useState({ label: "", multiplier: "2", starts_on: "", ends_on: "" });
+  const [nb, setNb] = useState({ label: "", multiplier: "2", starts_on: "", ends_on: "", brand_id: "" });
+  const brandList = useRows<{ id: string; name: string }>(() => supabase.from("brands").select("id, name").order("sort").order("name"));
   const [msg, setMsg] = useState<{ tone: "green" | "red"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -335,9 +432,9 @@ function RulesTab() {
   }
   async function addBonus() {
     if (!nb.label.trim() || !Number(nb.multiplier)) return;
-    const { error } = await supabase.from("company_point_bonuses").insert({ label: nb.label, multiplier: Number(nb.multiplier), starts_on: nb.starts_on || null, ends_on: nb.ends_on || null });
+    const { error } = await supabase.from("company_point_bonuses").insert({ label: nb.label, multiplier: Number(nb.multiplier), starts_on: nb.starts_on || null, ends_on: nb.ends_on || null, brand_id: nb.brand_id || null });
     if (error) return setMsg({ tone: "red", text: errorMessage(error) });
-    setNb({ label: "", multiplier: "2", starts_on: "", ends_on: "" });
+    setNb({ label: "", multiplier: "2", starts_on: "", ends_on: "", brand_id: "" });
     bonuses.reload();
   }
   async function toggleBonus(b: Bonus) {
@@ -360,7 +457,8 @@ function RulesTab() {
         <p className="mt-2 text-xs text-slate-500">แต้มส่วนตัวหมดอายุ 31 ธ.ค. ของปีที่ได้รับ (กติกาเดิมของ cerssc)</p>
       </Card>
       <Card>
-        <h3 className="font-semibold text-navy-900">แต้มบริษัท (จากยอดซื้อ)</h3>
+        <h3 className="font-semibold text-navy-900">แต้มบริษัท: กติกากลาง</h3>
+        <p className="text-sm text-slate-500">ใช้กับแบรนด์ที่ยังไม่ได้ตั้งกติกาของตัวเอง และกำหนดวันหมดอายุของแต้มบริษัททั้งหมด</p>
         <div className="mt-3 grid gap-4 sm:grid-cols-3">
           <Field label="ยอดซื้อกี่บาท = 1 แต้ม"><Input type="number" min={1} disabled={dis} value={c.company_baht_per_point} onChange={(e) => setC({ ...c, company_baht_per_point: Number(e.target.value) })} /></Field>
           <Field label="วันหมดอายุ">
@@ -386,21 +484,26 @@ function RulesTab() {
       </Card>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
       {isAdmin && <Button onClick={save} loading={busy}>บันทึกกติกา</Button>}
+      <BrandRulesCard isAdmin={isAdmin} fallback={c.company_baht_per_point} />
       <Card>
         <h3 className="font-semibold text-navy-900">โบนัสตามช่วงเวลา</h3>
         <p className="text-sm text-slate-500">เช่น “สินค้าโปรโมชั่น ×2” Staff เลือกใช้ตอนบันทึกยอดซื้อที่อยู่ในช่วงวันที่</p>
         <div className="mt-3 space-y-2">
           {bonuses.rows.map((b) => (
             <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
-              <span><b>{b.label}</b> ×{b.multiplier} · {b.starts_on ? formatThaiDate(b.starts_on) : "ไม่กำหนด"} – {b.ends_on ? formatThaiDate(b.ends_on) : "ไม่กำหนด"}</span>
+              <span><b>{b.label}</b> ×{b.multiplier} · {b.brand_id ? brandList.rows.find((x) => x.id === b.brand_id)?.name ?? "แบรนด์" : "ทุกแบรนด์"} · {b.starts_on ? formatThaiDate(b.starts_on) : "ไม่กำหนด"} – {b.ends_on ? formatThaiDate(b.ends_on) : "ไม่กำหนด"}</span>
               {isAdmin ? <button className="text-navy-700 hover:underline" onClick={() => toggleBonus(b)}>{b.is_active ? "ปิด" : "เปิด"}</button> : <Badge tone={b.is_active ? "green" : "slate"}>{b.is_active ? "เปิด" : "ปิด"}</Badge>}
             </div>
           ))}
         </div>
         {isAdmin && (
-          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_6rem_10rem_10rem_auto]">
+          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_6rem_9rem_10rem_10rem_auto]">
             <Input placeholder="ชื่อโบนัส" value={nb.label} onChange={(e) => setNb({ ...nb, label: e.target.value })} />
             <Input type="number" step="0.1" placeholder="×" value={nb.multiplier} onChange={(e) => setNb({ ...nb, multiplier: e.target.value })} />
+            <Select value={nb.brand_id} onChange={(e) => setNb({ ...nb, brand_id: e.target.value })}>
+              <option value="">ทุกแบรนด์</option>
+              {brandList.rows.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </Select>
             <Input type="date" value={nb.starts_on} onChange={(e) => setNb({ ...nb, starts_on: e.target.value })} />
             <Input type="date" value={nb.ends_on} onChange={(e) => setNb({ ...nb, ends_on: e.target.value })} />
             <Button variant="secondary" onClick={addBonus}>เพิ่ม</Button>
