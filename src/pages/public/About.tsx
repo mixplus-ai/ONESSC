@@ -1,44 +1,9 @@
-import { PageBanner, PageHeading } from "../../components/banners";
+import { HomeSections } from "../../components/home/Sections";
 import { useSiteSettings } from "../../lib/content";
+import { aboutSections } from "../../lib/homeSections";
 
+/** Public About page: blocks that Admin arranges in "เนื้อหาหน้าเว็บ → หน้าเกี่ยวกับเรา". */
 export default function About() {
-  const { about, company } = useSiteSettings();
-  return (
-    <>
-      <PageBanner page="about" fallbackTitle={company.name_th} fallbackSubtitle={company.tagline} imageOnly />
-      <div className="container-x py-16">
-        <PageHeading page="about" fallbackTitle={company.name_th} fallbackSubtitle={company.tagline} />
-        <div className="grid gap-8 lg:grid-cols-[1.5fr_1fr]">
-          <div className="space-y-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <div>
-              <h3 className="font-semibold text-navy-900">ประวัติบริษัท</h3>
-              <p className="mt-2 whitespace-pre-line text-slate-600">{about.history}</p>
-            </div>
-            <div>
-              <h3 className="font-semibold text-navy-900">วิสัยทัศน์</h3>
-              <p className="mt-2 whitespace-pre-line text-slate-600">{about.vision}</p>
-            </div>
-          </div>
-          <div className="space-y-6">
-            {about.brands.length > 0 && (
-              <div className="rounded-2xl bg-navy-900 p-6 text-white">
-                <h3 className="font-semibold">แบรนด์ที่เป็นตัวแทนจำหน่าย</h3>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {about.brands.map((b) => <span key={b} className="rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold">{b}</span>)}
-                </div>
-              </div>
-            )}
-            {about.certificates.length > 0 && (
-              <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                <h3 className="font-semibold text-navy-900">ใบรับรอง</h3>
-                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-600">
-                  {about.certificates.map((c) => <li key={c}>{c}</li>)}
-                </ul>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </>
-  );
+  const s = useSiteSettings();
+  return <HomeSections sections={aboutSections(s)} />;
 }
