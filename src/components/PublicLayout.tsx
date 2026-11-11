@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
-import { useSiteSettings } from "../lib/content";
+import { companyLocations, useSiteSettings } from "../lib/content";
 import { cx } from "./ui";
 import { AnnouncementBar } from "./banners";
 import { CartIcon, ChatIcon, MailIcon, MenuIcon, PhoneIcon, PinIcon, SunIcon, XIcon } from "./icons";
@@ -132,10 +132,13 @@ function Footer() {
         </div>
         <div className="space-y-3 text-sm">
           <p className="font-semibold text-white">ติดต่อบริษัท</p>
-          {company.address && (
-            <p className="flex gap-2"><PinIcon className="h-5 w-5 shrink-0 text-sun-400" />{company.address}</p>
-          )}
-          {company.phone && (
+          {companyLocations(company).map((l) => (
+            <p key={l.id} className="flex gap-2">
+              <PinIcon className="h-5 w-5 shrink-0 text-sun-400" />
+              <span><b className="font-semibold text-white">{l.name}</b>{l.address && <span className="block">{l.address}</span>}{l.phone && <a className="block" href={`tel:${l.phone.split(/[,\n]/)[0].replace(/[^\d+]/g, "")}`}>โทร {l.phone}</a>}</span>
+            </p>
+          ))}
+          {company.phone && !!company.locations?.length && (
             <p className="flex gap-2"><PhoneIcon className="h-5 w-5 shrink-0 text-sun-400" /><a href={`tel:${company.phone}`}>{company.phone}</a></p>
           )}
           {company.email && (

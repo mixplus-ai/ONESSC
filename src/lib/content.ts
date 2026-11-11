@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase, supabaseConfigured } from "./supabase";
-import type { AdBanner, AdPlacement, PageKey, PortfolioProject, SiteSettings, TeamMember } from "./types";
+import type { AdBanner, AdPlacement, CompanyLocation, PageKey, PortfolioProject, SiteSettings, TeamMember } from "./types";
 
 export const DEFAULT_SETTINGS: SiteSettings = {
   company: {
@@ -110,6 +110,35 @@ function mergeSettings(base: SiteSettings, key: keyof SiteSettings, value: Recor
     return;
   }
   Object.assign(base[key], value);
+}
+
+/** Company branches; falls back to one location built from the single address fields. */
+export function companyLocations(c: SiteSettings["company"]): CompanyLocation[] {
+  const list = (c.locations ?? []).filter((l) => l.name || l.address || l.phone || l.map);
+  if (list.length) return list;
+  if (!c.address && !c.phone && !c.map_embed_url) return [];
+  return [{ id: "main", name: "สำนักงานใหญ่", address: c.address, phone: c.phone, email: c.email, hours: c.office_hours, contact_name: "", map: c.map_embed_url, note: "" }];
+}
+
+/** Map field → iframe src. Accepts an embed src, a whole <iframe> code, a Google Maps link with coordinates, "lat,lng", or nothing (uses the address). */
+export function mapEmbedSrc(map: string, address: string): string | null {
+  const m = map.trim();
+  const iframe = m.match(/src=["']([^"']+)["']/);
+  if (iframe) return iframe[1];
+  if (/^https:\/\/(www\.)?google\.[^/]+\/maps\/embed/.test(m)) return m;
+  const at = m.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || m.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/) || m.match(/[?&](?:q|query|ll)=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  const q = at ? `${at[1]},${at[2]}` : m && !/^https?:/.test(m) ? m : address.trim();
+  return q ? `https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=15&output=embed` : null;
+}
+
+/** "Open in Google Maps / navigate" link for a location. */
+export function mapLink(map: string, address: string): string | null {
+  const m = map.trim();
+  if (/^https?:\/\//.test(m) && !/\/maps\/embed/.test(m)) return m;
+  const src = mapEmbedSrc(m, address);
+  const q = src?.match(/[?&]q=([^&]+)/)?.[1];
+  if (q) return `https://www.google.com/maps/search/?api=1&query=${q}`;
+  return address.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address.trim())}` : null;
 }
 
 /** Banners active today for a placement, in admin order. */

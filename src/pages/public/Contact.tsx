@@ -1,11 +1,12 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PageBanner, PageHeading } from "../../components/banners";
 import { SectionHeading, TeamCard } from "../../components/cards";
 import { ChatIcon, ClockIcon, MailIcon, PhoneIcon, PinIcon } from "../../components/icons";
 import { Alert, Button, Field, Input, Select, Textarea } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
-import { usePublishedTeam, useSiteSettings } from "../../lib/content";
+import { companyLocations, mapEmbedSrc, mapLink, usePublishedTeam, useSiteSettings } from "../../lib/content";
+import type { CompanyLocation } from "../../lib/types";
 import { errorMessage, supabase, supabaseConfigured } from "../../lib/supabase";
 
 const TOPICS: Record<string, string> = {
@@ -80,19 +81,67 @@ function ContactForm() {
   );
 }
 
+function LocationCard({ l, n }: { l: CompanyLocation; n: number }) {
+  const src = mapEmbedSrc(l.map, l.address);
+  const link = mapLink(l.map, l.address);
+  return (
+    <div className="flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+      {src ? (
+        <iframe src={src} title={`แผนที่ ${l.name}`} className="aspect-[16/10] w-full border-0 bg-slate-100" loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
+      ) : (
+        <div className="grid aspect-[16/10] place-items-center bg-navy-50 text-navy-300"><PinIcon className="h-10 w-10" /></div>
+      )}
+      <div className="flex flex-1 flex-col p-5">
+        <div className="flex items-center gap-2">
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-sun-500 text-sm font-bold text-white">{n + 1}</span>
+          <h3 className="text-lg font-semibold text-navy-900">{l.name || "สถานที่ตั้ง"}</h3>
+        </div>
+        <dl className="mt-3 flex-1 space-y-2 text-sm">
+          {l.address && <Row icon={PinIcon}><span className="whitespace-pre-line">{l.address}</span></Row>}
+          {l.phone && <Row icon={PhoneIcon}>{l.phone.split(/[,\n]/).map((p) => p.trim()).filter(Boolean).map((p, i) => <a key={i} href={`tel:${p.replace(/[^\d+]/g, "")}`} className="mr-3 font-medium text-navy-800 hover:underline">{p}</a>)}</Row>}
+          {l.email && <Row icon={MailIcon}><a href={`mailto:${l.email}`} className="font-medium text-navy-800 hover:underline">{l.email}</a></Row>}
+          {l.hours && <Row icon={ClockIcon}><span className="whitespace-pre-line">{l.hours}</span></Row>}
+          {l.contact_name && <Row icon={ChatIcon}>ผู้ติดต่อ: {l.contact_name}</Row>}
+          {l.note && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs whitespace-pre-line text-amber-900">{l.note}</p>}
+        </dl>
+        {link && (
+          <a href={link} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg bg-navy-800 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-700">
+            <PinIcon className="h-4 w-4" /> นำทางด้วย Google Maps
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Row({ icon: Icon, children }: { icon: typeof PinIcon; children: ReactNode }) {
+  return (
+    <div className="flex gap-2.5 text-slate-700">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-sun-600" />
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
 export function ContactBlock({ heading = true }: { heading?: boolean }) {
   const { company } = useSiteSettings();
+  const locations = companyLocations(company);
   const items = [
-    company.address && { icon: PinIcon, label: "ที่อยู่", value: company.address },
-    company.phone && { icon: PhoneIcon, label: "โทร", value: company.phone, href: `tel:${company.phone}` },
-    company.email && { icon: MailIcon, label: "อีเมล", value: company.email, href: `mailto:${company.email}` },
     company.line_oa_url && { icon: ChatIcon, label: "LINE OA", value: "แอดไลน์คุยกับเซลล์", href: company.line_oa_url },
-    company.office_hours && { icon: ClockIcon, label: "เวลาทำการ", value: company.office_hours },
+    company.email && { icon: MailIcon, label: "อีเมล", value: company.email, href: `mailto:${company.email}` },
+    // with the old single-address setup these already show on the location card
+    company.locations?.length && company.phone && { icon: PhoneIcon, label: "โทรกลาง", value: company.phone, href: `tel:${company.phone}` },
+    company.locations?.length && company.office_hours && { icon: ClockIcon, label: "เวลาทำการ", value: company.office_hours },
   ].filter(Boolean) as { icon: typeof PinIcon; label: string; value: string; href?: string }[];
 
   return (
     <section className="container-x py-20" id="contact">
       {heading && <PageHeading page="contact" />}
+      {locations.length > 0 && (
+        <div className={`mb-10 grid gap-6 ${locations.length > 1 ? "md:grid-cols-2" : ""} ${locations.length > 2 ? "lg:grid-cols-3" : ""}`}>
+          {locations.map((l, n) => <LocationCard key={l.id} l={l} n={n} />)}
+        </div>
+      )}
       <div className="grid gap-8 lg:grid-cols-[1fr_1.4fr]">
         <div className="space-y-4">
           {items.map(({ icon: Icon, label, value, href }) => (
@@ -108,15 +157,6 @@ export function ContactBlock({ heading = true }: { heading?: boolean }) {
               </div>
             </div>
           ))}
-          {company.map_embed_url && (
-            <iframe
-              src={company.map_embed_url}
-              title="แผนที่บริษัท"
-              className="mt-4 aspect-video w-full rounded-2xl ring-1 ring-slate-200"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
-          )}
         </div>
         <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <ContactForm />

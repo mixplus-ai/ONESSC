@@ -3,9 +3,9 @@ import { Gate } from "../../../components/AppLayout";
 import { ImageUpload } from "../../../components/ImageUpload";
 import { Alert, Badge, Button, Card, Field, Input, PageTitle, Textarea, cx } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
-import { DEFAULT_SETTINGS, PAGE_LABEL, PLACEMENT_LABEL, loadSettings } from "../../../lib/content";
+import { DEFAULT_SETTINGS, PAGE_LABEL, PLACEMENT_LABEL, companyLocations, loadSettings, mapEmbedSrc } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
-import type { AdBanner, AdPlacement, PageKey, SiteSettings } from "../../../lib/types";
+import type { AdBanner, AdPlacement, CompanyLocation, PageKey, SiteSettings } from "../../../lib/types";
 import { Tabs } from "../MyRequests";
 import { HomeBuilder } from "./HomeBuilder";
 import { aboutSections, defaultAboutSections, defaultSections, homeSections } from "../../../lib/homeSections";
@@ -24,6 +24,59 @@ const PAGE_PATH: Record<PageKey, string> = {
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+const blankLocation = (name = ""): CompanyLocation => ({ id: Math.random().toString(36).slice(2, 10), name, address: "", phone: "", email: "", hours: "", contact_name: "", map: "", note: "" });
+
+function LocationsEditor({ value, onChange }: { value: CompanyLocation[]; onChange: (v: CompanyLocation[]) => void }) {
+  const put = (id: string, p: Partial<CompanyLocation>) => onChange(value.map((l) => (l.id === id ? { ...l, ...p } : l)));
+  const move = (i: number, d: -1 | 1) => {
+    const j = i + d;
+    if (j < 0 || j >= value.length) return;
+    const next = [...value];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  };
+  return (
+    <div className="space-y-4">
+      {value.map((l, i) => {
+        const src = mapEmbedSrc(l.map, l.address);
+        return (
+          <div key={l.id} className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-navy-900">สถานที่ {i + 1}{l.name ? `: ${l.name}` : ""}</span>
+              <span className="flex gap-3 text-sm">
+                <button type="button" className="text-slate-500 disabled:opacity-30" disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
+                <button type="button" className="text-slate-500 disabled:opacity-30" disabled={i === value.length - 1} onClick={() => move(i, 1)}>↓</button>
+                <button type="button" className="text-red-600 hover:underline" onClick={() => { if (confirm(`ลบ ${l.name || "สถานที่นี้"}?`)) onChange(value.filter((x) => x.id !== l.id)); }}>ลบ</button>
+              </span>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="ชื่อสถานที่" required><Input value={l.name} placeholder="สำนักงานใหญ่ / คลังสินค้า" onChange={(e) => put(l.id, { name: e.target.value })} /></Field>
+                <Field label="เบอร์โทร" hint="หลายเบอร์คั่นด้วยจุลภาค"><Input value={l.phone} onChange={(e) => put(l.id, { phone: e.target.value })} /></Field>
+                <div className="sm:col-span-2"><Field label="ที่อยู่"><Textarea rows={2} value={l.address} onChange={(e) => put(l.id, { address: e.target.value })} /></Field></div>
+                <Field label="อีเมล"><Input type="email" value={l.email} onChange={(e) => put(l.id, { email: e.target.value })} /></Field>
+                <Field label="เวลาทำการ"><Input value={l.hours} placeholder="จันทร์–เสาร์ 08:00–17:00" onChange={(e) => put(l.id, { hours: e.target.value })} /></Field>
+                <Field label="ผู้ติดต่อ (ไม่บังคับ)"><Input value={l.contact_name} onChange={(e) => put(l.id, { contact_name: e.target.value })} /></Field>
+                <Field label="หมายเหตุ (ไม่บังคับ)" hint="เช่น รับสินค้าได้ถึง 16:00 · รถ 6 ล้อเข้าได้"><Input value={l.note} onChange={(e) => put(l.id, { note: e.target.value })} /></Field>
+                <div className="sm:col-span-2">
+                  <Field label="แผนที่ Google Maps" hint="วางลิงก์ Google Maps ที่มีพิกัด หรือโค้ดฝังแผนที่ (แชร์ → ฝังแผนที่) หรือพิกัด เช่น 13.7563, 100.5018 · เว้นว่าง = ค้นจากที่อยู่">
+                    <Input value={l.map} onChange={(e) => put(l.id, { map: e.target.value })} placeholder="https://www.google.com/maps/place/...@13.75,100.50,17z" />
+                  </Field>
+                </div>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-500">ตัวอย่างแผนที่</p>
+                {src ? <iframe key={src} src={src} title="ตัวอย่างแผนที่" className="aspect-square w-full rounded-xl border-0 ring-1 ring-slate-200" loading="lazy" /> : <div className="grid aspect-square place-items-center rounded-xl bg-white text-sm text-slate-400 ring-1 ring-slate-200">ใส่ที่อยู่หรือแผนที่</div>}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      <button type="button" className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => onChange([...value, blankLocation()])}>+ เพิ่มสถานที่</button>
+    </div>
+  );
+}
 
 function adState(b: AdBanner): { label: string; tone: "green" | "amber" | "slate" } {
   if (!b.active) return { label: "ปิดอยู่", tone: "slate" };
@@ -83,6 +136,7 @@ export default function Content() {
     setMsg({ tone: "green", text: "บันทึกแล้ว หน้าเว็บอัปเดตทันที" });
   }
 
+  const locations = s.company.locations?.length ? s.company.locations : companyLocations(s.company).length ? companyLocations(s.company) : [blankLocation("สำนักงานใหญ่"), blankLocation("คลังสินค้า")];
   const lines = (arr: string[]) => arr.join("\n");
   const toArr = (v: string) => v.split("\n").map((x) => x.trim()).filter(Boolean);
   const pg = s.pages[page];
@@ -126,16 +180,17 @@ export default function Content() {
               <Field label="ชื่อบริษัท (ไทย)"><Input value={s.company.name_th} onChange={(e) => set("company", "name_th", e.target.value)} /></Field>
               <Field label="ชื่อบริษัท (อังกฤษ)"><Input value={s.company.name_en} onChange={(e) => set("company", "name_en", e.target.value)} /></Field>
               <div className="sm:col-span-2"><Field label="สโลแกน"><Input value={s.company.tagline} onChange={(e) => set("company", "tagline", e.target.value)} /></Field></div>
-              <div className="sm:col-span-2"><Field label="ที่อยู่"><Textarea rows={2} value={s.company.address} onChange={(e) => set("company", "address", e.target.value)} /></Field></div>
-              <Field label="เบอร์โทร"><Input value={s.company.phone} onChange={(e) => set("company", "phone", e.target.value)} /></Field>
+              <Field label="เบอร์โทรกลาง"><Input value={s.company.phone} onChange={(e) => set("company", "phone", e.target.value)} /></Field>
               <Field label="อีเมล"><Input type="email" value={s.company.email} onChange={(e) => set("company", "email", e.target.value)} /></Field>
               <Field label="ลิงก์ LINE OA" hint="ใช้กับปุ่ม “คุยกับเซลล์”"><Input value={s.company.line_oa_url} onChange={(e) => set("company", "line_oa_url", e.target.value)} /></Field>
               <Field label="ลิงก์ Facebook"><Input value={s.company.facebook_url} onChange={(e) => set("company", "facebook_url", e.target.value)} /></Field>
-              <Field label="เวลาทำการ"><Input value={s.company.office_hours} onChange={(e) => set("company", "office_hours", e.target.value)} /></Field>
-              <Field label="ลิงก์ฝังแผนที่ Google Maps" hint="Google Maps → แชร์ → ฝังแผนที่ → คัดลอกค่า src ของ iframe">
-                <Input value={s.company.map_embed_url} onChange={(e) => set("company", "map_embed_url", e.target.value)} placeholder="https://www.google.com/maps/embed?..." />
-              </Field>
+              <Field label="เวลาทำการ (ทั่วไป)"><Input value={s.company.office_hours} onChange={(e) => set("company", "office_hours", e.target.value)} /></Field>
             </div>
+          </Card>
+          <Card>
+            <h3 className="font-semibold text-navy-900">สถานที่ตั้งและแผนที่</h3>
+            <p className="mb-4 text-sm text-slate-500">เช่น สำนักงานใหญ่ และคลังสินค้า แสดงเป็นการ์ดพร้อมแผนที่และปุ่มนำทางที่หน้าติดต่อเรา และท้ายเว็บทุกหน้า</p>
+            <LocationsEditor value={locations} onChange={(v) => set("company", "locations", v)} />
           </Card>
           <Card>
             <h3 className="mb-4 font-semibold text-navy-900">เกี่ยวกับเรา</h3>

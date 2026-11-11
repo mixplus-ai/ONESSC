@@ -107,6 +107,20 @@ export interface CompanySettings {
   map_embed_url: string;
   office_hours: string;
   logo_url: string;
+  /** Branches such as head office and warehouse; empty = one location from the fields above. */
+  locations?: CompanyLocation[];
+}
+
+export interface CompanyLocation {
+  id: string;
+  name: string;          // เช่น สำนักงานใหญ่, คลังสินค้า
+  address: string;
+  phone: string;
+  email: string;
+  hours: string;
+  contact_name: string;  // ผู้ติดต่อ (ไม่บังคับ)
+  map: string;           // Google Maps link, embed code/src, "lat,lng" or blank (= use the address)
+  note: string;          // เช่น เวลารับสินค้า ทางเข้ารถบรรทุก
 }
 
 export interface HeroSettings {
