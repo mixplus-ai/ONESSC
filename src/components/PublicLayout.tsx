@@ -84,7 +84,7 @@ function Header() {
             to={session ? "/app/cart" : "/login"}
             state={session ? undefined : { from: "/app/cart" }}
             className="relative rounded-lg p-2 text-slate-700 hover:bg-slate-100"
-            aria-label={`รายการสินค้า ${count} รายการ`}
+            aria-label={`ตะกร้า ${count} รายการ`}
           >
             <CartIcon />
             {count > 0 && <span className="absolute -top-0.5 -right-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-sun-500 px-1 text-xs font-bold text-navy-950">{count}</span>}

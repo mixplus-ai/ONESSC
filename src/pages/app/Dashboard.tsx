@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AcademicIcon, ArrowRightIcon, BoxIcon, BuildingIcon, InboxIcon, UsersIcon, WrenchIcon } from "../../components/icons";
+import { AcademicIcon, ArrowRightIcon, BoxIcon, BuildingIcon, CartIcon, FileIcon, GiftIcon, InboxIcon, LogoutIcon, UserIcon, UsersIcon, WrenchIcon } from "../../components/icons";
+import { useCart } from "../../lib/cart";
 import { Alert, Badge, Card, PageTitle } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
@@ -18,6 +19,42 @@ function Stat({ label, value, to, icon: Icon }: { label: string; value: number |
     </Card>
   );
   return to ? <Link to={to}>{body}</Link> : body;
+}
+
+/** Mobile "บัญชี" tab: every customer page in one list, so the app needs no second (hamburger) menu. */
+function AccountHub() {
+  const { signOut } = useAuth();
+  const { count } = useCart();
+  const items = [
+    { to: "/app/cart", label: "ตะกร้า", icon: CartIcon, badge: count || undefined },
+    { to: "/app/requests", label: "คำขอของฉัน", icon: FileIcon },
+    { to: "/app/training", label: "การอบรมของฉัน", icon: AcademicIcon },
+    { to: "/app/claims", label: "งานเคลมของฉัน", icon: WrenchIcon },
+    { to: "/app/points", label: "แต้มและของรางวัล", icon: GiftIcon },
+    { to: "/app/profile", label: "ข้อมูลส่วนตัวและบริษัท", icon: UserIcon },
+  ];
+  return (
+    <Card className="!p-0 lg:hidden">
+      <ul className="divide-y divide-slate-100">
+        {items.map(({ to, label, icon: Icon, badge }) => (
+          <li key={to}>
+            <Link to={to} className="flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-navy-900 active:bg-slate-50">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-navy-50 text-navy-700"><Icon className="h-5 w-5" /></span>
+              <span className="flex-1">{label}</span>
+              {badge != null && <span className="grid h-5 min-w-5 place-items-center rounded-full bg-sun-500 px-1.5 text-[11px] font-bold text-navy-950">{badge}</span>}
+              <ArrowRightIcon className="h-4 w-4 text-slate-400" />
+            </Link>
+          </li>
+        ))}
+        <li>
+          <button type="button" onClick={signOut} className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-red-600 active:bg-red-50">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-red-50"><LogoutIcon className="h-5 w-5" /></span>
+            ออกจากระบบ
+          </button>
+        </li>
+      </ul>
+    </Card>
+  );
 }
 
 function UserDashboard() {
@@ -41,6 +78,7 @@ function UserDashboard() {
 
   return (
     <div className="space-y-6">
+      <AccountHub />
       {!profile.tax_id && (
         <Alert tone="navy">
           กรอกเลขผู้เสียภาษีและชื่อบริษัทใน <Link to="/app/profile" className="font-semibold underline">ข้อมูลส่วนตัว</Link> เพื่อดูราคาเฉพาะบริษัทและแต้มบริษัท
@@ -69,7 +107,7 @@ function UserDashboard() {
         <Link to="/app/requests">
           <Card className="h-full transition hover:ring-navy-200">
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-sun-500/15 text-sun-600"><BoxIcon /></span>
-            <h3 className="mt-4 font-semibold text-navy-900">ใบเสนอราคาและการจอง</h3>
+            <h3 className="mt-4 font-semibold text-navy-900">คำขอของฉัน</h3>
             <p className="mt-1 text-sm text-slate-500">ติดตามคำขอใบเสนอราคาและสถานะการจองสินค้าของคุณ</p>
             <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700">ดูรายการ <ArrowRightIcon className="h-4 w-4" /></span>
           </Card>
@@ -78,14 +116,14 @@ function UserDashboard() {
           <Card className="h-full transition hover:ring-navy-200">
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-sun-500/15 text-sun-600"><AcademicIcon /></span>
             <h3 className="mt-4 font-semibold text-navy-900">การอบรมของฉัน</h3>
-            <p className="mt-1 text-sm text-slate-500">{training ? `จองไว้ ${training.active_bookings} รอบ · ` : ""}ประวัติอบรม ใบประกาศ และเช็กอิน</p>
+            <p className="mt-1 text-sm text-slate-500">{training?.active_bookings != null ? `จองไว้ ${training.active_bookings} รอบ · ` : ""}ประวัติอบรม ใบประกาศ และเช็กอิน</p>
             <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700">ดูการอบรม <ArrowRightIcon className="h-4 w-4" /></span>
           </Card>
         </Link>
         <Link to="/app/points">
           <Card className="h-full transition hover:ring-navy-200">
             <p className="text-sm text-slate-500">แต้มส่วนตัว</p>
-            <p className="text-3xl font-bold text-emerald-700">{formatPoints(training?.personal_points)}</p>
+            <p className="text-3xl font-bold text-emerald-700">{formatPoints(training?.personal_points ?? 0)}</p>
             <p className="mt-2 text-sm text-slate-500">แต้มบริษัท</p>
             <p className="text-xl font-bold text-navy-900">{training?.company_points != null ? formatPoints(training.company_points) : "ยังไม่ผูกบริษัท"}</p>
             <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700">แลกของรางวัล <ArrowRightIcon className="h-4 w-4" /></span>
@@ -106,6 +144,8 @@ function UserDashboard() {
 
 function StaffDashboard() {
   const { isAdmin, can } = useAuth();
+  const claimsOk = can("claims.view") || can("claims");
+  const trainingOk = can("training.view") || can("courses");
   const [stats, setStats] = useState({ pending: 0, messages: 0, users: 0, staff: 0, companies: 0, quotes: 0, reservations: 0, coupons: 0, slips: 0, sessions: 0, claimsNew: 0, claimsOpen: 0 });
   useEffect(() => {
     const count = (q: PromiseLike<{ count: number | null }>) => Promise.resolve(q).then((r) => r.count ?? 0);
@@ -129,36 +169,36 @@ function StaffDashboard() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="เคลมใหม่รอรับเรื่อง" value={stats.claimsNew} to="/app/admin/claims?tab=queue" icon={WrenchIcon} />
-        <Stat label="เคลมค้าง (กำลังดำเนินการ)" value={stats.claimsOpen} to="/app/admin/claims?tab=queue" icon={WrenchIcon} />
-        <Stat label="คำขอใบเสนอราคาที่เปิดอยู่" value={stats.quotes} to="/app/admin/requests" icon={InboxIcon} />
-        <Stat label="การจองที่รอดำเนินการ" value={stats.reservations} to="/app/admin/requests" icon={BoxIcon} />
-        <Stat label="รออนุมัติผูกบริษัท" value={stats.pending} to="/app/admin/companies" icon={BuildingIcon} />
-        <Stat label="รอบอบรมที่จะถึง" value={stats.sessions} to="/app/admin/training" icon={AcademicIcon} />
-        <Stat label="สลิปค่าอบรมรอตรวจ" value={stats.slips} to="/app/admin/training" icon={InboxIcon} />
-        <Stat label="คูปองที่ยังไม่ได้ใช้" value={stats.coupons} to="/app/admin/points" icon={InboxIcon} />
+        {claimsOk && <Stat label="เคลมใหม่รอรับเรื่อง" value={stats.claimsNew} to="/app/admin/claims?tab=queue" icon={WrenchIcon} />}
+        {claimsOk && <Stat label="เคลมค้าง (กำลังดำเนินการ)" value={stats.claimsOpen} to="/app/admin/claims?tab=queue" icon={WrenchIcon} />}
+        {can("requests") && <Stat label="คำขอใบเสนอราคาที่เปิดอยู่" value={stats.quotes} to="/app/admin/requests?tab=quotes" icon={InboxIcon} />}
+        {can("requests") && <Stat label="การจองที่รอดำเนินการ" value={stats.reservations} to="/app/admin/requests?tab=reservations" icon={BoxIcon} />}
+        {can("companies") && <Stat label="รออนุมัติผูกบริษัท" value={stats.pending} to="/app/admin/companies" icon={BuildingIcon} />}
+        {trainingOk && <Stat label="รอบอบรมที่จะถึง" value={stats.sessions} to="/app/admin/training" icon={AcademicIcon} />}
+        {trainingOk && <Stat label="สลิปค่าอบรมรอตรวจ" value={stats.slips} to="/app/admin/training" icon={InboxIcon} />}
+        {can("rewards") && <Stat label="คูปองที่ยังไม่ได้ใช้" value={stats.coupons} to="/app/admin/points?tab=coupons" icon={InboxIcon} />}
         {can("contact_messages") && <Stat label="ข้อความใหม่" value={stats.messages} to="/app/admin/messages" icon={InboxIcon} />}
         <Stat label="ลูกค้า (User)" value={stats.users} to={isAdmin ? "/app/admin/users" : undefined} icon={UsersIcon} />
-        <Stat label="บริษัทลูกค้า" value={stats.companies} to="/app/admin/companies" icon={BuildingIcon} />
+        <Stat label="บริษัทลูกค้า" value={stats.companies} to={can("companies") ? "/app/admin/companies" : undefined} icon={BuildingIcon} />
         {isAdmin && <Stat label="Staff / Admin" value={stats.staff} to="/app/admin/users" icon={UsersIcon} />}
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <Link to="/app/admin/company-points">
+        {can("company_points") && <Link to="/app/admin/company-points">
           <Card className="h-full transition hover:ring-navy-200">
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-sun-500/15 text-sun-600"><AcademicIcon /></span>
             <h3 className="mt-4 font-semibold text-navy-900">เพิ่มแต้มบริษัท</h3>
             <p className="mt-1 text-sm text-slate-500">บันทึกยอดซื้อ ระบบคำนวณแต้มตามกติกาที่ Admin ตั้ง และตัดแต้มเป็นส่วนลด</p>
             <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700">เปิด <ArrowRightIcon className="h-4 w-4" /></span>
           </Card>
-        </Link>
-        <Link to="/app/admin/claims?tab=board">
+        </Link>}
+        {claimsOk && <Link to="/app/admin/claims?tab=board">
           <Card className="h-full transition hover:ring-navy-200">
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-sun-500/15 text-sun-600"><WrenchIcon /></span>
             <h3 className="mt-4 font-semibold text-navy-900">ผัง 5 ขั้นตอนงานเคลม</h3>
             <p className="mt-1 text-sm text-slate-500">ติดตามทุกหน่วยสินค้า เลขที่เบิก SN และรายงานตรวจสอบ</p>
             <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700">เปิด <ArrowRightIcon className="h-4 w-4" /></span>
           </Card>
-        </Link>
+        </Link>}
       </div>
     </div>
   );

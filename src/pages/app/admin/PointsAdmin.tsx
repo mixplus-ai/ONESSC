@@ -516,7 +516,7 @@ function RulesTab() {
 
 export default function PointsAdmin() {
   const { can } = useAuth();
-  const [tab, setTab] = useState<"coupons" | "personal" | "rewards" | "rules">("coupons");
+  const [tab, setTab] = useState<"coupons" | "personal" | "rewards" | "rules">(() => { const t = new URLSearchParams(location.search).get("tab"); return t === "personal" || t === "rewards" || t === "rules" ? t : "coupons"; });
   return (
     <Gate allow={can("rewards")}>
       <PageTitle title="แต้มส่วนตัวและของรางวัล" subtitle="รับคูปอง ดู/ปรับแต้มส่วนตัว ของรางวัล และกติกาแต้ม" />
