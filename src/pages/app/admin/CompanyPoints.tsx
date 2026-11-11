@@ -249,7 +249,7 @@ function RedeemForm({ company, balance, onDone, onClose }: { company: Company; b
   );
 }
 
-function CompanyDetail({ company }: { company: Company }) {
+function CompanyDetail({ company, onChanged }: { company: Company; onChanged: (c: Company | null) => void }) {
   const { name: brandName } = useBrands();
   const ledger = useRows<LedgerRow>(() => supabase.from("point_ledger").select("*").eq("wallet", "company").eq("company_id", company.id).order("created_at", { ascending: false }), [company.id]);
   const redemptions = useRows<Redemption>(() => supabase.from("redemptions").select("*").eq("wallet", "company").eq("company_id", company.id).order("created_at", { ascending: false }), [company.id]);
@@ -311,6 +311,7 @@ function CompanyDetail({ company }: { company: Company }) {
             <p className="text-3xl font-bold text-navy-900">{formatPoints(balance)}</p>
           </div>
         </div>
+        <CompanyEdit company={company} used={ledger.rows.length + redemptions.rows.length} members={members.rows.length} loading={ledger.loading || redemptions.loading || members.loading} onChanged={onChanged} />
         <div className="mt-4 flex flex-wrap gap-2">
           <Button onClick={() => { setEdit(null); setMode("add"); }}>+ เพิ่มแต้มจากใบกำกับภาษี</Button>
           <Button variant="secondary" onClick={() => { setEdit(null); setMode("redeem"); }} disabled={balance <= 0}>ตัดแต้ม</Button>
@@ -383,6 +384,70 @@ function CompanyDetail({ company }: { company: Company }) {
   );
 }
 
+/** Fix a mistyped company: edit name/tax ID, or delete it while nothing is attached yet. */
+function CompanyEdit({ company, used, members, loading, onChanged }: { company: Company; used: number; members: number; loading: boolean; onChanged: (c: Company | null) => void }) {
+  const { isAdmin } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ name: company.name, tax_id: company.tax_id });
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setF({ name: company.name, tax_id: company.tax_id });
+    setErr("");
+  }, [company, open]);
+
+  async function save() {
+    const tax = f.tax_id.replace(/\D/g, "");
+    if (!isValidThaiTaxId(tax)) return setErr("เลขผู้เสียภาษีไม่ถูกต้อง");
+    if (!f.name.trim()) return setErr("กรุณากรอกชื่อบริษัท");
+    setBusy(true);
+    const { data, error } = await supabase.from("companies").update({ name: f.name.trim(), tax_id: tax }).eq("id", company.id).select().single();
+    setBusy(false);
+    if (error) return setErr(error.code === "23505" ? "มีบริษัทอื่นใช้เลขนี้แล้ว" : errorMessage(error));
+    setOpen(false);
+    onChanged(data as Company);
+  }
+  async function remove() {
+    if (!confirm(`ลบบริษัท “${company.name}” (${company.tax_id}) ออกจากระบบ?`)) return;
+    setBusy(true);
+    const { error } = await supabase.from("companies").delete().eq("id", company.id);
+    setBusy(false);
+    if (error) return setErr(errorMessage(error));
+    onChanged(null);
+  }
+
+  const blocked = used > 0 ? "มีรายการแต้มหรือการตัดแต้มแล้ว จึงลบไม่ได้ (แก้ชื่อหรือเลขได้)" : members > 0 ? "มีสมาชิกผูกกับบริษัทนี้ จึงลบไม่ได้" : "";
+  if (!open)
+    return (
+      <button type="button" className="mt-3 text-sm font-semibold text-navy-700 hover:underline" onClick={() => setOpen(true)}>
+        แก้ไขข้อมูลบริษัท
+      </button>
+    );
+  return (
+    <div className="mt-4 space-y-3 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="ชื่อบริษัท"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+        <Field label="เลขผู้เสียภาษี 13 หลัก"><Input inputMode="numeric" value={f.tax_id} onChange={(e) => setF({ ...f, tax_id: e.target.value })} /></Field>
+      </div>
+      {members > 0 && f.tax_id.replace(/\D/g, "") !== company.tax_id && <p className="text-xs text-amber-700">สมาชิก {members} คนผูกกับบริษัทนี้อยู่ แต้มและสมาชิกจะย้ายไปอยู่กับเลขใหม่ทั้งหมด</p>}
+      {err && <p className="text-sm text-red-600">{err}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button className="!py-1.5" onClick={save} disabled={busy}>บันทึก</Button>
+        <Button variant="ghost" className="!py-1.5" onClick={() => setOpen(false)} disabled={busy}>ยกเลิก</Button>
+        {isAdmin && (
+          <span className="ml-auto flex items-center gap-2">
+            {blocked && !loading && <span className="text-xs text-slate-500">{blocked}</span>}
+            <button type="button" className="text-sm font-semibold text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-slate-300 disabled:no-underline" onClick={remove} disabled={busy || loading || !!blocked}>
+              ลบบริษัท
+            </button>
+          </span>
+        )}
+      </div>
+      {!isAdmin && <p className="text-xs text-slate-500">การลบบริษัททำได้เฉพาะ Admin</p>}
+    </div>
+  );
+}
+
 export default function CompanyPoints() {
   const { can } = useAuth();
   const companies = useRows<Company>(() => supabase.from("companies").select("*").order("name"));
@@ -436,7 +501,14 @@ export default function CompanyPoints() {
             <button className="mt-4 px-3 text-sm font-semibold text-navy-700 hover:underline" onClick={() => setAdding(true)}>+ เพิ่มบริษัทที่ยังไม่มีในระบบ</button>
           )}
         </div>
-        <div>{sel ? <CompanyDetail company={sel} /> : <Empty>เลือกบริษัทจากรายการด้านซ้าย</Empty>}</div>
+        <div>{sel ? <CompanyDetail
+              key={sel.id}
+              company={sel}
+              onChanged={(c) => {
+                companies.reload();
+                setSel(c);
+              }}
+            /> : <Empty>เลือกบริษัทจากรายการด้านซ้าย</Empty>}</div>
       </div>
     </Gate>
   );
