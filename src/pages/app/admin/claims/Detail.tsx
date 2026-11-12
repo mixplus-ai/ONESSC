@@ -346,6 +346,27 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
   const bs = BOARD_STATUS[statusBy.get(claim.id) ?? "open"];
   const [grid, setGrid] = useState<number | null>(null);
   const [edit, setEdit] = useState<ClaimUnit | null>(null);
+  const { reload } = useBoard();
+  const [undoing, setUndoing] = useState(false);
+  const [undoErr, setUndoErr] = useState("");
+  // steps are undone in order: only the latest step that has any data can be cleared
+  const stepHasData = (n: number) => units.some((u) => STEPS[n - 1].fields.some((f) => (u[f.key as UnitField] ?? "") !== ""));
+  const lastStep = [5, 4, 3, 2].find(stepHasData) ?? null;
+  async function undoStep(n: number) {
+    const s = STEPS[n - 1];
+    const cols = s.fields.map((f) => f.col).join(", ");
+    if (!confirm(`ยกเลิกขั้น ${n} · ${s.short} ของเคลม ${claim.claim_no}?\nระบบจะล้างช่อง ${cols} ของทุกหน่วย (${units.length} แถว) เพื่อกรอกใหม่\nย้อนได้ทีละขั้นจากขั้นล่าสุด`)) return;
+    setUndoing(true);
+    setUndoErr("");
+    const payload = units.map(({ updated_at, updated_by, seq, ...u }) => {
+      void updated_at; void updated_by; void seq;
+      return { ...u, ...Object.fromEntries(s.fields.map((f) => [f.key, null])) };
+    });
+    const { error } = await supabase.rpc("save_claim_units", { p_units: payload, p_delete: [] });
+    setUndoing(false);
+    if (error) return setUndoErr(errorMessage(error));
+    await reload();
+  }
   const [header, setHeader] = useState(false);
   const [exporting, setExporting] = useState(false);
   const issueSns = units.map((u) => u.iss_sn).filter(Boolean) as string[];
@@ -408,6 +429,7 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
           {kv.map(([k, v]) => <div key={k}><dt className="text-xs text-slate-500">{k}</dt><dd className="truncate" title={v}>{v}</dd></div>)}
         </dl>
+        {undoErr && <div className="mt-3"><Alert>{undoErr}</Alert></div>}
         {dupIssue && <div className="mt-3"><Alert tone="amber">มี SN เบิกซ้ำกันในเคลมนี้</Alert></div>}
         {claim.internal_note && <p className="mt-3 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">หมายเหตุภายใน: {claim.internal_note}</p>}
         <p className="mt-2 text-xs text-slate-400">แก้ไขล่าสุด {new Date(claim.updated_at).toLocaleString("th-TH")} · {staffName(staff, claim.updated_by)}</p>
@@ -424,7 +446,16 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
               <p className={cx("mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium", chipTone[p.state])}>
                 {s.n === 5 ? (p.count ? `${p.count} รายการ` : "ไม่มีรายการ") : `${p.count}/${p.qty} · ${STEP_STATE_LABEL[p.state]}`}
               </p>
-              {canEdit && s.n > 1 && <button type="button" className="mt-2 block text-xs font-semibold text-navy-700 hover:underline" onClick={() => setGrid(s.n)}>{p.count ? "แก้ไข" : "กรอก"}</button>}
+              {canEdit && s.n > 1 && (
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                  <button type="button" className="text-xs font-semibold text-navy-700 hover:underline" onClick={() => setGrid(s.n)}>{p.count ? "แก้ไข" : "กรอก"}</button>
+                  {s.n === lastStep && (
+                    <button type="button" disabled={undoing} className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50" title="ล้างข้อมูลขั้นนี้เพื่อถอยกลับไปแก้ไข (ย้อนได้ทีละขั้นจากขั้นล่าสุด)" onClick={() => undoStep(s.n)}>
+                      {undoing ? "กำลังยกเลิก…" : "ยกเลิกขั้นนี้"}
+                    </button>
+                  )}
+                </div>
+              )}
             </Card>
           );
         })}
