@@ -26,6 +26,8 @@ insert into public.warehouses (code, name, sort) values ('BGL4', 'คลัง B
 alter table public.stock_config
   add column stock_source    text not null default 'sheet' check (stock_source in ('sheet', 'docs')),
   add column docs_start_date date;
+-- owner 2026-11-12: documents become the stock source from 1 Jan 2570 (2027-01-01); the switch itself stays manual in Settings
+update public.stock_config set docs_start_date = '2027-01-01' where docs_start_date is null;
 
 insert into public.permission_keys (key, label, description, sort, grp) values
   ('stock.docs', 'เอกสารคลัง: สร้างและแก้ร่างเอกสารรับเข้า/จ่ายออก', 'สแกน SN ลงเอกสาร บันทึกร่าง', 35, 'sales'),
