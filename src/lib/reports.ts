@@ -1,7 +1,7 @@
 // Reports: one definition per dataset (what to load, which columns can be exported).
 // Rows are read with the signed-in user's own rights (RLS), so a report never shows more
 // than that person could already see in the app.
-import { CLAIM_STATUS, productTypeLabel } from "./claims";
+import { CLAIM_STATUS, SHIP_STATUS, productTypeLabel } from "./claims";
 import { QUOTE_STATUS, RESERVATION_STATUS, reservationState } from "./catalog";
 import { DELIVERY_STATUS } from "./deliveries";
 import { supabase } from "./supabase";
@@ -38,6 +38,8 @@ export interface ReportDef {
   /** the permission(s) that open this report, besides "reports" itself; empty = Admin only */
   perms: string[];
   needsPeople?: boolean;
+  /** only rows where this column is set */
+  notNull?: string;
   /** optional status filter */
   statusCol?: string;
   statuses?: Record<string, string>;
@@ -121,6 +123,28 @@ export const REPORTS: ReportDef[] = [
       { key: "closed_by", label: "ปิดงานโดย", get: (r, l) => person(l, r.closed_by) },
       { key: "customer_note", label: "ข้อความถึงลูกค้า", get: (r) => r.customer_note },
       { key: "internal_note", label: "หมายเหตุภายใน", get: (r) => r.internal_note },
+    ],
+  },
+  {
+    key: "claim_shipping", group: "งานบริการและเคลม", label: "ค่าจัดส่งเคลม", desc: "เคลมที่บริษัทออกค่าส่งให้ก่อน · ยอดค้างชำระและรับแล้ว",
+    table: "claims", select: "*", dateCol: "ship_set_at", dateLabel: "วันที่บันทึกค่าส่ง", notNull: "ship_status",
+    order: { col: "ship_set_at" }, perms: ["claims.view", "claims"], needsPeople: true,
+    statusCol: "ship_status", statuses: statusMap(SHIP_STATUS),
+    cols: [
+      { key: "claim_no", label: "เลขเคลม", get: (r) => r.claim_no, def: true },
+      { key: "company_name", label: "บริษัท", get: (r) => r.company_name, def: true },
+      { key: "contact_name", label: "ผู้ติดต่อ", get: (r) => r.contact_name, def: true },
+      { key: "ship_fee", label: "ค่าส่ง (บาท)", get: (r) => num(r.ship_fee), def: true, num: true },
+      { key: "ship_status", label: "สถานะค่าส่ง", get: (r) => labelOf(SHIP_STATUS, r.ship_status), def: true },
+      { key: "ship_carrier", label: "ขนส่ง", get: (r) => r.ship_carrier, def: true },
+      { key: "ship_tracking", label: "เลขพัสดุ", get: (r) => r.ship_tracking, def: true },
+      { key: "ship_set_at", label: "วันที่บันทึกค่าส่ง", get: (r) => fmtDateTime(r.ship_set_at), def: true },
+      { key: "ship_slip_at", label: "วันที่แนบสลิป", get: (r) => fmtDateTime(r.ship_slip_at) },
+      { key: "ship_paid_at", label: "วันที่ยืนยันรับเงิน", get: (r) => fmtDateTime(r.ship_paid_at), def: true },
+      { key: "ship_checked_by", label: "ตรวจสลิปโดย", get: (r, l) => person(l, r.ship_checked_by) },
+      { key: "assigned_to", label: "ผู้รับผิดชอบ", get: (r, l) => person(l, r.assigned_to) },
+      { key: "delivery_address", label: "ที่อยู่จัดส่ง", get: (r) => r.delivery_address },
+      { key: "ship_note", label: "เหตุผลสลิปไม่ถูกต้อง", get: (r) => r.ship_note },
     ],
   },
   {
@@ -406,6 +430,7 @@ export async function loadReport(def: ReportDef, q: ReportQuery, onProgress?: (n
     if (def.dateCol && q.from) query = query.gte(def.dateCol, q.from);
     if (def.dateCol && q.to) query = query.lte(def.dateCol, def.dateCol.endsWith("_at") ? `${q.to}T23:59:59.999+07:00` : q.to);
     if (def.statusCol && q.status) query = query.eq(def.statusCol, q.status);
+    if (def.notNull) query = query.not(def.notNull, "is", null);
     const { data, error } = await query.order(def.order.col, { ascending: def.order.asc ?? false }).range(start, start + PAGE - 1);
     if (error) throw error;
     rows.push(...(data ?? []));

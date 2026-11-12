@@ -6,7 +6,7 @@ type Tone = "slate" | "green" | "amber" | "red" | "navy";
 
 export type ProductType = "inverter" | "optimizer" | "accessory" | "panel" | "battery" | "other";
 export type ClaimStatus = "submitted" | "in_progress" | "done" | "returned" | "closed" | "rejected";
-export type FileKind = "customer" | "receive" | "issue" | "claim_doc" | "other";
+export type FileKind = "customer" | "receive" | "issue" | "claim_doc" | "other" | "ship_receipt" | "ship_slip";
 
 export const PRODUCT_TYPES: { key: ProductType; label: string }[] = [
   { key: "inverter", label: "Inverter" },
@@ -27,12 +27,22 @@ export const CLAIM_STATUS: Record<ClaimStatus, { label: string; tone: Tone; step
   closed: { label: "ปิดงาน", tone: "green", step: 4 },
   rejected: { label: "ไม่อนุมัติ / ยกเลิก", tone: "red", step: 1 },
 };
+export type ShipStatus = "unpaid" | "slip" | "paid" | "rejected";
+export const SHIP_STATUS: Record<ShipStatus, { label: string; tone: Tone }> = {
+  unpaid: { label: "รอชำระค่าส่ง", tone: "amber" },
+  slip: { label: "สลิปค่าส่งรอตรวจ", tone: "navy" },
+  paid: { label: "ชำระค่าส่งแล้ว", tone: "green" },
+  rejected: { label: "สลิปไม่ถูกต้อง แนบใหม่", tone: "red" },
+};
+export const fmtBaht = (n: number | null | undefined) => (n == null ? "-" : `${Number(n).toLocaleString("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} บาท`);
 export const FILE_KIND: Record<FileKind, string> = {
   customer: "ไฟล์จากลูกค้า",
   receive: "รับของเคลมจากลูกค้า",
   issue: "ส่งของให้ลูกค้า",
   claim_doc: "ใบเคลมสินค้า",
   other: "เอกสารภายใน",
+  ship_receipt: "ใบเสร็จค่าจัดส่ง",
+  ship_slip: "สลิปโอนค่าจัดส่ง",
 };
 
 export interface Claim {
@@ -72,6 +82,17 @@ export interface Claim {
   returned_at: string | null;
   closed_at: string | null;
   closed_by: string | null;
+  ship_fee: number | null;
+  ship_carrier: string | null;
+  ship_tracking: string | null;
+  ship_status: ShipStatus | null;
+  ship_receipt_path: string | null;
+  ship_slip_path: string | null;
+  ship_note: string | null;
+  ship_slip_at: string | null;
+  ship_paid_at: string | null;
+  ship_set_at: string | null;
+  ship_checked_by: string | null;
   internal_note: string | null;
   created_at: string;
   updated_at: string;
@@ -142,6 +163,15 @@ export interface MyClaim {
   claim_doc_path: string | null;
   returned_at: string | null;
   closed_at: string | null;
+  ship_fee: number | null;
+  ship_carrier: string | null;
+  ship_tracking: string | null;
+  ship_status: ShipStatus | null;
+  ship_receipt_path: string | null;
+  ship_slip_path: string | null;
+  ship_note: string | null;
+  ship_slip_at: string | null;
+  ship_paid_at: string | null;
   closed_by: string | null;
   created_at: string;
   updated_at: string;
@@ -170,6 +200,7 @@ export interface ClaimSettings {
   shipping_label: string;
   form_note: string | null;
   email_note: string | null;
+  ship_bank_info: string | null;
 }
 export const REQUIRE_FIELD_LABEL: Record<string, string> = {
   installer_name: "ผู้ติดตั้ง (EPC)",

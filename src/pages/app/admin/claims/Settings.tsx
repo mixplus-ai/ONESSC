@@ -30,6 +30,7 @@ function General() {
         <Field label="ตัวเลือกรับเอง"><Input value={s.pickup_label} onChange={(e) => set("pickup_label", e.target.value)} /></Field>
         <Field label="ตัวเลือกจัดส่ง"><Input value={s.shipping_label} onChange={(e) => set("shipping_label", e.target.value)} /></Field>
         <div className="sm:col-span-2"><Field label="ข้อความบนฟอร์มแจ้งเคลม"><Textarea rows={2} value={s.form_note ?? ""} onChange={(e) => set("form_note", e.target.value || null)} /></Field></div>
+        <div className="sm:col-span-2"><Field label="บัญชีรับโอนค่าจัดส่งเคลม" hint="แสดงให้ลูกค้าเห็นตอนแนบสลิป เช่น ธนาคาร / เลขบัญชี / ชื่อบัญชี"><Textarea rows={3} value={s.ship_bank_info ?? ""} onChange={(e) => set("ship_bank_info", e.target.value || null)} /></Field></div>
         <div className="sm:col-span-2"><Field label="ข้อความท้ายอีเมล"><Textarea rows={2} value={s.email_note ?? ""} onChange={(e) => set("email_note", e.target.value || null)} /></Field></div>
       </div>
       {msg && <div className="mt-3"><Alert tone={msg.ok ? "green" : "red"}>{msg.text}</Alert></div>}
