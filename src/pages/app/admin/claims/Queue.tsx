@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Select, Spinner, Textarea, cx } from "../../../../components/ui";
 import { useAuth } from "../../../../lib/auth";
 import {
-  CLAIM_STATUS, FILE_KIND, fmtThaiTime, openClaimFile, productTypeLabel, splitSns, uploadClaimFile,
+  CLAIM_STATUS, FILE_KIND, SHIP_STATUS, fmtThaiTime, openClaimFile, productTypeLabel, splitSns, uploadClaimFile,
   type Claim, type ClaimEvent, type ClaimFile, type ClaimStatus,
 } from "../../../../lib/claims";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import { staffName, useBoard, type StaffOpt } from "./shared";
+import { ShippingBox } from "./Shipping";
 import { SnChangeHistory, SnChangeQueue, useSnChanges } from "./SnChanges";
 import { ClaimSnStock } from "../stockdocs/ClaimSnStock";
 import type { SnChange } from "../../../../lib/claims";
@@ -17,12 +18,13 @@ const actorName = (staff: StaffOpt[], id: string | null) => {
   return s ? s.full_name || s.email : "ลูกค้า";
 };
 
-type QTab = "new" | "progress" | "done" | "returned" | "mine" | "all";
+type QTab = "new" | "progress" | "done" | "returned" | "ship" | "mine" | "all";
 const QTABS: { key: QTab; label: string; match: (c: Claim, me: string) => boolean }[] = [
   { key: "new", label: "เคลมใหม่", match: (c) => c.status === "submitted" },
   { key: "progress", label: "กำลังดำเนินการ", match: (c) => c.status === "in_progress" },
   { key: "done", label: "รอลูกค้าส่งคืน", match: (c) => c.status === "done" },
   { key: "returned", label: "รอตรวจรับของคืน", match: (c) => c.status === "returned" },
+  { key: "ship", label: "สลิปค่าส่งรอตรวจ", match: (c) => c.ship_status === "slip" },
   { key: "mine", label: "ที่ฉันรับผิดชอบ", match: (c, me) => c.assigned_to === me && !["closed", "rejected"].includes(c.status) },
   { key: "all", label: "ทั้งหมด", match: () => true },
 ];
@@ -56,6 +58,8 @@ function Details({ c }: { c: Claim }) {
       {c.site_name && <div><dt className="inline text-slate-500">ไซต์งาน: </dt><dd className="inline">{c.site_name}</dd></div>}
       {d.manager_sn && <div><dt className="inline text-slate-500">S/N Manager: </dt><dd className="inline font-mono">{d.manager_sn}</dd></div>}
       {d.case_no && <div><dt className="inline text-slate-500">Case (Engineer): </dt><dd className="inline">{d.case_no}</dd></div>}
+      {d.issue && <div className="sm:col-span-2"><dt className="inline text-slate-500">Issue: </dt><dd className="inline font-medium">{d.issue}</dd></div>}
+      {d.description && <div className="sm:col-span-2"><dt className="inline text-slate-500">Description: </dt><dd className="inline whitespace-pre-line">{d.description}</dd></div>}
       {d.ref_inv_sn && <div><dt className="inline text-slate-500">อ้างอิง S/N Inverter: </dt><dd className="inline font-mono">{d.ref_inv_sn}</dd></div>}
       {d.items && d.items.length > 0 && (
         <div className="sm:col-span-2"><dt className="text-slate-500">Optimizer</dt>
@@ -121,7 +125,12 @@ function QueueCard({ c, onOpenBoard, snChanges }: { c: Claim; onOpenBoard: (id: 
   }
   const take = () => run("take", () => supabase.rpc("take_claim", { p_claim: c.id }));
   const assign = (uid: string) => run("assign", () => supabase.rpc("assign_claim", { p_claim: c.id, p_user: uid || null }));
-  const setStatus = (to: ClaimStatus) => run(to, () => supabase.rpc("set_claim_status", {
+  const setStatus = (to: ClaimStatus) => {
+    if (to === "closed" && c.ship_status && c.ship_status !== "paid"
+        && !confirm(`ค่าจัดส่งเคลมนี้ยังไม่ได้รับเงิน (${SHIP_STATUS[c.ship_status].label}) ต้องการปิดงานต่อหรือไม่?`)) return;
+    return doStatus(to);
+  };
+  const doStatus = (to: ClaimStatus) => run(to, () => supabase.rpc("set_claim_status", {
     p_claim: c.id, p_status: to, p_note: note.trim() || null,
     p_reported_sns: sns.trim() === c.reported_sns.join("\n") ? null : splitSns(sns),
   }));
@@ -150,7 +159,7 @@ function QueueCard({ c, onOpenBoard, snChanges }: { c: Claim; onOpenBoard: (id: 
           <p className="text-xs text-slate-500">{c.qty} ชิ้น · SN {c.reported_sns.slice(0, 3).join(", ") || "-"}{c.reported_sns.length > 3 ? ` +${c.reported_sns.length - 3}` : ""}</p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <span className="flex items-center gap-1"><AgeBadge c={c} /><Badge tone={st.tone}>{st.label}</Badge></span>
+          <span className="flex flex-wrap items-center justify-end gap-1"><AgeBadge c={c} />{c.ship_status && c.ship_status !== "paid" && <Badge tone={SHIP_STATUS[c.ship_status].tone}>{SHIP_STATUS[c.ship_status].label}</Badge>}<Badge tone={st.tone}>{st.label}</Badge></span>
           <span className={cx("text-xs", c.assigned_to ? "text-slate-600" : "font-semibold text-amber-700")}>{staffName(staff, c.assigned_to)}</span>
         </div>
       </div>
@@ -171,6 +180,7 @@ function QueueCard({ c, onOpenBoard, snChanges }: { c: Claim; onOpenBoard: (id: 
           <Details c={c} />
           <ClaimSnStock c={c} />
           <SnChangeHistory rows={snChanges} />
+          {(c.delivery_type === "shipping" || c.ship_status) && <ShippingBox c={c} canHandle={canHandle} reload={reload} />}
           <div>
             <p className="mb-1 text-sm font-medium text-slate-700">ไฟล์</p>
             {files === null ? <Spinner className="h-4 w-4" /> : files.length === 0 ? <p className="text-sm text-slate-500">ไม่มีไฟล์แนบ</p> : (

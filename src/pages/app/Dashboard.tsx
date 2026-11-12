@@ -19,12 +19,15 @@ function MyUpdates() {
   useEffect(() => {
     if (!uid) return;
     Promise.all([
-      supabase.rpc("my_claims").then(({ data }) => (data ?? []) as { id: string; claim_no: string; status: ClaimStatus; model: string | null; returned_at: string | null }[]),
+      supabase.rpc("my_claims").then(({ data }) => (data ?? []) as { id: string; claim_no: string; status: ClaimStatus; model: string | null; returned_at: string | null; ship_status: string | null; ship_fee: number | null }[]),
       supabase.from("quote_requests").select("id, status, created_at").eq("user_id", uid).eq("status", "quoted").then(({ data }) => data ?? []),
       supabase.from("training_registrations").select("id, status, course_sessions!inner(title, starts_on)").eq("user_id", uid).eq("status", "registered")
         .gte("course_sessions.starts_on", todayBkk()).then(({ data }) => (data ?? []) as unknown as { id: string; course_sessions: { title: string | null; starts_on: string } }[]),
     ]).then(([claims, quotes, regs]) => {
       const out: Update[] = [];
+      claims.filter((c) => c.ship_status === "unpaid" || c.ship_status === "rejected").forEach((c) => out.push({ key: `s${c.id}`, to: "/app/claims", tone: "amber",
+        title: `ค้างชำระค่าส่ง เคลม ${c.claim_no}${c.ship_fee != null ? ` · ${Number(c.ship_fee).toLocaleString("th-TH")} บาท` : ""}`,
+        text: c.ship_status === "rejected" ? "สลิปไม่ถูกต้อง กรุณาแนบสลิปใหม่" : "โอนค่าจัดส่งแล้วแนบสลิปในหน้าเคลม" }));
       claims.filter((c) => c.status === "done").forEach((c) => out.push({ key: c.id, to: "/app/claims", tone: "amber", title: `เคลม ${c.claim_no}: รอส่งของคืน`, text: "ดำเนินการเสร็จแล้ว กรุณาส่งสินค้าตัวเก่ากลับ และยืนยัน SN ในหน้าเคลม" }));
       claims.filter((c) => ["submitted", "in_progress", "returned"].includes(c.status)).slice(0, 3).forEach((c) =>
         out.push({ key: c.id, to: "/app/claims", tone: "navy", title: `เคลม ${c.claim_no}: ${CLAIM_STATUS[c.status].label}`, text: `ขั้นที่ ${CLAIM_STATUS[c.status].step} จาก 3${c.model ? ` · ${c.model}` : ""}` }));
@@ -197,7 +200,7 @@ function StaffDashboard() {
   const claimsOk = can("claims.view") || can("claims");
   const trainingOk = can("training.view") || can("courses");
   const stockOk = can("stock.view") || can("stock.docs") || can("stock.post");
-  const [stats, setStats] = useState({ pending: 0, messages: 0, users: 0, staff: 0, companies: 0, quotes: 0, reservations: 0, coupons: 0, slips: 0, sessions: 0, claimsNew: 0, claimsOpen: 0, overdue: 0, drafts: 0 });
+  const [stats, setStats] = useState({ pending: 0, messages: 0, users: 0, staff: 0, companies: 0, quotes: 0, reservations: 0, coupons: 0, slips: 0, sessions: 0, claimsNew: 0, claimsOpen: 0, overdue: 0, drafts: 0, shipSlips: 0 });
   useEffect(() => {
     const count = (q: PromiseLike<{ count: number | null }>) => Promise.resolve(q).then((r) => r.count ?? 0);
     Promise.all([
@@ -215,15 +218,17 @@ function StaffDashboard() {
       count(supabase.from("claims").select("id", { count: "exact", head: true }).eq("source", "customer").in("status", ["in_progress", "done", "returned"])),
       stockOk ? count(supabase.from("serials").select("sn_key", { count: "exact", head: true }).in("status", ["borrowed", "withdrawn"]).lt("due_date", todayBkk())) : Promise.resolve(0),
       stockOk ? count(supabase.from("stock_docs").select("id", { count: "exact", head: true }).eq("status", "draft")) : Promise.resolve(0),
-    ]).then(([pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions, claimsNew, claimsOpen, overdue, drafts]) =>
-      setStats({ pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions, claimsNew, claimsOpen, overdue, drafts }));
-  }, [can]);
+      claimsOk ? count(supabase.from("claims").select("id", { count: "exact", head: true }).eq("ship_status", "slip")) : Promise.resolve(0),
+    ]).then(([pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions, claimsNew, claimsOpen, overdue, drafts, shipSlips]) =>
+      setStats({ pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions, claimsNew, claimsOpen, overdue, drafts, shipSlips }));
+  }, [can, claimsOk, stockOk]);
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {claimsOk && <Stat label="เคลมใหม่รอรับเรื่อง" value={stats.claimsNew} to="/app/admin/claims?tab=queue" icon={WrenchIcon} />}
         {claimsOk && <Stat label="เคลมค้าง (กำลังดำเนินการ)" value={stats.claimsOpen} to="/app/admin/claims?tab=queue" icon={WrenchIcon} />}
+        {claimsOk && stats.shipSlips > 0 && <Stat label="สลิปค่าส่งเคลมรอตรวจ" value={stats.shipSlips} to="/app/admin/claims?tab=queue" icon={InboxIcon} />}
         {stockOk && <Stat label="ของยืม/เบิก เลยกำหนดคืน" value={stats.overdue} to="/app/admin/stock-docs?tab=out" icon={BoxIcon} />}
         {stockOk && <Stat label="เอกสารคลังรอยืนยัน" value={stats.drafts} to="/app/admin/stock-docs?tab=docs" icon={InboxIcon} />}
         {can("requests") && <Stat label="คำขอใบเสนอราคาที่เปิดอยู่" value={stats.quotes} to="/app/admin/requests?tab=quotes" icon={InboxIcon} />}
