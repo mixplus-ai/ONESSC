@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { Gate } from "../../../components/AppLayout";
 import { FileUpload, GalleryUpload, IMAGE_SIZES, ImageUpload } from "../../../components/ImageUpload";
 import { BoxIcon, XIcon } from "../../../components/icons";
@@ -394,6 +395,7 @@ export default function ProductsAdmin() {
         subtitle="แคตตาล็อก รูป สเปก ราคาปกติ และรหัสสินค้าที่ผูกกับสต๊อก"
         actions={tab === "products" && !editing && (
           <>
+            <Link to="/app/admin/products-grid" className="inline-flex h-10 items-center rounded-xl px-3 text-sm font-semibold text-navy-700 ring-1 ring-slate-300 hover:bg-slate-50">แก้แบบตาราง</Link>
             <Button variant="secondary" onClick={() => { setPicking(true); setMsg(""); }}>+ เพิ่มจากสต๊อก</Button>
             <Button onClick={() => setEditing({})}>+ เพิ่มสินค้า</Button>
           </>
