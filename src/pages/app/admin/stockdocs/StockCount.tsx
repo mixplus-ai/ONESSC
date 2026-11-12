@@ -10,6 +10,7 @@ import {
 } from "../../../../lib/stockdocs";
 import { beep, CameraScan } from "./CameraScan";
 import { PhotoScan } from "./PhotoScan";
+import { printStockCount } from "./print";
 
 const COUNT_STATUS = { open: { label: "กำลังนับ", tone: "amber" }, closed: { label: "ปิดแล้ว", tone: "green" }, cancelled: { label: "ยกเลิก", tone: "red" } } as const;
 
@@ -141,6 +142,7 @@ function CountScreen({ id, warehouses, onBack, openDoc }: { id: string; warehous
         <h2 className="text-lg font-bold text-navy-900">ตรวจนับ <span className="font-mono">{c.count_no}</span></h2>
         <Badge tone={COUNT_STATUS[c.status].tone}>{COUNT_STATUS[c.status].label}</Badge>
         <span className="text-sm text-slate-600">{warehouses.find((w) => w.id === c.warehouse_id)?.name}{c.skus ? ` · ${c.skus.join(", ")}` : " · ทุกรหัส"}</span>
+        <Button variant="secondary" className="ml-auto" onClick={() => printStockCount(c, rep, warehouses.find((w) => w.id === c.warehouse_id)?.name ?? "")}>พิมพ์ / PDF</Button>
       </div>
 
       <Card className="!p-4">

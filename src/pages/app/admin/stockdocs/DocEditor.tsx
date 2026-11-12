@@ -272,7 +272,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         <h2 className="text-lg font-bold text-navy-900">{DOC_LABEL[t]} {head.doc_no && <span className="font-mono">{head.doc_no}</span>}</h2>
         {head.status && <Badge tone={DOC_STATUS_TONE[head.status]}>{DOC_STATUS_LABEL[head.status]}</Badge>}
         <div className="ml-auto flex gap-2">
-          {head.id && <Button variant="secondary" onClick={() => printStockDoc(head as StockDoc, items, warehouses)}>พิมพ์</Button>}
+          {head.id && <Button variant="secondary" onClick={() => printStockDoc(head as StockDoc, items, warehouses)}>พิมพ์ / PDF</Button>}
         </div>
       </div>
 
