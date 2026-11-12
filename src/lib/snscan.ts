@@ -74,6 +74,57 @@ export async function scanBarcodes(file: Blob): Promise<{ items: SnCandidate[]; 
   return { items: out, angle: angles.length ? angles[Math.floor(angles.length / 2)] : 0 };
 }
 
+/** SN-looking tokens in plain text, one line at a time ("S/N: X" lines are marked as labelled). */
+export function textCandidates(text: string): SnCandidate[] {
+  const out: SnCandidate[] = [];
+  for (const line of text.split("\n")) {
+    const L = line.toUpperCase();
+    const labelled = /\b(S\/?N|SERIAL)\b/.test(L);
+    const body = L.replace(/.*\b(S\/N|SN|SERIAL(\s*NO\.?)?)(\s*[:#.]\s*|\s+)/, "");
+    for (const tok of body.match(/[A-Z0-9][A-Z0-9\-/.]{4,}[A-Z0-9]/g) ?? []) {
+      // a serial has digits and is not a date, a price or a plain word
+      if (!/\d/.test(tok) || /^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$/.test(tok) || /^\d{1,3}(\.\d+)?$/.test(tok)) continue;
+      out.push({ text: tok, source: "text", labelled: labelled || undefined });
+    }
+  }
+  return out;
+}
+
+export const MAX_PDF_PAGES = 20;
+
+/** A PDF as page images (for barcodes / OCR) plus the text layer of each page when it has one (exported PDFs). */
+export async function pdfPages(file: Blob): Promise<{ images: Blob[]; text: string[]; total: number }> {
+  const { loadPdfjs } = await import("./deliveries");
+  const pdfjs = await loadPdfjs();
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const images: Blob[] = [], text: string[] = [];
+  for (let p = 1; p <= Math.min(doc.numPages, MAX_PDF_PAGES); p++) {
+    const page = await doc.getPage(p);
+    // text layer: group items into lines by their baseline
+    const tc = await page.getTextContent();
+    const lines = new Map<number, { x: number; s: string }[]>();
+    for (const it of tc.items) {
+      if (!("str" in it) || !it.str.trim()) continue;
+      const y = Math.round(it.transform[5] / 3);
+      (lines.get(y) ?? lines.set(y, []).get(y)!).push({ x: it.transform[4], s: it.str });
+    }
+    text.push([...lines.entries()].sort((a, b) => b[0] - a[0]).map(([, l]) => l.sort((a, b) => a.x - b.x).map((t) => t.s).join(" ")).join("\n"));
+    // page image ~2400 px wide
+    const v1 = page.getViewport({ scale: 1 });
+    const vp = page.getViewport({ scale: Math.min(4, 2400 / v1.width) });
+    const c = document.createElement("canvas");
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: g, viewport: vp }).promise;
+    images.push(await new Promise<Blob>((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error("render"))), "image/png")));
+    page.cleanup();
+  }
+  const total = doc.numPages;
+  await doc.destroy();
+  return { images, text, total };
+}
+
 export async function scanText(file: Blob, angle = 0, onProgress?: (p: number) => void): Promise<SnCandidate[]> {
   const { createWorker, PSM } = await import("tesseract.js");
   const worker = await createWorker("eng", 1, { workerPath: ocrWorkerUrl, corePath: ocrCoreUrl, langPath: "/tesseract", logger: (m: { status: string; progress: number }) => m.status === "recognizing text" && onProgress?.(m.progress) });
@@ -81,17 +132,7 @@ export async function scanText(file: Blob, angle = 0, onProgress?: (p: number) =
     // labels and packing lists: text is scattered between barcodes, so look for sparse text
     await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
     const { data } = await worker.recognize(await forOcr(file, Math.abs(angle) > 1 && Math.abs(angle) < 45 ? angle : 0));
-    const out: SnCandidate[] = [];
-    for (const line of data.text.split("\n")) {
-      const L = line.toUpperCase();
-      const labelled = /\b(S\/?N|SERIAL)\b/.test(L);
-      const body = L.replace(/.*\b(S\/N|SN|SERIAL(\s*NO\.?)?)(\s*[:#.]\s*|\s+)/, "");
-      for (const tok of body.match(/[A-Z0-9][A-Z0-9\-/.]{4,}[A-Z0-9]/g) ?? []) {
-        // a serial has digits and is not a date, a price or a plain word
-        if (!/\d/.test(tok) || /^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$/.test(tok) || /^\d{1,3}(\.\d+)?$/.test(tok)) continue;
-        out.push({ text: tok, source: "text", labelled: labelled || undefined });
-      }
-    }
+    const out = textCandidates(data.text);
     return out;
   } finally {
     await worker.terminate();
