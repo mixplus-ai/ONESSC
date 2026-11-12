@@ -42,7 +42,12 @@ begin
   assert (select count(*) from public.my_sn_changes()) = 0, 'others see nothing';
 end $$;
 
--- staff not assigned, without claims perm: can see, cannot decide
+-- staff without any claims perm sees nothing (migration 25); with claims.view: can see, cannot decide
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000e0b1', true);
+do $$ begin assert (select count(*) from public.claim_sn_changes) = 0, 'no claims perm, no read'; end $$;
+reset role;
+insert into public.staff_permissions (user_id, perm) values ('00000000-0000-0000-0000-00000000e0b1', 'claims.view');
+set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000e0b1', true);
 do $$
 begin

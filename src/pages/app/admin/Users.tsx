@@ -217,6 +217,46 @@ function InviteForm({ permKeys, onDone }: { permKeys: PermissionKey[]; onDone: (
   );
 }
 
+interface CloseReq { id: string; user_id: string; reason: string | null; created_at: string }
+
+/** PDPA: customers asking to close their account. Closing turns the login off; records stay for accounting. */
+function CloseRequests({ users, onDone }: { users: Profile[]; onDone: () => void }) {
+  const reqs = useRows<CloseReq>(() => supabase.from("account_requests").select("id, user_id, reason, created_at").eq("status", "pending").order("created_at"));
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  if (!reqs.rows.length) return null;
+  async function decide(r: CloseReq, done: boolean) {
+    const note = done ? "" : prompt("เหตุผลที่ไม่ปิดบัญชี (แสดงให้ลูกค้าเห็น)") ?? "";
+    if (done && !confirm("ปิดบัญชีนี้? ผู้ใช้จะเข้าสู่ระบบไม่ได้อีก")) return;
+    setBusy(r.id); setErr("");
+    const { error } = await supabase.rpc("close_account_request", { p_request: r.id, p_done: done, p_note: note || null });
+    setBusy("");
+    if (error) return setErr(errorMessage(error));
+    reqs.reload(); onDone();
+  }
+  return (
+    <Card className="mb-4 !p-4 ring-amber-300">
+      <h3 className="font-semibold text-navy-900">คำขอปิดบัญชี ({reqs.rows.length})</h3>
+      <ul className="mt-2 divide-y divide-slate-100">
+        {reqs.rows.map((r) => {
+          const u = users.find((x) => x.id === r.user_id);
+          return (
+            <li key={r.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+              <span className="min-w-0 flex-1">
+                <span className="font-medium text-navy-900">{u?.full_name || u?.email || r.user_id}</span>
+                <span className="block text-xs text-slate-500">{u?.email} · ขอเมื่อ {new Date(r.created_at).toLocaleDateString("th-TH")}{r.reason ? ` · ${r.reason}` : ""}</span>
+              </span>
+              <Button variant="danger" className="!py-1.5" onClick={() => decide(r, true)} loading={busy === r.id}>ปิดบัญชี</Button>
+              <Button variant="ghost" className="!py-1.5" onClick={() => decide(r, false)} disabled={busy === r.id}>ไม่ดำเนินการ</Button>
+            </li>
+          );
+        })}
+      </ul>
+      {err && <div className="mt-2"><Alert>{err}</Alert></div>}
+    </Card>
+  );
+}
+
 export default function Users() {
   const { isAdmin, profile: me } = useAuth();
   const users = useRows<Profile>(() => supabase.from("profiles").select("*").order("created_at", { ascending: false }));
@@ -249,6 +289,7 @@ export default function Users() {
         actions={<Button onClick={() => setShowInvite((s) => !s)}>{showInvite ? "ปิด" : "+ สร้างบัญชี Staff"}</Button>}
       />
       {showInvite && <InviteForm permKeys={permKeys.rows} onDone={() => { users.reload(); grants.reload(); }} />}
+      <CloseRequests users={users.rows} onDone={users.reload} />
       <div className="mb-4 flex flex-wrap gap-3">
         <Input placeholder="ค้นหาอีเมล ชื่อ เบอร์ บริษัท เลขผู้เสียภาษี" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-sm" />
         <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as "" | AppRole)} className="max-w-[10rem]">

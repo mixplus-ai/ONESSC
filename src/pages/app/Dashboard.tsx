@@ -6,7 +6,56 @@ import { Alert, Badge, Card, PageTitle } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
 import { COMPANY_STATUS_LABEL, ROLE_LABEL, type Company } from "../../lib/types";
-import { formatPoints, todayBkk, type TrainingStatus } from "../../lib/training";
+import { formatPoints, formatThaiDate, todayBkk, type TrainingStatus } from "../../lib/training";
+import { CLAIM_STATUS, type ClaimStatus } from "../../lib/claims";
+
+interface Update { key: string; to: string; tone: "navy" | "amber" | "green"; title: string; text: string }
+
+/** "What's new for me": open claims with their step, answered quotes, the next training. Hidden when there is nothing. */
+function MyUpdates() {
+  const { session } = useAuth();
+  const uid = session?.user.id;
+  const [items, setItems] = useState<Update[] | null>(null);
+  useEffect(() => {
+    if (!uid) return;
+    Promise.all([
+      supabase.rpc("my_claims").then(({ data }) => (data ?? []) as { id: string; claim_no: string; status: ClaimStatus; model: string | null; returned_at: string | null }[]),
+      supabase.from("quote_requests").select("id, status, created_at").eq("user_id", uid).eq("status", "quoted").then(({ data }) => data ?? []),
+      supabase.from("training_registrations").select("id, status, course_sessions!inner(title, starts_on)").eq("user_id", uid).eq("status", "registered")
+        .gte("course_sessions.starts_on", todayBkk()).then(({ data }) => (data ?? []) as unknown as { id: string; course_sessions: { title: string | null; starts_on: string } }[]),
+    ]).then(([claims, quotes, regs]) => {
+      const out: Update[] = [];
+      claims.filter((c) => c.status === "done").forEach((c) => out.push({ key: c.id, to: "/app/claims", tone: "amber", title: `เคลม ${c.claim_no}: รอส่งของคืน`, text: "ดำเนินการเสร็จแล้ว กรุณาส่งสินค้าตัวเก่ากลับ และยืนยัน SN ในหน้าเคลม" }));
+      claims.filter((c) => ["submitted", "in_progress", "returned"].includes(c.status)).slice(0, 3).forEach((c) =>
+        out.push({ key: c.id, to: "/app/claims", tone: "navy", title: `เคลม ${c.claim_no}: ${CLAIM_STATUS[c.status].label}`, text: `ขั้นที่ ${CLAIM_STATUS[c.status].step} จาก 3${c.model ? ` · ${c.model}` : ""}` }));
+      if (quotes.length) out.push({ key: "q", to: "/app/requests", tone: "green", title: `ได้รับใบเสนอราคาแล้ว ${quotes.length} รายการ`, text: "เปิดดูราคาและแจ้งผลกับทีมขาย" });
+      const next = regs.map((r) => r.course_sessions).sort((a, b) => a.starts_on.localeCompare(b.starts_on))[0];
+      if (next) out.push({ key: "t", to: "/app/training", tone: "navy", title: `อบรมครั้งถัดไป ${formatThaiDate(next.starts_on)}`, text: next.title ?? "ดูรายละเอียดและเช็กอินในหน้าการอบรม" });
+      setItems(out);
+    });
+  }, [uid]);
+  if (!items?.length) return null;
+  const dot = { navy: "bg-navy-600", amber: "bg-amber-500", green: "bg-emerald-500" };
+  return (
+    <Card className="!p-0">
+      <p className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-navy-900">อัปเดตของฉัน</p>
+      <ul className="divide-y divide-slate-100">
+        {items.map((u) => (
+          <li key={u.key}>
+            <Link to={u.to} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50">
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot[u.tone]}`} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-navy-900">{u.title}</span>
+                <span className="block truncate text-xs text-slate-500">{u.text}</span>
+              </span>
+              <ArrowRightIcon className="h-4 w-4 text-slate-400" />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
 
 function Stat({ label, value, to, icon: Icon }: { label: string; value: number | string; to?: string; icon: typeof UsersIcon }) {
   const body = (
@@ -78,6 +127,7 @@ function UserDashboard() {
 
   return (
     <div className="space-y-6">
+      <MyUpdates />
       <AccountHub />
       {!profile.tax_id && (
         <Alert tone="navy">
@@ -209,7 +259,7 @@ export default function Dashboard() {
   if (!profile) return null;
   return (
     <>
-      <PageTitle title={`สวัสดี ${profile.full_name?.split(" ")[0] ?? ""}`} subtitle={`บทบาท: ${ROLE_LABEL[profile.role]}`} />
+      <PageTitle title={`สวัสดี ${profile.full_name?.split(" ")[0] ?? ""}`} subtitle={profile.role === "user" ? ["ลูกค้า", profile.company_name].filter(Boolean).join(" · ") : `บทบาท: ${ROLE_LABEL[profile.role]}`} />
       {isStaff ? <StaffDashboard /> : <UserDashboard />}
     </>
   );

@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Avatar } from "../../components/Avatar";
 import { Alert, Badge, Button, Card, Field, Input, PageTitle, Spinner, Textarea } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
@@ -106,6 +106,7 @@ export default function Profile() {
             <Button type="submit" variant="secondary" loading={pwBusy}>เปลี่ยนรหัสผ่าน</Button>
           </form>
         </Card>
+        {profile.role === "user" && <MyDataCard />}
         </div>
       </div>
     </>
@@ -254,6 +255,88 @@ function BillingCard() {
         {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
         <Button type="submit" loading={busy}>บันทึกข้อมูลออกใบเสร็จ</Button>
       </form>
+    </Card>
+  );
+}
+
+interface AccountRequest { id: string; status: "pending" | "done" | "rejected"; reason: string | null; admin_note: string | null; created_at: string }
+
+/** PDPA: download what the system keeps about me, or ask Admin to close the account. */
+function MyDataCard() {
+  const { profile, session } = useAuth();
+  const uid = session?.user.id ?? "";
+  const [req, setReq] = useState<AccountRequest | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  const load = () => supabase.from("account_requests").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1)
+    .then(({ data }) => setReq(((data ?? [])[0] as AccountRequest) ?? null));
+  useEffect(() => { if (uid) load(); }, [uid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function download() {
+    setBusy("dl"); setErr("");
+    try {
+      const pick = <T,>(r: { data: T | null }) => r.data;
+      const [claims, quotes, reservations, training, points, redemptions] = await Promise.all([
+        supabase.rpc("my_claims").then(pick),
+        supabase.from("quote_requests").select("*, quote_request_items(*)").eq("user_id", uid).then(pick),
+        supabase.from("reservations").select("*, reservation_items(*)").eq("user_id", uid).then(pick),
+        supabase.from("training_registrations").select("*, course_sessions(title, starts_on)").eq("user_id", uid).then(pick),
+        supabase.from("point_ledger").select("*").eq("user_id", uid).eq("wallet", "personal").then(pick),
+        supabase.from("redemptions").select("*").eq("user_id", uid).then(pick),
+      ]);
+      const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), profile, claims, quotes, reservations, training, points, redemptions }, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `my-data-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      setErr(errorMessage(e));
+    }
+    setBusy("");
+  }
+  async function ask() {
+    setBusy("ask"); setErr("");
+    const { error } = await supabase.from("account_requests").insert({ user_id: uid, reason: reason.trim() || null });
+    setBusy("");
+    if (error) return setErr(errorMessage(error));
+    setAsking(false); setReason(""); load();
+  }
+  async function withdraw() {
+    if (!req) return;
+    setBusy("undo");
+    const { error } = await supabase.from("account_requests").delete().eq("id", req.id);
+    setBusy("");
+    if (error) return setErr(errorMessage(error));
+    load();
+  }
+
+  return (
+    <Card>
+      <h3 className="font-semibold text-navy-900">ข้อมูลส่วนบุคคลของฉัน</h3>
+      <p className="mt-1 text-sm text-slate-500">ดาวน์โหลดข้อมูลทั้งหมดที่ระบบเก็บไว้ หรือขอปิดบัญชีตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={download} loading={busy === "dl"}>ดาวน์โหลดข้อมูลของฉัน</Button>
+        {req?.status !== "pending" && !asking && <Button variant="ghost" className="!text-red-600" onClick={() => setAsking(true)}>ขอปิดบัญชี</Button>}
+      </div>
+      {asking && (
+        <div className="mt-4 space-y-3 rounded-xl bg-red-50 p-3">
+          <p className="text-sm text-red-800">เมื่อ Admin ดำเนินการแล้วจะเข้าสู่ระบบไม่ได้อีก ประวัติเคลม ใบเสนอราคา และแต้มที่ต้องเก็บตามกฎหมายบัญชีจะยังเก็บไว้ตามระยะเวลาที่กำหนด</p>
+          <Field label="เหตุผล (ไม่บังคับ)"><Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} /></Field>
+          <div className="flex gap-2">
+            <Button variant="danger" onClick={ask} loading={busy === "ask"}>ส่งคำขอปิดบัญชี</Button>
+            <Button variant="ghost" onClick={() => setAsking(false)}>ยกเลิก</Button>
+          </div>
+        </div>
+      )}
+      {req?.status === "pending" && (
+        <div className="mt-4"><Alert tone="amber">ส่งคำขอปิดบัญชีแล้วเมื่อ {new Date(req.created_at).toLocaleDateString("th-TH")} รอ Admin ดำเนินการ{" "}
+          <button type="button" className="font-semibold underline" onClick={withdraw} disabled={busy === "undo"}>ยกเลิกคำขอ</button></Alert></div>
+      )}
+      {req?.status === "rejected" && <div className="mt-4"><Alert tone="navy">คำขอปิดบัญชีครั้งก่อนไม่ได้ดำเนินการ{req.admin_note ? `: ${req.admin_note}` : ""}</Alert></div>}
+      {err && <div className="mt-3"><Alert>{err}</Alert></div>}
     </Card>
   );
 }

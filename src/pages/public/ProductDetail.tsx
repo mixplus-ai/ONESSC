@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AddToList, PriceTag, StockBadge, discountPct } from "../../components/catalog";
-import { BoxIcon, ExternalIcon, FileIcon, ShieldIcon, WrenchIcon } from "../../components/icons";
+import { AddToList, NoImage, PriceTag, StockBadge, discountPct } from "../../components/catalog";
+import { ExternalIcon, FileIcon, ShieldIcon, WrenchIcon } from "../../components/icons";
 import { Alert, Loading } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { formatDateTime, productImage, usePricing, type PriceInfo, type Product, type Spec } from "../../lib/catalog";
@@ -73,7 +73,7 @@ export default function ProductDetail() {
             <div className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto bg-gradient-to-b from-slate-50 to-slate-100 sm:rounded-2xl" onScroll={(e) => setSlide(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}>
               {(gallery.length ? gallery : [""]).map((g, i) => (
                 <div key={g + i} className="grid aspect-square w-full shrink-0 snap-center place-items-center">
-                  {g ? <img src={g} alt={i ? "" : p.name} className="h-full w-full object-contain p-6" /> : <BoxIcon className="h-16 w-16 text-slate-300" />}
+                  {g ? <img src={g} alt={i ? "" : p.name} className="h-full w-full object-contain p-6" /> : <NoImage brand={p.brands} big />}
                 </div>
               ))}
             </div>
@@ -86,7 +86,7 @@ export default function ProductDetail() {
           </div>
           <div className="hidden lg:block">
             <div className="grid aspect-square place-items-center overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
-              {img ? <img src={img} alt={p.name} className="h-full w-full object-contain p-6" /> : <BoxIcon className="h-16 w-16 text-slate-300" />}
+              {img ? <img src={img} alt={p.name} className="h-full w-full object-contain p-6" /> : <NoImage brand={p.brands} big />}
             </div>
             {gallery.length > 1 && (
               <div className="mt-3 flex flex-wrap gap-2">

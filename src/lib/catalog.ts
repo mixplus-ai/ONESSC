@@ -68,7 +68,7 @@ export interface Product {
   created_at: string;
   updated_at: string;
   product_variants?: Variant[];
-  brands?: Pick<Brand, "id" | "name" | "slug"> | null;
+  brands?: (Pick<Brand, "id" | "name" | "slug"> & { logo_url?: string | null }) | null;
   product_categories?: Pick<Category, "id" | "name" | "slug"> | null;
 }
 

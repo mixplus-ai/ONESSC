@@ -9,7 +9,7 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('00000000-0000-0000-0000-00000000000d', 'user2@ssc.test', '{}');
 update public.profiles set role = 'admin' where email = 'admin@ssc.test';
 update public.profiles set role = 'staff' where email in ('staff@ssc.test', 'staff2@ssc.test');
-insert into public.staff_permissions (user_id, perm) values ('00000000-0000-0000-0000-00000000000b', 'products');
+insert into public.staff_permissions (user_id, perm) values ('00000000-0000-0000-0000-00000000000b', 'products'), ('00000000-0000-0000-0000-00000000000e', 'pricing'), ('00000000-0000-0000-0000-00000000000e', 'requests');
 insert into public.companies (id, tax_id, name) values
   ('10000000-0000-0000-0000-000000000001', '0105555000001', 'บริษัท เอ'),
   ('10000000-0000-0000-0000-000000000002', '0105555000002', 'บริษัท บี');
@@ -53,7 +53,17 @@ do $$ begin
   assert (select count(*) from public.products) = 4, 'empty product removed after move';
 end $$;
 
--- staff without products perm cannot edit catalog but can set company prices
+-- staff without the pricing perm cannot set company prices (migration 25)
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', true);
+do $$ begin
+  begin
+    insert into public.company_prices (company_id, variant_id, price)
+    select '10000000-0000-0000-0000-000000000001', id, 1 from public.product_variants where sku = 'SE10K';
+    assert false, 'products-only staff must not set company prices';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+-- staff without products perm cannot edit catalog but with pricing perm can set company prices
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000e', true);
 update public.product_variants set base_price = 1 where sku = 'SE10K';
 do $$ begin

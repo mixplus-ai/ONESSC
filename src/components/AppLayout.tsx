@@ -41,8 +41,16 @@ export default function AppLayout() {
   const { profile, isAdmin, can, signOut } = useAuth();
   const { count } = useCart();
   const [open, setOpen] = useState(false);
-  const [mineOpen, setMineOpen] = useState(false);
   const loc = useLocation();
+  // work menus fold by group (remembered per browser); the group holding the current page is always open
+  const [folds, setFolds] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem("navFolds") ?? "{}"); } catch { return {}; }
+  });
+  const toggleFold = (title: string, open: boolean) => setFolds((f) => {
+    const n = { ...f, [title]: !open };
+    try { localStorage.setItem("navFolds", JSON.stringify(n)); } catch { /* private mode */ }
+    return n;
+  });
   useEffect(() => {
     setOpen(false);
   }, [loc.pathname]);
@@ -56,8 +64,7 @@ export default function AppLayout() {
         { to: "/app/points", label: "แต้มและของรางวัล", icon: GiftIcon, show: true },
   ];
   // Staff/Admin: their own customer pages fold into a collapsible "ของฉัน" group so work menus come first
-  const inMine = mine.some((m) => loc.pathname.startsWith(m.to));
-  const groups: { title?: string; items: Item[]; fold?: boolean }[] = [
+  const groups: { title?: string; items: Item[]; fold?: boolean }[] = ([
     {
       items: [
         { to: "/app", label: "แดชบอร์ด", icon: HomeIcon, show: true, end: true },
@@ -110,23 +117,28 @@ export default function AppLayout() {
       { to: "/app/admin/logs", label: "Log การใช้งาน", icon: LogIcon, show: isAdmin },
     ] },
     ...(isCustomer ? [] : [{ title: "ของฉัน (ในฐานะลูกค้า)", items: mine, fold: true }]),
-  ];
+  ] as { title?: string; items: Item[]; fold?: boolean }[]).map((g) => ({ ...g, fold: g.fold ?? Boolean(g.title) }));
 
   const nav = (
     <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4" aria-label="เมนูหลังบ้าน">
       {groups.map((g, i) => {
         const items = g.items.filter((it) => it.show);
         if (!items.length) return null;
+        const here = items.some((it) => (it.end ? loc.pathname === it.to : loc.pathname.startsWith(it.to)));
+        // "ของฉัน" starts folded; work groups start open unless folded by the user
+        const isOpen = !g.fold || here || (folds[g.title!] === undefined ? g.title !== "ของฉัน (ในฐานะลูกค้า)" : !folds[g.title!]);
         return (
           <div key={i}>
-            {g.title && !g.fold && <p className="mb-2 px-3 text-xs font-semibold tracking-wide text-navy-200/70">{g.title}</p>}
             {g.fold && (
-              <button type="button" onClick={() => setMineOpen((v) => !v)} aria-expanded={mineOpen || inMine} className="mb-2 flex w-full items-center justify-between px-3 text-xs font-semibold tracking-wide text-navy-200/70 hover:text-white">
+              <button type="button" onClick={() => toggleFold(g.title!, isOpen)} aria-expanded={isOpen} className="mb-2 flex w-full items-center justify-between px-3 text-xs font-semibold tracking-wide text-navy-200/70 hover:text-white">
                 {g.title}
-                <span className={cx("transition", (mineOpen || inMine) && "rotate-180")}>▾</span>
+                <span className="flex items-center gap-2">
+                  {!isOpen && <span className="font-normal text-navy-200/60">{items.length}</span>}
+                  <span className={cx("transition", isOpen && "rotate-180")}>▾</span>
+                </span>
               </button>
             )}
-            {(!g.fold || mineOpen || inMine) && <div className="grid gap-1">
+            {isOpen && <div className="grid gap-1">
               {items.map(({ to, label, icon: Icon, end }) => (
                 <NavLink
                   key={to}
@@ -156,7 +168,7 @@ export default function AppLayout() {
         <Avatar url={profile?.avatar_url} name={profile?.full_name || profile?.email} className="h-10 w-10 text-sm" />
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold text-white">{profile?.full_name || profile?.email}</span>
-          <span className="block truncate text-xs text-navy-200">{profile && ROLE_LABEL[profile.role]} · {profile?.email}</span>
+          <span className="block truncate text-xs text-navy-200">{profile && (profile.role === "user" ? (profile.company_name || "ลูกค้า") : ROLE_LABEL[profile.role])} · {profile?.email}</span>
         </span>
       </Link>
       <button onClick={signOut} className="mt-3 inline-flex items-center gap-2 text-sm text-navy-100 hover:text-white">
