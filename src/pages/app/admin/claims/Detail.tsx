@@ -40,6 +40,8 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
   const [doc, setDoc] = useState("");
   const [date, setDate] = useState(todayIso());
   const [onlyEmpty, setOnlyEmpty] = useState(true);
+  const [rmaNo, setRmaNo] = useState("");
+  const [rmaDate, setRmaDate] = useState(todayIso());
   const [snText, setSnText] = useState("");
   const [addN, setAddN] = useState(1);
   const [showAll, setShowAll] = useState(false);
@@ -66,6 +68,9 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
       if (sd.pcode && !n[sd.pcode]) (n as Record<string, unknown>)[sd.pcode] = x.pcode ?? null;
       return n;
     }));
+  }
+  function fillRma() {
+    setRows((r) => r.map((x) => (onlyEmpty && x.rma_no ? x : { ...x, rma_no: rmaNo.trim() || x.rma_no || null, rma_date: rmaDate || x.rma_date || null })));
   }
   function addSns(list: string[]) {
     setRows((r) => {
@@ -104,6 +109,13 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
           <Field label="วันที่"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
           <label className="mb-2 flex items-center gap-1 text-xs"><input type="checkbox" checked={onlyEmpty} onChange={(e) => setOnlyEmpty(e.target.checked)} />เฉพาะแถวว่าง</label>
           <Button variant="secondary" onClick={fillDoc}>เติมทุกแถว</Button>
+          {step === 4 && (
+            <div className="flex w-full flex-wrap items-end gap-2 border-t border-slate-200 pt-2">
+              <Field label="RMA No. (จากผู้ผลิต)"><Input className="font-mono" value={rmaNo} onChange={(e) => setRmaNo(e.target.value)} placeholder="R1000…" /></Field>
+              <Field label="วันที่ออก RMA"><Input type="date" value={rmaDate} onChange={(e) => setRmaDate(e.target.value)} /></Field>
+              <Button variant="secondary" onClick={fillRma}>เติม RMA ทุกแถว</Button>
+            </div>
+          )}
         </div>
         <div className="flex items-end gap-2">
           <Field label={`วาง / สแกน ${STEPS[step - 1].fields.find((f) => f.key === snField)?.label}`}>
