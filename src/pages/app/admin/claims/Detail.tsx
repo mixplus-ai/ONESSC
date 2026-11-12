@@ -42,6 +42,7 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
   const [onlyEmpty, setOnlyEmpty] = useState(true);
   const [snText, setSnText] = useState("");
   const [addN, setAddN] = useState(1);
+  const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   useEffect(() => {
@@ -52,7 +53,8 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
     if (focusStep && focusStep >= 2) setStep(focusStep as 2 | 3 | 4 | 5);
   }, [open, units, focusStep]);
 
-  const fields = STEPS.slice(1).flatMap((s) => s.fields.map((f) => ({ ...f, step: s.n })));
+  // only column A + the chosen step's columns, unless "แสดงทุกขั้น" is ticked
+  const fields = STEPS.slice(1).filter((s) => showAll || s.n === step).flatMap((s) => s.fields.map((f) => ({ ...f, step: s.n })));
   const setCell = (i: number, k: UnitField | "pcode", v: string) => setRows((r) => r.map((x, j) => (j === i ? { ...x, [k]: v || null } : x)));
   const snField = STEPS[step - 1].sn!;
   const sd = STEP_DOC[step];
@@ -111,13 +113,17 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
           <Button variant="secondary" onClick={() => { addSns(splitSns(snText)); setSnText(""); }}>ใส่</Button>
         </div>
       </div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-navy-900">ขั้น {step} · {STEPS[step - 1].short} <span className="font-normal text-slate-500">({STEPS[step - 1].dir})</span></p>
+        <label className="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />แสดงทุกขั้น</label>
+      </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-xs">
           <thead>
             <tr className="text-left text-slate-500">
               <th className="px-1 py-1">#</th>
               <th className="px-1 py-1">A รหัสสินค้า</th>
-              {fields.map((f) => <th key={f.key} className={cx("whitespace-nowrap px-1 py-1", f.step === step && "bg-sun-500/15")}>{f.col} {f.label}</th>)}
+              {fields.map((f) => <th key={f.key} className={cx("whitespace-nowrap px-1 py-1", showAll && f.step === step && "bg-sun-500/15")}>{f.col} {f.label}</th>)}
               <th />
             </tr>
           </thead>
@@ -127,8 +133,8 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
                 <td className="px-1 text-slate-500">{i + 1}</td>
                 <td className="px-0.5 py-0.5"><input className="w-28 rounded border border-slate-200 px-1 py-1" value={r.pcode ?? ""} onChange={(e) => setCell(i, "pcode", e.target.value)} /></td>
                 {fields.map((f) => (
-                  <td key={f.key} className={cx("px-0.5 py-0.5", f.step === step && "bg-sun-500/5")}>
-                    <input type={f.type === "date" ? "date" : "text"} className={cx("rounded border border-slate-200 px-1 py-1", f.type === "date" ? "w-32" : f.type === "sn" ? "w-32 font-mono" : "w-24")}
+                  <td key={f.key} className={cx("px-0.5 py-0.5", showAll && f.step === step && "bg-sun-500/5")}>
+                    <input type={f.type === "date" ? "date" : "text"} className={cx("rounded border border-slate-200 px-1 py-1", f.type === "date" ? "w-36" : f.type === "sn" ? (showAll ? "w-32 font-mono" : "w-56 font-mono") : showAll ? "w-24" : "w-36")}
                       value={(r[f.key as UnitField] as string | null) ?? ""} onChange={(e) => setCell(i, f.key as UnitField, e.target.value)} />
                   </td>
                 ))}
@@ -154,7 +160,13 @@ function UnitEditor({ claim, unit, onClose }: { claim: Claim; unit: ClaimUnit | 
   const [u, setU] = useState<Partial<ClaimUnit>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  useEffect(() => { setU(unit ?? {}); setErr(""); }, [unit]);
+  const [only, setOnly] = useState<number | null>(2);
+  useEffect(() => {
+    setU(unit ?? {});
+    setErr("");
+    // open on the first step this unit hasn't finished (its SN is empty)
+    setOnly(unit ? STEPS.slice(1).find((s) => s.sn && !unit[s.sn])?.n ?? 2 : 2);
+  }, [unit]);
   const set = (k: UnitField, v: string) => setU((x) => ({ ...x, [k]: v || null }));
   async function save(remove = false) {
     if (!unit) return;
@@ -172,8 +184,14 @@ function UnitEditor({ claim, unit, onClose }: { claim: Claim; unit: ClaimUnit | 
     <Modal open={Boolean(unit)} onClose={onClose} wide title={`แก้ไขหน่วยสินค้า #${unit?.seq ?? ""} · ${claim.claim_no}`}
       footer={<><Button variant="danger" onClick={() => save(true)} disabled={busy}>ลบแถว</Button><span className="flex-1" /><Button variant="ghost" onClick={onClose}>ยกเลิก</Button><Button onClick={() => save()} loading={busy}>บันทึก</Button></>}>
       <div className="space-y-4">
+        <div className="flex flex-wrap gap-1.5">
+          {STEPS.slice(1).map((s) => (
+            <button key={s.n} type="button" onClick={() => setOnly(s.n)} className={cx("rounded-full px-3 py-1 text-xs font-semibold ring-1", only === s.n ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50")}>ขั้น {s.n} · {s.short}</button>
+          ))}
+          <button type="button" onClick={() => setOnly(null)} className={cx("rounded-full px-3 py-1 text-xs font-semibold ring-1", only === null ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50")}>ทุกขั้น</button>
+        </div>
         <Field label="A รหัสสินค้า"><Input value={u.pcode ?? ""} onChange={(e) => set("pcode", e.target.value)} /></Field>
-        {STEPS.slice(1).map((s) => (
+        {STEPS.slice(1).filter((s) => only === null || s.n === only).map((s) => (
           <fieldset key={s.n} className="rounded-xl p-3 ring-1 ring-slate-200">
             <legend className="px-1 text-sm font-semibold text-navy-900">ขั้น {s.n} · {s.short} <span className="font-normal text-slate-500">({s.dir})</span></legend>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

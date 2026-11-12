@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Gate } from "../../../components/AppLayout";
-import { ImageUpload } from "../../../components/ImageUpload";
+import { IMAGE_SIZES, ImageUpload } from "../../../components/ImageUpload";
 import { XIcon } from "../../../components/icons";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Textarea } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
@@ -133,7 +133,7 @@ function PromotionEditor({ initial, variants, onClose }: { initial: Partial<Prom
         <Field label="เริ่ม" hint="ว่าง = เริ่มทันที"><Input type="datetime-local" value={toLocal(p.starts_at)} onChange={(e) => setP({ ...p, starts_at: fromLocal(e.target.value) })} /></Field>
         <Field label="สิ้นสุด" hint="ว่าง = ไม่มีวันหมด"><Input type="datetime-local" value={toLocal(p.ends_at)} onChange={(e) => setP({ ...p, ends_at: fromLocal(e.target.value) })} /></Field>
         <div className="sm:col-span-2 lg:col-span-4"><Field label="รายละเอียด / เงื่อนไข"><Textarea rows={3} value={p.description ?? ""} onChange={(e) => setP({ ...p, description: e.target.value })} /></Field></div>
-        <div className="sm:col-span-2"><Field label="แบนเนอร์"><ImageUpload folder="promotions" upload={uploadProductFile} value={p.banner_url ?? ""} onChange={(v) => setP({ ...p, banner_url: v })} /></Field></div>
+        <div className="sm:col-span-2"><Field label="แบนเนอร์"><ImageUpload folder="promotions" upload={uploadProductFile} size={IMAGE_SIZES.promoBanner} value={p.banner_url ?? ""} onChange={(v) => setP({ ...p, banner_url: v })} /></Field></div>
         <div className="space-y-3 sm:col-span-2">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!p.is_published} onChange={(e) => setP({ ...p, is_published: e.target.checked })} /> เผยแพร่</label>
           <Field label="ลำดับ"><Input type="number" value={p.sort ?? 0} onChange={(e) => setP({ ...p, sort: Number(e.target.value) || 0 })} /></Field>
@@ -257,7 +257,7 @@ function PackageEditor({ initial, variants, onClose }: { initial: Partial<Packag
         <div className="sm:col-span-2 lg:col-span-4"><Field label="รายละเอียด"><Textarea rows={3} value={p.description ?? ""} onChange={(e) => setP({ ...p, description: e.target.value })} /></Field></div>
         <Field label="เริ่ม"><Input type="datetime-local" value={toLocal(p.starts_at)} onChange={(e) => setP({ ...p, starts_at: fromLocal(e.target.value) })} /></Field>
         <Field label="สิ้นสุด"><Input type="datetime-local" value={toLocal(p.ends_at)} onChange={(e) => setP({ ...p, ends_at: fromLocal(e.target.value) })} /></Field>
-        <div className="sm:col-span-2"><Field label="รูปปก"><ImageUpload folder="packages" upload={uploadProductFile} value={p.cover_url ?? ""} onChange={(v) => setP({ ...p, cover_url: v })} /></Field></div>
+        <div className="sm:col-span-2"><Field label="รูปปก"><ImageUpload folder="packages" upload={uploadProductFile} size={IMAGE_SIZES.packageCover} value={p.cover_url ?? ""} onChange={(v) => setP({ ...p, cover_url: v })} /></Field></div>
         <div className="sm:col-span-2 lg:col-span-4">
           <h3 className="mb-2 font-semibold text-navy-900">สินค้าในแพ็กเกจ</h3>
           <div className="space-y-2">
