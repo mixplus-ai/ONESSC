@@ -102,6 +102,9 @@ export interface ClaimDetails {
   bad_sn?: string;
   manager_sn?: string;
   case_no?: string;
+  /** inverter: issue title + description from the Engineer case */
+  issue?: string;
+  description?: string;
   ref_inv_sn?: string;
   qty?: number;
   sn?: string;

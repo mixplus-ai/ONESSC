@@ -120,7 +120,7 @@ export default function NewClaim() {
   const [brandId, setBrandId] = useState("");
   const [f, setF] = useState({
     contact_name: "", contact_phone: "", company_name: "", po_no: "", installer_name: "", site_name: "", site_id: "",
-    model: "", manager_sn: "", case_no: "", ref_inv_sn: "", symptom: "",
+    model: "", manager_sn: "", case_no: "", issue: "", description: "", ref_inv_sn: "", symptom: "",
     delivery_type: "pickup" as "pickup" | "shipping", delivery_address: "",
   });
   const [units, setUnits] = useState<Unit[]>([emptyUnit()]);
@@ -158,7 +158,7 @@ export default function NewClaim() {
     try { localStorage.removeItem(draftKey(me)); } catch { /* ignore */ }
     setRestored(null);
     setType(""); setBrandId(""); setUnits([emptyUnit()]); setItems([emptyItem()]);
-    setF((x) => ({ ...x, po_no: "", installer_name: "", site_name: "", site_id: "", model: "", manager_sn: "", case_no: "", ref_inv_sn: "", symptom: "", delivery_type: "pickup", delivery_address: "" }));
+    setF((x) => ({ ...x, po_no: "", installer_name: "", site_name: "", site_id: "", model: "", manager_sn: "", case_no: "", issue: "", description: "", ref_inv_sn: "", symptom: "", delivery_type: "pickup", delivery_address: "" }));
   }
 
   useEffect(() => {
@@ -202,6 +202,8 @@ export default function NewClaim() {
     if (!brandId) return setErr("กรุณาเลือกแบรนด์");
     if (!f.site_id.trim()) return setErr("กรุณากรอก Site ID");
     if (type === "inverter" && !f.case_no.trim()) return setErr("กรุณากรอกหมายเลข Case จาก Engineer (ยังไม่มีเลข กดติดต่อ Support)");
+    if (type === "inverter" && !f.issue.trim()) return setErr("กรุณากรอก Issue");
+    if (type === "inverter" && !f.description.trim()) return setErr("กรุณากรอก Description");
     if (req.has("attachment") && files.length === 0) return setErr("แบรนด์นี้ต้องแนบรูปหรือไฟล์ประกอบ");
     const clean = (l: Unit[]) => l.filter((u) => u.sn.trim() || u.symptom.trim() || u.volt.trim() || u.ohm.trim());
     const asJson = (u: Unit, model: string) => ({ model, sn: u.sn.trim(), symptom: u.symptom.trim(), ...(type === "optimizer" ? { volt: u.volt.trim(), ohm: u.ohm.trim() } : {}) });
@@ -219,7 +221,7 @@ export default function NewClaim() {
       const list = clean(units);
       if (type === "inverter") {
         if (!units[0].sn.trim()) return setErr("กรุณากรอก S/N ตัวที่เสีย");
-        Object.assign(details, { bad_sn: units[0].sn.trim(), manager_sn: f.manager_sn.trim(), case_no: f.case_no.trim() });
+        Object.assign(details, { bad_sn: units[0].sn.trim(), manager_sn: f.manager_sn.trim(), case_no: f.case_no.trim(), issue: f.issue.trim(), description: f.description.trim() });
       } else if (type === "accessory") {
         if (req.has("ref_inv_sn") && !f.ref_inv_sn.trim()) return setErr("กรุณากรอกอ้างอิง S/N Inverter");
         Object.assign(details, { ref_inv_sn: f.ref_inv_sn.trim(), bad_sn: sns(units) });
@@ -230,7 +232,8 @@ export default function NewClaim() {
     }
     rows = (details.units as typeof rows).filter((u) => u.symptom);
     // staff also see each unit's symptom in the claim's symptom text
-    const symptom = [f.symptom.trim(), ...rows.map((u) => `${u.sn || u.model}: ${u.symptom}`)].filter(Boolean).join("\n");
+    const caseText = type === "inverter" ? [`Issue: ${f.issue.trim()}`, `Description: ${f.description.trim()}`] : [];
+    const symptom = [...caseText, f.symptom.trim(), ...rows.map((u) => `${u.sn || u.model}: ${u.symptom}`)].filter(Boolean).join("\n");
     setBusy(true);
     const { data, error } = await supabase.rpc("submit_claim", {
       p: {
@@ -336,6 +339,8 @@ export default function NewClaim() {
                     <Field label="หมายเลข Case (จาก Engineer)" required><Input value={f.case_no} onChange={(e) => set("case_no", e.target.value)} required /></Field>
                     <SupportContact />
                   </div>
+                  <Field label="Issue" required hint="หัวข้อปัญหาตาม Case เช่น Isolation fault, Error 3x9A"><Input value={f.issue} onChange={(e) => set("issue", e.target.value)} required maxLength={200} /></Field>
+                  <Field label="Description" required hint="รายละเอียดปัญหาและสิ่งที่ตรวจสอบแล้ว"><Textarea rows={3} value={f.description} onChange={(e) => set("description", e.target.value)} required maxLength={2000} /></Field>
                   <div><p className="mb-1.5 text-sm font-medium text-slate-700">S/N ตัวที่เสีย และอาการ <span className="text-red-500">*</span></p><SnRows single units={units} onChange={setUnits} /></div>
                 </div>
               )}
