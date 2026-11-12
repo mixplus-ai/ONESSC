@@ -18,11 +18,9 @@ begin
       'details', jsonb_build_object('qty', 1)));
     assert false, 'site id required';
   exception when raise_exception then null; end;
-  begin
-    perform public.submit_claim(jsonb_build_object('product_type', 'inverter', 'contact_name', 'A', 'contact_phone', '081', 'site_id', 'S9', 'model', 'TB-10K',
-      'brand_id', '50000000-0000-0000-0000-000000000001', 'details', jsonb_build_object('bad_sn', 'INV1')));
-    assert false, 'inverter needs case no for any brand';
-  exception when raise_exception then null; end;
+  -- migration 27: only SolarEdge inverters need the Case no.; other brands are filled in later by staff
+  perform public.submit_claim(jsonb_build_object('product_type', 'inverter', 'contact_name', 'A', 'contact_phone', '081', 'site_id', 'S9', 'model', 'TB-10K',
+    'brand_id', '50000000-0000-0000-0000-000000000001', 'details', jsonb_build_object('bad_sn', 'INV1')));
   select * into v from public.submit_claim(jsonb_build_object('product_type', 'optimizer', 'contact_name', 'A', 'contact_phone', '081', 'site_id', ' SITE-77 ',
       'details', jsonb_build_object('po_no', 'PI-123',
         'items', jsonb_build_array(jsonb_build_object('model', 'P500', 'qty', 2)),
@@ -34,7 +32,7 @@ reset role;
 do $$
 declare c record;
 begin
-  select * into c from public.claims where user_id = '00000000-0000-0000-0000-00000000f0c1';
+  select * into c from public.claims where user_id = '00000000-0000-0000-0000-00000000f0c1' and product_type = 'optimizer';
   assert c.site_id = 'SITE-77', 'site id saved: ' || coalesce(c.site_id, 'null');
   assert c.reported_sns @> array['OPT-A', 'OPT-B'], 'unit SNs reported';
   assert c.details -> 'units' -> 0 ->> 'volt' = '1.0', 'measurements kept';

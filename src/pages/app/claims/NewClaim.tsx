@@ -177,6 +177,8 @@ export default function NewClaim() {
 
   const brand = brands.find((b) => b.id === brandId);
   const req = new Set(brand?.require_fields ?? []);
+  // Case no. / Issue / Description: required for SolarEdge inverters only; staff fill them in for other claims
+  const seInv = type === "inverter" && /solar\s*edge/i.test(brand?.name ?? "");
   // model options: the claim model list for this type + brand, then the brand's codes from the stock sheet
   const options = useMemo(() => {
     const out = new Map<string, string>();
@@ -201,9 +203,9 @@ export default function NewClaim() {
     if (!type) return setErr("กรุณาเลือกประเภทการเคลม");
     if (!brandId) return setErr("กรุณาเลือกแบรนด์");
     if (!f.site_id.trim()) return setErr("กรุณากรอก Site ID");
-    if (type === "inverter" && !f.case_no.trim()) return setErr("กรุณากรอกหมายเลข Case จาก Engineer (ยังไม่มีเลข กดติดต่อ Support)");
-    if (type === "inverter" && !f.issue.trim()) return setErr("กรุณากรอก Issue");
-    if (type === "inverter" && !f.description.trim()) return setErr("กรุณากรอก Description");
+    if (seInv && !f.case_no.trim()) return setErr("กรุณากรอกหมายเลข Case จาก Engineer (ยังไม่มีเลข กดติดต่อ Support)");
+    if (seInv && !f.issue.trim()) return setErr("กรุณากรอก Issue");
+    if (seInv && !f.description.trim()) return setErr("กรุณากรอก Description");
     if (req.has("attachment") && files.length === 0) return setErr("แบรนด์นี้ต้องแนบรูปหรือไฟล์ประกอบ");
     const clean = (l: Unit[]) => l.filter((u) => u.sn.trim() || u.symptom.trim() || u.volt.trim() || u.ohm.trim());
     const asJson = (u: Unit, model: string) => ({ model, sn: u.sn.trim(), symptom: u.symptom.trim(), ...(type === "optimizer" ? { volt: u.volt.trim(), ohm: u.ohm.trim() } : {}) });
@@ -221,7 +223,7 @@ export default function NewClaim() {
       const list = clean(units);
       if (type === "inverter") {
         if (!units[0].sn.trim()) return setErr("กรุณากรอก S/N ตัวที่เสีย");
-        Object.assign(details, { bad_sn: units[0].sn.trim(), manager_sn: f.manager_sn.trim(), case_no: f.case_no.trim(), issue: f.issue.trim(), description: f.description.trim() });
+        Object.assign(details, { bad_sn: units[0].sn.trim(), manager_sn: f.manager_sn.trim(), ...(seInv ? { case_no: f.case_no.trim(), issue: f.issue.trim(), description: f.description.trim() } : {}) });
       } else if (type === "accessory") {
         if (req.has("ref_inv_sn") && !f.ref_inv_sn.trim()) return setErr("กรุณากรอกอ้างอิง S/N Inverter");
         Object.assign(details, { ref_inv_sn: f.ref_inv_sn.trim(), bad_sn: sns(units) });
@@ -232,7 +234,7 @@ export default function NewClaim() {
     }
     rows = (details.units as typeof rows).filter((u) => u.symptom);
     // staff also see each unit's symptom in the claim's symptom text
-    const caseText = type === "inverter" ? [`Issue: ${f.issue.trim()}`, `Description: ${f.description.trim()}`] : [];
+    const caseText = seInv ? [`Issue: ${f.issue.trim()}`, `Description: ${f.description.trim()}`] : [];
     const symptom = [...caseText, f.symptom.trim(), ...rows.map((u) => `${u.sn || u.model}: ${u.symptom}`)].filter(Boolean).join("\n");
     setBusy(true);
     const { data, error } = await supabase.rpc("submit_claim", {
@@ -335,12 +337,14 @@ export default function NewClaim() {
                     <ModelPicker label="รุ่น / รหัส Inverter" value={f.model} onChange={(v) => set("model", v)} options={options} />
                     <Field label="อ้างอิง S/N Manager Inverter" required={req.has("manager_sn")}><Input className="font-mono" value={f.manager_sn} onChange={(e) => set("manager_sn", e.target.value)} required={req.has("manager_sn")} /></Field>
                   </div>
+                  {seInv && (<>
                   <div className="grid items-start gap-4 sm:grid-cols-2">
                     <Field label="หมายเลข Case (จาก Engineer)" required><Input value={f.case_no} onChange={(e) => set("case_no", e.target.value)} required /></Field>
                     <SupportContact />
                   </div>
                   <Field label="Issue" required hint="หัวข้อปัญหาตาม Case เช่น Isolation fault, Error 3x9A"><Input value={f.issue} onChange={(e) => set("issue", e.target.value)} required maxLength={200} /></Field>
                   <Field label="Description" required hint="รายละเอียดปัญหาและสิ่งที่ตรวจสอบแล้ว"><Textarea rows={3} value={f.description} onChange={(e) => set("description", e.target.value)} required maxLength={2000} /></Field>
+                  </>)}
                   <div><p className="mb-1.5 text-sm font-medium text-slate-700">S/N ตัวที่เสีย และอาการ <span className="text-red-500">*</span></p><SnRows single units={units} onChange={setUnits} /></div>
                 </div>
               )}
