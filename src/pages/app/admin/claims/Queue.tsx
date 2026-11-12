@@ -55,6 +55,8 @@ function Details({ c }: { c: Claim }) {
       {c.site_name && <div><dt className="inline text-slate-500">ไซต์งาน: </dt><dd className="inline">{c.site_name}</dd></div>}
       {d.manager_sn && <div><dt className="inline text-slate-500">S/N Manager: </dt><dd className="inline font-mono">{d.manager_sn}</dd></div>}
       {d.case_no && <div><dt className="inline text-slate-500">Case (Engineer): </dt><dd className="inline">{d.case_no}</dd></div>}
+      {d.issue && <div className="sm:col-span-2"><dt className="inline text-slate-500">Issue: </dt><dd className="inline font-medium">{d.issue}</dd></div>}
+      {d.description && <div className="sm:col-span-2"><dt className="inline text-slate-500">Description: </dt><dd className="inline whitespace-pre-line">{d.description}</dd></div>}
       {d.ref_inv_sn && <div><dt className="inline text-slate-500">อ้างอิง S/N Inverter: </dt><dd className="inline font-mono">{d.ref_inv_sn}</dd></div>}
       {d.items && d.items.length > 0 && (
         <div className="sm:col-span-2"><dt className="text-slate-500">Optimizer</dt>
