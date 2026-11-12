@@ -122,6 +122,8 @@ export interface ClaimUnit {
   iss_doc: string | null; iss_date: string | null; iss_sn: string | null;
   ret_pcode: string | null; ret_doc: string | null; ret_date: string | null; ret_sn: string | null; ret_note: string | null;
   rcv_pcode: string | null; rcv_doc: string | null; rcv_date: string | null; rcv_sn: string | null;
+  /** step 4: RMA from the manufacturer (keyed by staff) */
+  rma_no: string | null; rma_date: string | null; rma_note: string | null;
   ok_pcode: string | null; ok_doc: string | null; ok_date: string | null; ok_sn: string | null;
   updated_at: string;
   updated_by: string | null;
@@ -204,7 +206,10 @@ export interface ClaimSettings {
   form_note: string | null;
   email_note: string | null;
   ship_bank_info: string | null;
+  rma_header?: RmaHeader;
 }
+/** Header block of the Replenishment Request (RMA) report. */
+export interface RmaHeader { customer_name?: string; country?: string; ship_address?: string; bill_company?: string; bill_address?: string }
 export const REQUIRE_FIELD_LABEL: Record<string, string> = {
   installer_name: "ผู้ติดตั้ง (EPC)",
   site_name: "ชื่อไซต์งาน",
@@ -217,7 +222,8 @@ export const REQUIRE_FIELD_LABEL: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // The 5 internal steps (ssccare columns A–Z)
 // ---------------------------------------------------------------------------
-export interface StepField { key: UnitField | HeaderField; label: string; col: string; type?: "date" | "number" | "sn" }
+/** extra: not in the old ssccare sheet A–Z (kept out of paste-import positions, exported after column Z) */
+export interface StepField { key: UnitField | HeaderField; label: string; col: string; type?: "date" | "number" | "sn"; extra?: boolean }
 export type HeaderField = "pcode" | "voucher_no" | "voucher_date" | "case_id" | "site_id" | "claim_no" | "company_name" | "pickup_on" | "sales_code" | "qty";
 export interface StepDef { n: 1 | 2 | 3 | 4 | 5; name: string; short: string; dir: string; sub: string; fields: StepField[]; sn?: UnitField; optional?: boolean }
 
@@ -262,6 +268,9 @@ export const STEPS: StepDef[] = [
       { key: "rcv_doc", label: "เลขที่เบิก", col: "T" },
       { key: "rcv_date", label: "วันที่", col: "U", type: "date" },
       { key: "rcv_sn", label: "SN รับ", col: "V", type: "sn" },
+      { key: "rma_no", label: "RMA No.", col: "AA", extra: true },
+      { key: "rma_date", label: "วันที่ออก RMA", col: "AB", type: "date", extra: true },
+      { key: "rma_note", label: "หมายเหตุ RMA", col: "AC", extra: true },
     ],
   },
   {
@@ -471,7 +480,7 @@ export interface ImportClaim {
 }
 export interface ParseResult { claims: ImportClaim[]; skipped: { line: number; reason: string }[]; warnings: { line: number; reason: string }[]; rows: number }
 
-const COL_KEYS: (UnitField | HeaderField)[] = STEPS.flatMap((s) => s.fields.map((f) => f.key));
+const COL_KEYS: (UnitField | HeaderField)[] = STEPS.flatMap((s) => s.fields.filter((f) => !f.extra).map((f) => f.key));
 const DATE_KEYS = new Set(STEPS.flatMap((s) => s.fields.filter((f) => f.type === "date").map((f) => f.key)));
 
 function splitTsv(text: string): string[][] {
@@ -580,7 +589,8 @@ export function download(name: string, content: BlobPart, type = "text/csv;chars
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-export const SHEET_HEADER = STEPS.flatMap((s) => s.fields.map((f) => `${f.col} ${f.label}`));
+const SHEET_FIELDS = [...STEPS.flatMap((s) => s.fields.filter((f) => !f.extra)), ...STEPS.flatMap((s) => s.fields.filter((f) => f.extra))];
+export const SHEET_HEADER = SHEET_FIELDS.map((f) => `${f.col} ${f.label}`);
 /** One line per unit in the old sheet layout A–Z (dates as dd/mm/yyyy). */
 export function sheetRows(claims: Claim[], unitsBy: Map<string, ClaimUnit[]>): (string | number)[][] {
   const rows: (string | number)[][] = [];
@@ -592,7 +602,7 @@ export function sheetRows(claims: Claim[], unitsBy: Map<string, ClaimUnit[]>): (
         site_id: c.site_id ?? "", claim_no: c.claim_no, company_name: c.company_name ?? "", pickup_on: c.pickup_on ?? "",
         sales_code: c.sales_code ?? "", qty: c.qty,
       };
-      const rest = UNIT_STEP_FIELDS.map((k) => {
+      const rest = SHEET_FIELDS.slice(STEPS[0].fields.length).map((f) => f.key as UnitField).map((k) => {
         const v = u ? (u[k] as string | null) : null;
         return DATE_KEYS.has(k) ? fmtDmy(v) : v ?? "";
       });

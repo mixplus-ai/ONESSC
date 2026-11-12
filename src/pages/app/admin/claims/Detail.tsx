@@ -40,6 +40,8 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
   const [doc, setDoc] = useState("");
   const [date, setDate] = useState(todayIso());
   const [onlyEmpty, setOnlyEmpty] = useState(true);
+  const [rmaNo, setRmaNo] = useState("");
+  const [rmaDate, setRmaDate] = useState(todayIso());
   const [snText, setSnText] = useState("");
   const [addN, setAddN] = useState(1);
   const [showAll, setShowAll] = useState(false);
@@ -67,6 +69,9 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
       return n;
     }));
   }
+  function fillRma() {
+    setRows((r) => r.map((x) => (onlyEmpty && x.rma_no ? x : { ...x, rma_no: rmaNo.trim() || x.rma_no || null, rma_date: rmaDate || x.rma_date || null })));
+  }
   function addSns(list: string[]) {
     setRows((r) => {
       const out = [...r];
@@ -93,24 +98,36 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
   return (
     <Modal open={open} onClose={onClose} wide="full" title={`กรอกรวมทุกขั้นตอน · ${claim.claim_no}`}
       footer={<><Button variant="ghost" onClick={onClose}>ยกเลิก</Button><Button onClick={save} loading={busy}>บันทึก</Button></>}>
-      <div className="mb-4 grid gap-3 rounded-xl bg-slate-50 p-3 lg:grid-cols-[auto_1fr_1fr]">
-        <Field label="ขั้นตอน">
-          <Select value={step} onChange={(e) => setStep(Number(e.target.value) as 2 | 3 | 4 | 5)}>
-            {STEPS.slice(1).map((s) => <option key={s.n} value={s.n}>ขั้น {s.n} · {s.short}</option>)}
-          </Select>
-        </Field>
-        <div className="flex flex-wrap items-end gap-2">
-          <Field label="เลขที่เอกสาร"><Input value={doc} onChange={(e) => setDoc(e.target.value)} /></Field>
-          <Field label="วันที่"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-          <label className="mb-2 flex items-center gap-1 text-xs"><input type="checkbox" checked={onlyEmpty} onChange={(e) => setOnlyEmpty(e.target.checked)} />เฉพาะแถวว่าง</label>
-          <Button variant="secondary" onClick={fillDoc}>เติมทุกแถว</Button>
+      <div className="mb-4 divide-y divide-slate-200 rounded-xl bg-slate-50 ring-1 ring-slate-200">
+        <div className="flex flex-wrap items-end gap-3 p-3">
+          <div className="w-full sm:w-60">
+            <Field label="ขั้นตอน">
+              <Select className="h-10 !py-0" value={step} onChange={(e) => setStep(Number(e.target.value) as 2 | 3 | 4 | 5)}>
+                {STEPS.slice(1).map((s) => <option key={s.n} value={s.n}>ขั้น {s.n} · {s.short}</option>)}
+              </Select>
+            </Field>
+          </div>
+          <div className="w-full sm:w-48"><Field label="เลขที่เอกสาร"><Input className="h-10 !py-0" value={doc} onChange={(e) => setDoc(e.target.value)} /></Field></div>
+          <div className="w-full sm:w-44"><Field label="วันที่"><Input type="date" className="h-10 !py-0" value={date} onChange={(e) => setDate(e.target.value)} /></Field></div>
+          <Button variant="secondary" className="h-10 !py-0" onClick={fillDoc}>เติมทุกแถว</Button>
+          <label className="flex h-10 items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={onlyEmpty} onChange={(e) => setOnlyEmpty(e.target.checked)} />เติมเฉพาะแถวที่ยังว่าง</label>
         </div>
-        <div className="flex items-end gap-2">
-          <Field label={`วาง / สแกน ${STEPS[step - 1].fields.find((f) => f.key === snField)?.label}`}>
-            <Textarea rows={2} className="font-mono" value={snText} onChange={(e) => setSnText(e.target.value)} placeholder="SN ทีละบรรทัด (ยิงบาร์โค้ดได้)" />
-          </Field>
-          <ScanButton multi onScan={(sn) => addSns([sn])} />
-          <Button variant="secondary" onClick={() => { addSns(splitSns(snText)); setSnText(""); }}>ใส่</Button>
+        {step === 4 && (
+          <div className="flex flex-wrap items-end gap-3 p-3">
+            <div className="w-full sm:w-60"><Field label="RMA No. (จากผู้ผลิต)"><Input className="h-10 !py-0 font-mono" value={rmaNo} onChange={(e) => setRmaNo(e.target.value)} placeholder="R1000…" /></Field></div>
+            <div className="w-full sm:w-48"><Field label="วันที่ออก RMA"><Input type="date" className="h-10 !py-0" value={rmaDate} onChange={(e) => setRmaDate(e.target.value)} /></Field></div>
+            <Button variant="secondary" className="h-10 !py-0" onClick={fillRma}>เติม RMA ทุกแถว</Button>
+          </div>
+        )}
+        <div className="p-3">
+          <p className="mb-1.5 text-sm font-medium text-slate-700">วาง / สแกน {STEPS[step - 1].fields.find((f) => f.key === snField)?.label}</p>
+          <div className="flex items-end gap-2">
+            <Textarea rows={2} className="flex-1 font-mono" value={snText} onChange={(e) => setSnText(e.target.value)} placeholder="SN ทีละบรรทัด (ยิงบาร์โค้ดได้)" />
+            <div className="flex shrink-0 gap-2">
+              <ScanButton multi className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-500 ring-1 ring-inset ring-slate-300 hover:bg-slate-50" onScan={(sn) => addSns([sn])} />
+              <Button variant="secondary" className="h-10 !py-0" onClick={() => { addSns(splitSns(snText)); setSnText(""); }}>ใส่ SN</Button>
+            </div>
+          </div>
         </div>
       </div>
       <div className="mb-2 flex items-center justify-between gap-2">
