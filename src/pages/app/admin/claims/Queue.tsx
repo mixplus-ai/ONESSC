@@ -7,6 +7,8 @@ import {
 } from "../../../../lib/claims";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import { staffName, useBoard, type StaffOpt } from "./shared";
+import { SnChangeHistory, SnChangeQueue, useSnChanges } from "./SnChanges";
+import type { SnChange } from "../../../../lib/claims";
 
 const actorName = (staff: StaffOpt[], id: string | null) => {
   if (!id) return "ระบบ";
@@ -53,7 +55,7 @@ function Details({ c }: { c: Claim }) {
   );
 }
 
-function QueueCard({ c, onOpenBoard }: { c: Claim; onOpenBoard: (id: string) => void }) {
+function QueueCard({ c, onOpenBoard, snChanges }: { c: Claim; onOpenBoard: (id: string) => void; snChanges: SnChange[] }) {
   const { session, isAdmin, can } = useAuth();
   const { staff, canEdit, reload, brands } = useBoard();
   const me = session?.user.id ?? "";
@@ -136,6 +138,7 @@ function QueueCard({ c, onOpenBoard }: { c: Claim; onOpenBoard: (id: string) => 
       {open && (
         <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
           <Details c={c} />
+          <SnChangeHistory rows={snChanges} />
           <div>
             <p className="mb-1 text-sm font-medium text-slate-700">ไฟล์</p>
             {files === null ? <Spinner className="h-4 w-4" /> : files.length === 0 ? <p className="text-sm text-slate-500">ไม่มีไฟล์แนบ</p> : (
@@ -187,6 +190,7 @@ export default function Queue({ onOpenBoard }: { onOpenBoard: (id: string) => vo
   const me = session?.user.id ?? "";
   const [tab, setTab] = useState<QTab>("new");
   const [q, setQ] = useState("");
+  const sn = useSnChanges();
   const customer = useMemo(() => claims.filter((c) => c.source === "customer").sort((a, b) => b.created_at.localeCompare(a.created_at)), [claims]);
   const t = QTABS.find((x) => x.key === tab)!;
   const needle = q.trim().toLowerCase();
@@ -204,8 +208,9 @@ export default function Queue({ onOpenBoard }: { onOpenBoard: (id: string) => vo
           );
         })}
       </div>
+      <SnChangeQueue rows={sn.rows} reload={sn.reload} onOpen={onOpenBoard} />
       <Input className="mb-4" placeholder="ค้นหา เลขเคลม บริษัท ชื่อ เบอร์ รุ่น SN" value={q} onChange={(e) => setQ(e.target.value)} />
-      {rows.length === 0 ? <Empty>ไม่มีรายการ</Empty> : <div className="space-y-3">{rows.slice(0, 200).map((c) => <QueueCard key={c.id} c={c} onOpenBoard={onOpenBoard} />)}</div>}
+      {rows.length === 0 ? <Empty>ไม่มีรายการ</Empty> : <div className="space-y-3">{rows.slice(0, 200).map((c) => <QueueCard key={c.id} c={c} onOpenBoard={onOpenBoard} snChanges={sn.rows.filter((r) => r.claim_id === c.id)} />)}</div>}
     </div>
   );
 }

@@ -1,8 +1,11 @@
 import { useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ScanButton } from "../../../components/SnScanner";
-import { Alert, Badge, Button, ButtonLink, Card, Empty, Input, Loading, PageTitle, Spinner, cx } from "../../../components/ui";
-import { CLAIM_STATUS, fmtThai, fmtThaiTime, openClaimFile, productTypeLabel, splitSns, uploadClaimFile, type MyClaim } from "../../../lib/claims";
+import { Alert, Badge, Button, ButtonLink, Card, Empty, Field, Input, Loading, PageTitle, Select, Spinner, Textarea, cx } from "../../../components/ui";
+import {
+  CLAIM_STATUS, SN_CHANGE_STATUS, SN_REASON, fmtThai, fmtThaiTime, openClaimFile, productTypeLabel, splitSns, uploadClaimFile,
+  type MyClaim, type SnChange, type SnChangeReason,
+} from "../../../lib/claims";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 
@@ -189,7 +192,7 @@ function ReturnForm({ c, onDone }: { c: MyClaim; onDone: () => void }) {
                     ? <span className="grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-xs font-bold text-white" title="ตรงกับที่แจ้ง">✓</span>
                     : <span className="grid h-6 w-6 place-items-center rounded-full bg-red-500 text-xs font-bold text-white" title="ไม่ตรงกับที่แจ้ง">✕</span>)}
                 </span>
-                {filled && !good && <span className="col-start-2 text-xs text-red-600 sm:col-span-2 sm:col-start-4">ไม่ตรงกับ SN ที่แจ้ง</span>}
+                {filled && !good && <span className="col-start-2 text-xs text-red-600 sm:col-span-2 sm:col-start-4">ไม่ตรงกับ SN ที่แจ้ง · ถ้า SN ที่แจ้งไว้ผิด กด "ขอแก้ไข" ด้านล่าง</span>}
               </li>
             );
           })}
@@ -197,6 +200,100 @@ function ReturnForm({ c, onDone }: { c: MyClaim; onDone: () => void }) {
       </div>
       {err && <div className="mt-2"><Alert>{err}</Alert></div>}
       <Button className="mt-3" onClick={send} loading={busy} disabled={!all}>ยืนยันส่งของคืน {reported.length > 1 ? `(${reported.length} รายการ)` : ""}</Button>
+    </div>
+  );
+}
+
+/** แจ้งแก้ไข SN: the customer reported a wrong SN; staff approve before step 3 checks the new one. */
+function SnChangePanel({ c, changes, onDone }: { c: MyClaim; changes: SnChange[]; onDone: () => void }) {
+  const reported = c.reported_sns.filter((s) => snKey(s));
+  const pendingOld = new Set(changes.filter((x) => x.status === "pending").map((x) => snKey(x.old_sn)));
+  const free = reported.filter((s) => !pendingOld.has(snKey(s)));
+  const [open, setOpen] = useState(false);
+  const [oldSn, setOldSn] = useState("");
+  const [newSn, setNewSn] = useState("");
+  const [reason, setReason] = useState<SnChangeReason | "">("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const canAsk = c.mine && ["submitted", "in_progress", "done"].includes(c.status) && reported.length > 0;
+  if (!canAsk && !changes.length) return null;
+
+  async function send() {
+    setErr("");
+    if (!oldSn) return setErr("เลือก SN เดิมที่จะแก้");
+    if (!newSn.trim()) return setErr("กรอก SN ที่ถูกต้อง");
+    if (!reason) return setErr("เลือกสาเหตุ");
+    if (reason === "other" && !note.trim()) return setErr("ระบุสาเหตุ");
+    setBusy(true);
+    const { error } = await supabase.rpc("request_sn_change", { p_claim: c.id, p_old: oldSn, p_new: newSn.trim(), p_reason: reason, p_note: note.trim() || null });
+    setBusy(false);
+    if (error) return setErr(errorMessage(error));
+    setOpen(false);
+    setOldSn(""); setNewSn(""); setReason(""); setNote("");
+    onDone();
+  }
+  async function cancel(id: string) {
+    if (!confirm("ยกเลิกคำขอแก้ SN นี้?")) return;
+    const { error } = await supabase.rpc("cancel_sn_change", { p_id: id });
+    if (error) return setErr(errorMessage(error));
+    onDone();
+  }
+
+  return (
+    <div className="mt-3 rounded-xl p-3 ring-1 ring-slate-200">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-navy-900">แจ้งแก้ไข SN</p>
+        {canAsk && free.length > 0 && !open && (
+          <button type="button" className="text-sm font-semibold text-navy-700 hover:underline" onClick={() => { setOpen(true); setOldSn(free.length === 1 ? free[0] : ""); }}>
+            SN ที่แจ้งไว้ไม่ถูกต้อง? ขอแก้ไข
+          </button>
+        )}
+      </div>
+      {changes.length > 0 && (
+        <ul className="mt-2 space-y-1.5 text-sm">
+          {changes.map((x) => (
+            <li key={x.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className="font-mono text-xs"><span className="text-slate-500 line-through">{x.old_sn}</span> → <span className="text-navy-900">{x.new_sn}</span></span>
+              <span className="text-xs text-slate-500">{SN_REASON[x.reason]}{x.note ? `: ${x.note}` : ""}</span>
+              <Badge tone={SN_CHANGE_STATUS[x.status].tone}>{SN_CHANGE_STATUS[x.status].label}</Badge>
+              {x.status === "rejected" && x.staff_note && <span className="w-full text-xs text-red-700">เหตุผล: {x.staff_note}</span>}
+              {x.status === "pending" && <button type="button" className="text-xs text-slate-500 underline" onClick={() => cancel(x.id)}>ยกเลิกคำขอ</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Field label="SN เดิมที่แจ้งไว้">
+            <Select value={oldSn} onChange={(e) => setOldSn(e.target.value)}>
+              <option value="">เลือก SN</option>
+              {free.map((s) => <option key={s} value={s}>{s}</option>)}
+            </Select>
+          </Field>
+          <Field label="SN ที่ถูกต้อง">
+            <div className="flex gap-1">
+              <Input className="font-mono" value={newSn} onChange={(e) => setNewSn(e.target.value)} placeholder="กรอกหรือสแกน" />
+              <ScanButton onScan={(sn) => setNewSn(sn)} />
+            </div>
+          </Field>
+          <Field label="สาเหตุ">
+            <Select value={reason} onChange={(e) => setReason(e.target.value as SnChangeReason)}>
+              <option value="">เลือกสาเหตุ</option>
+              {(Object.keys(SN_REASON) as SnChangeReason[]).map((k) => <option key={k} value={k}>{SN_REASON[k]}</option>)}
+            </Select>
+          </Field>
+          <Field label={reason === "other" ? "รายละเอียด (จำเป็น)" : "รายละเอียดเพิ่มเติม (ไม่บังคับ)"}>
+            <Textarea rows={1} value={note} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+          <div className="flex gap-2 sm:col-span-2">
+            <Button onClick={send} loading={busy}>ส่งคำขอให้เจ้าหน้าที่อนุมัติ</Button>
+            <Button variant="ghost" onClick={() => { setOpen(false); setErr(""); }}>ยกเลิก</Button>
+          </div>
+          <p className="text-xs text-slate-500 sm:col-span-2">เมื่อเจ้าหน้าที่อนุมัติ ระบบจะเปลี่ยน SN ในเคลมนี้ให้ และใช้ SN ใหม่ตรวจตอนส่งของคืน (ขั้นที่ 3)</p>
+        </div>
+      )}
+      {err && <div className="mt-2"><Alert>{err}</Alert></div>}
     </div>
   );
 }
@@ -228,7 +325,7 @@ function AddFiles({ c, onDone }: { c: MyClaim; onDone: () => void }) {
   );
 }
 
-function ClaimCard({ c, onChanged }: { c: MyClaim; onChanged: () => void }) {
+function ClaimCard({ c, changes, onChanged }: { c: MyClaim; changes: SnChange[]; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const st = CLAIM_STATUS[c.status];
   const doc = c.files.find((f) => f.kind === "claim_doc" && f.path === c.claim_doc_path) ?? c.files.find((f) => f.kind === "claim_doc");
@@ -273,6 +370,7 @@ function ClaimCard({ c, onChanged }: { c: MyClaim; onChanged: () => void }) {
           </div>
         )}
         {c.status === "done" && <ReturnForm c={c} onDone={onChanged} />}
+        {(c.status === "done" || open || changes.some((x) => x.status === "pending")) && <SnChangePanel c={c} changes={changes} onDone={onChanged} />}
         {c.status === "returned" && <p className="mt-3 text-sm text-slate-600">ส่งของคืนแล้ว {c.returned_sns?.length ?? 0} รายการ ตรงกับ SN ที่แจ้งครบ · รอ{c.handler ? ` ${c.handler} (ผู้รับผิดชอบ)` : "ทีมงาน"}ตรวจรับเพื่อปิดงาน</p>}
         {c.status === "closed" && <p className="mt-3 text-sm text-emerald-700">ปิดงานเรียบร้อย{c.closed_at ? ` เมื่อ ${fmtThaiTime(c.closed_at)}` : ""}{c.closed_by ? ` โดย ${c.closed_by}` : ""}</p>}
 
@@ -341,6 +439,11 @@ export default function MyClaims() {
     const { data, error } = await supabase.rpc("my_claims");
     return { data: (data ?? []) as MyClaim[], error };
   });
+  const snChanges = useRows<SnChange>(async () => {
+    const { data, error } = await supabase.rpc("my_sn_changes");
+    return { data: (data ?? []) as SnChange[], error };
+  });
+  const reloadAll = () => { list.reload(); snChanges.reload(); };
   const [filter, setFilter] = useState<"open" | "all">("all");
   const [q, setQ] = useState("");
   const term = q.trim().toLowerCase();
@@ -371,7 +474,7 @@ export default function MyClaims() {
           <Link to="/app/claims/new" className="font-semibold text-navy-700 underline">แจ้งเคลมใหม่</Link>
         </Empty>
       ) : (
-        <div className="space-y-4">{rows.map((c) => <ClaimCard key={c.id} c={c} onChanged={list.reload} />)}</div>
+        <div className="space-y-4">{rows.map((c) => <ClaimCard key={c.id} c={c} changes={snChanges.rows.filter((x) => x.claim_id === c.id)} onChanged={reloadAll} />)}</div>
       )}
       <p className="mt-6 text-xs text-slate-500">สอบถามเพิ่มเติม ติดต่อฝ่ายบริการผ่าน LINE OA หรือ <Link to="/contact?topic=service" className="underline">หน้าติดต่อเรา</Link></p>
     </>
