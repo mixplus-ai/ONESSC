@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Gate } from "../../../../components/AppLayout";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select } from "../../../../components/ui";
@@ -254,6 +254,17 @@ export default function StockDocs() {
   const tab = (params.get("tab") as Tab) || "search";
   const docId = params.get("doc");
   const newType = params.get("new") as DocType | null;
+  // a delivery that already has its sale document: open that one instead of starting a second
+  const deliveryParam = params.get("delivery");
+  const [checked, setChecked] = useState(!deliveryParam);
+  useEffect(() => {
+    if (!deliveryParam || !newType) return setChecked(true);
+    supabase.from("stock_docs").select("id").eq("delivery_id", deliveryParam).neq("status", "cancelled").limit(1)
+      .then(({ data }) => {
+        if (data?.[0]) setParams((p) => { p.set("doc", data[0].id); p.delete("new"); p.delete("delivery"); return p; }, { replace: true });
+        setChecked(true);
+      });
+  }, [deliveryParam, newType]); // eslint-disable-line react-hooks/exhaustive-deps
   const [listKey, setListKey] = useState(0);
   const wh = useRows<Warehouse>(() => supabase.from("warehouses").select("*").order("sort").order("code"));
   const active = wh.rows.filter((w) => w.is_active);
@@ -267,7 +278,7 @@ export default function StockDocs() {
   return (
     <Gate allow={allowed}>
       <PageTitle title="เอกสารคลังและ Serial Number" subtitle="รับเข้า จ่ายออก ยืม คืน จำหน่าย ทุกชิ้นตาม SN และค้นประวัติ SN ได้ในช่องเดียว" />
-      {(docId || newType) && !wh.loading ? (
+      {(docId || newType) && !wh.loading && checked ? (
         <DocEditor key={docId ?? newType} id={docId} type={newType ?? "GR"} warehouses={docId ? wh.rows : active} deliveryId={params.get("delivery")}
           onClose={close} onChanged={() => setListKey((k) => k + 1)} />
       ) : (

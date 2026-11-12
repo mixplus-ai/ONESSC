@@ -13,7 +13,9 @@ insert into public.staff_permissions (user_id, perm) values
   ('00000000-0000-0000-0000-00000000f0b2', 'stock.post');
 insert into public.stock_levels (sku, stock_group, description, on_hand, available) values ('INV-10K', 'SLE-IVT', 'Inverter 10K', 99, 99);
 insert into public.warehouses (code, name) values ('WH2', 'คลัง 2');
+insert into public.deliveries (delivery_date, customer_name) values ('2026-11-12', 'D Co');
 create temp table t_ids (k text primary key, id uuid);
+insert into t_ids select 'dl', id from public.deliveries where customer_name = 'D Co';
 grant all on t_ids to authenticated;
 
 set local role authenticated;
@@ -120,6 +122,13 @@ begin
   begin perform public.cancel_stock_doc((select id from t_ids where k = 'so'), ''); assert false, 'reason needed'; exception when raise_exception then null; end;
   perform public.cancel_stock_doc((select id from t_ids where k = 'so'), 'ออกผิด');
   assert (select status || '/' || coalesce(holder_name, '-') from public.serials where sn_key = public.sn_key('SN-0001')) = 'in_stock/-', 'restored';
+
+  -- a delivery is cut by one live document only
+  perform public.save_stock_doc(null, jsonb_build_object('doc_type', 'SO', 'warehouse_id', wh, 'partner_name', 'D Co', 'delivery_id', (select id from t_ids where k = 'dl')), '[]');
+  begin
+    perform public.save_stock_doc(null, jsonb_build_object('doc_type', 'SO', 'warehouse_id', wh, 'partner_name', 'D Co', 'delivery_id', (select id from t_ids where k = 'dl')), '[]');
+    assert false, 'second doc for same delivery';
+  exception when unique_violation then null; end;
 
   -- history: GR, cancelled SO, plus a claim naming it
   h := public.sn_history('sn0001');

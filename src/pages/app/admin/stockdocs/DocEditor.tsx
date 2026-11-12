@@ -8,6 +8,7 @@ import {
   CONDITION_LABEL, DIR, DOC_LABEL, DOC_STATUS_LABEL, DOC_STATUS_TONE, DOC_TYPES, PARTNER_LABEL, REF_LABEL, SERIAL_STATUS_LABEL,
   snKey, splitSns, type Condition, type DocItem, type DocType, type Serial, type StockDoc, type Warehouse,
 } from "../../../../lib/stockdocs";
+import { PhotoScan } from "./PhotoScan";
 import { printStockDoc } from "./print";
 
 interface StockRow { sku: string; description: string | null }
@@ -330,8 +331,9 @@ export function DocEditor({ id, type, warehouses, deliveryId, onClose, onChanged
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addSns(scan); } }}
                 placeholder="สแกนบาร์โค้ด SN (กด Enter ทีละตัว) หรือวางหลายตัวจาก Excel แล้วกด เพิ่ม"
                 className="block w-full rounded-lg border-0 bg-white px-3 py-2.5 font-mono text-sm shadow-sm ring-1 ring-inset ring-slate-300 placeholder:font-sans placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-navy-600" />
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button variant="secondary" onClick={() => addSns(scan)}>+ เพิ่ม SN</Button>
+                <PhotoScan knownSkus={new Set(stock.rows.map((r) => r.sku))} existing={new Set(items.map((i) => snKey(i.sn)))} onAdd={(sns) => addSns(sns.join("\n"))} />
                 <span className="text-xs text-slate-500">แยกด้วยบรรทัดใหม่ เครื่องหมาย , หรือแท็บ</span>
               </div>
             </div>

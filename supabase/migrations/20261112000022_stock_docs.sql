@@ -68,6 +68,8 @@ create index stock_docs_type_idx on public.stock_docs (doc_type, doc_date desc);
 create index stock_docs_status_idx on public.stock_docs (status, doc_date desc);
 create index stock_docs_company_idx on public.stock_docs (company_id);
 create index stock_docs_return_of_idx on public.stock_docs (return_of);
+-- one delivery (ตารางส่งสินค้า) is cut from stock by at most one live sale document
+create unique index stock_docs_one_per_delivery on public.stock_docs (delivery_id) where delivery_id is not null and status <> 'cancelled';
 
 -- one row per SN
 create table public.stock_doc_items (
