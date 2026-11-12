@@ -648,3 +648,33 @@ export async function openClaimFile(path: string) {
 }
 export const isImage = (f: { file_name?: string | null; content_type?: string | null; path: string }) =>
   (f.content_type ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic)$/i.test(f.file_name ?? f.path);
+
+// ---------------------------------------------------------------------------
+// SN correction requests (customer asks, staff approve) · migration 20
+// ---------------------------------------------------------------------------
+export type SnChangeReason = "typo" | "wrong_unit" | "wrong_product" | "other";
+export const SN_REASON: Record<SnChangeReason, string> = {
+  typo: "พิมพ์ SN ผิด",
+  wrong_unit: "ใส่ SN ผิดตัว",
+  wrong_product: "แจ้งสินค้าผิด",
+  other: "อื่น ๆ (ระบุ)",
+};
+export interface SnChange {
+  id: string;
+  claim_id: string;
+  user_id: string | null;
+  old_sn: string;
+  new_sn: string;
+  reason: SnChangeReason;
+  note: string | null;
+  status: "pending" | "approved" | "rejected";
+  staff_note: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  created_at: string;
+}
+export const SN_CHANGE_STATUS: Record<SnChange["status"], { label: string; tone: Tone }> = {
+  pending: { label: "รออนุมัติ", tone: "amber" },
+  approved: { label: "อนุมัติแล้ว", tone: "green" },
+  rejected: { label: "ไม่อนุมัติ", tone: "red" },
+};
