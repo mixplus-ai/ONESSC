@@ -16,7 +16,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000e0c1
 do $$
 declare v record;
 begin
-  select * into v from public.submit_claim(jsonb_build_object('product_type', 'optimizer', 'contact_name', 'A', 'contact_phone', '081',
+  select * into v from public.submit_claim(jsonb_build_object('product_type', 'optimizer', 'contact_name', 'A', 'contact_phone', '081', 'site_id', 'S-1',
       'details', jsonb_build_object('items', jsonb_build_array(
          jsonb_build_object('model', 'P500', 'qty', 2, 'bad_sn', 'SN-AAA1, SN-AAA2'),
          jsonb_build_object('model', 'P850', 'qty', 1, 'bad_sn', 'SNC3')))));

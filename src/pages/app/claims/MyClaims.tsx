@@ -387,6 +387,7 @@ function ClaimCard({ c, changes, onChanged }: { c: MyClaim; changes: SnChange[];
                 {c.company_name && <div><dt className="inline text-slate-500">บริษัท: </dt><dd className="inline">{c.company_name}</dd></div>}
                 {c.installer_name && <div><dt className="inline text-slate-500">ผู้ติดตั้ง: </dt><dd className="inline">{c.installer_name}</dd></div>}
                 {c.case_id && <div><dt className="inline text-slate-500">Case: </dt><dd className="inline">{c.case_id}</dd></div>}
+                {c.details.po_no && <div><dt className="inline text-slate-500">PO / PI: </dt><dd className="inline">{c.details.po_no}</dd></div>}
                 {c.reported_sns.length > 0 && (c.returned_sns?.length ? (
                   <div>
                     <dt className="text-slate-500">SN ที่แจ้ง / SN ที่คืน</dt>
