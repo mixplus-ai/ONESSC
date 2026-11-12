@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { WarrantyBadge, WarrantyFacts } from "../../../../components/Warranty";
 import { Link } from "react-router-dom";
 import { Alert, Badge, Button, Card, Input } from "../../../../components/ui";
 import { formatDate, formatDateTime } from "../../../../lib/catalog";
@@ -52,6 +53,7 @@ export function SnLookup({ initial = "" }: { initial?: string }) {
   const [err, setErr] = useState("");
   const [hist, setHist] = useState<History | null>(null);
   const [hits, setHits] = useState<Hit[] | null>(null);
+  const [war, setWar] = useState<{ sold_at: string | null; ref_no: string | null; sold_doc_no: string | null; warranty_months: number | null; warranty_end: string | null } | null>(null);
 
   async function open(sn: string) {
     setBusy(true); setErr(""); setHits(null);
@@ -59,7 +61,12 @@ export function SnLookup({ initial = "" }: { initial?: string }) {
     setBusy(false);
     if (error) return setErr(errorMessage(error));
     const h = data as History | null;
-    if (h && (h.serial || h.docs.length || h.claims.length)) { setHist(h); return; }
+    if (h && (h.serial || h.docs.length || h.claims.length)) {
+      setHist(h);
+      setWar(null);
+      supabase.rpc("sns_info", { p_sns: [sn] }).then(({ data }) => setWar(((data ?? []) as NonNullable<typeof war>[])[0] ?? null));
+      return;
+    }
     setHist(null);
     // nothing exact: try partial
     setBusy(true);
@@ -151,6 +158,12 @@ export function SnLookup({ initial = "" }: { initial?: string }) {
               <div><dt className="text-xs text-slate-500">ขาย</dt><dd className="font-medium text-navy-900">{warrantyNote ?? "-"}</dd></div>
               <div><dt className="text-xs text-slate-500">กำหนดคืน</dt><dd className="font-medium text-navy-900">{formatDate(s.due_date) || "-"}</dd></div>
             </dl>
+          )}
+          {s && war && (
+            <div className="mt-4 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+              <div className="mb-2 flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-navy-900">การรับประกัน</p><WarrantyBadge end={war.warranty_end} months={war.warranty_months} /></div>
+              <WarrantyFacts soldAt={war.sold_at} piNo={war.ref_no || war.sold_doc_no} months={war.warranty_months} end={war.warranty_end} />
+            </div>
           )}
           <h3 className="mt-6 text-sm font-semibold text-navy-900">ประวัติ</h3>
           <ol className="mt-2 space-y-3 border-l-2 border-slate-200 pl-4">

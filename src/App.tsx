@@ -50,6 +50,7 @@ const TrainingAdmin = lazy(() => import("./pages/app/admin/training/TrainingAdmi
 const CompanyPoints = lazy(() => import("./pages/app/admin/CompanyPoints"));
 const PointsAdmin = lazy(() => import("./pages/app/admin/PointsAdmin"));
 const MyClaims = lazy(() => import("./pages/app/claims/MyClaims"));
+const WarrantyCheck = lazy(() => import("./pages/app/claims/WarrantyCheck"));
 const NewClaim = lazy(() => import("./pages/app/claims/NewClaim"));
 const ClaimsAdmin = lazy(() => import("./pages/app/admin/claims/ClaimsAdmin"));
 const DeliveriesAdmin = lazy(() => import("./pages/app/admin/deliveries/DeliveriesAdmin"));
@@ -95,6 +96,7 @@ export default function App() {
             <Route path="training/checkin" element={<CheckIn />} />
             <Route path="points" element={<Points />} />
             <Route path="claims" element={<MyClaims />} />
+            <Route path="warranty" element={<WarrantyCheck />} />
             <Route path="claims/new" element={<NewClaim />} />
             <Route path="admin/claims" element={<ClaimsAdmin />} />
             <Route path="admin/training" element={<TrainingAdmin />} />

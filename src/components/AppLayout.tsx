@@ -3,7 +3,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABEL } from "../lib/types";
-import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, StarIcon, TagIcon, UserIcon, UsersIcon, WrenchIcon, XIcon, TruckIcon } from "./icons";
+import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, ShieldIcon, StarIcon, TagIcon, UserIcon, UsersIcon, WrenchIcon, XIcon, TruckIcon } from "./icons";
 import { useCart } from "../lib/cart";
 import { Logo } from "./PublicLayout";
 import { Alert, Loading, cx } from "./ui";
@@ -73,6 +73,7 @@ export default function AppLayout() {
         { to: "/app/requests", label: "คำขอของฉัน", icon: FileIcon, show: true },
         { to: "/app/training", label: "การอบรมของฉัน", icon: AcademicIcon, show: true },
         { to: "/app/claims", label: "งานเคลมของฉัน", icon: WrenchIcon, show: true },
+        { to: "/app/warranty", label: "ตรวจสอบประกัน", icon: ShieldIcon, show: true },
         { to: "/app/points", label: "แต้มและของรางวัล", icon: GiftIcon, show: true },
   ];
   // Staff/Admin: their own customer pages fold into a collapsible "ของฉัน" group so work menus come first

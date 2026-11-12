@@ -44,6 +44,8 @@ export interface Variant {
   /** ราคาพิเศษ for everyone, acts like a promotion price until special_ends_at */
   special_price?: number | null;
   special_ends_at?: string | null;
+  /** months; null = use the product's warranty (migration 29) */
+  warranty_months?: number | null;
 }
 
 export interface Product {
@@ -65,6 +67,8 @@ export interface Product {
   is_featured: boolean;
   sort: number;
   legacy_ref: string | null;
+  /** warranty in months from the PI (sale) date, for every code of this product (migration 29) */
+  warranty_months?: number | null;
   created_at: string;
   updated_at: string;
   product_variants?: Variant[];
@@ -188,6 +192,18 @@ export const STOCK_LABEL: Record<StockState, { label: string; tone: "slate" | "g
 const baht = new Intl.NumberFormat("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 export const formatBaht = (n: number | null | undefined) => (n == null ? "สอบถามราคา" : `฿${baht.format(Number(n))}`);
 export const formatQty = (n: number | null | undefined) => baht.format(Number(n ?? 0));
+/** 144 → "12 ปี", 18 → "1 ปี 6 เดือน" */
+export function fmtWarranty(m: number | null | undefined): string {
+  if (m == null) return "";
+  if (m === 0) return "ไม่มีประกัน";
+  const y = Math.floor(m / 12), r = m % 12;
+  return [y ? `${y} ปี` : "", r ? `${r} เดือน` : ""].filter(Boolean).join(" ");
+}
+/** days from today (Bangkok) to an ISO date; negative = past */
+export function daysUntil(d: string): number {
+  const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+  return Math.round((Date.parse(d) - Date.parse(today)) / 864e5);
+}
 export const formatDate = (s: string | null | undefined) =>
   s ? new Date(s).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" }) : "-";
 export const formatDateTime = (s: string | null | undefined) =>
