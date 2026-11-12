@@ -1,48 +1,81 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ImageUpload } from "../../../../components/ImageUpload";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, Select, Textarea } from "../../../../components/ui";
 import { useAuth } from "../../../../lib/auth";
 import { useRows } from "../../../../lib/content";
 import { errorMessage, supabase } from "../../../../lib/supabase";
-import { formatMoney, uploadTrainingMedia, type CertTemplate, type Course } from "../../../../lib/training";
+import { formatMoney, openPrivateFile, uploadCourseMaterial, uploadTrainingMedia, type CertTemplate, type Course } from "../../../../lib/training";
 
-interface Material { id: string; course_id: string | null; kind: string; title: string; url: string; visibility: string; sort: number }
-const VIS: Record<string, string> = { public: "ทุกคน", registered: "ผู้ลงทะเบียน", attended: "ผู้ที่เข้าอบรมแล้ว" };
+interface Material { id: string; course_id: string | null; kind: string; title: string; url: string | null; file_path: string | null; visibility: string; sort: number }
+const VIS: Record<string, string> = { attended: "หลังเช็กอิน", registered: "ผู้ลงทะเบียน", public: "ทุกคน" };
 
 function Materials({ course }: { course: Course }) {
   const rows = useRows<Material>(() => supabase.from("course_materials").select("*").eq("course_id", course.id).order("sort"), [course.id]);
-  const [f, setF] = useState({ kind: "video", title: "", url: "", visibility: "registered" });
+  const [f, setF] = useState({ kind: "file", title: "", url: "", visibility: "attended" });
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
   async function add() {
-    if (!f.title.trim() || !/^https?:\/\//.test(f.url)) return setErr("กรอกชื่อและลิงก์ (https://…)");
-    const { error } = await supabase.from("course_materials").insert({ ...f, course_id: course.id, sort: rows.rows.length });
-    if (error) return setErr(errorMessage(error));
-    setF({ ...f, title: "", url: "" });
+    if (!f.title.trim() && !file) return setErr("กรอกชื่อเอกสาร");
+    if (f.kind === "file" && !file) return setErr("เลือกไฟล์ที่จะอัปโหลด");
+    if (f.kind !== "file" && !/^https?:\/\//.test(f.url)) return setErr("กรอกลิงก์ (https://…)");
+    if (file && file.size > 50 * 1024 * 1024) return setErr("ไฟล์ใหญ่เกิน 50 MB");
+    setBusy(true);
     setErr("");
-    rows.reload();
+    try {
+      const file_path = f.kind === "file" && file ? await uploadCourseMaterial(course.id, file) : null;
+      const { error } = await supabase.from("course_materials").insert({
+        course_id: course.id, kind: f.kind, title: f.title.trim() || file!.name, visibility: f.visibility, sort: rows.rows.length,
+        url: f.kind === "file" ? null : f.url, file_path,
+      });
+      if (error) {
+        if (file_path) await supabase.storage.from("training-materials").remove([file_path]);
+        throw error;
+      }
+      setF({ ...f, title: "", url: "" });
+      setFile(null);
+      rows.reload();
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   }
-  async function remove(id: string) {
+  async function remove(m: Material) {
     if (!confirm("ลบเอกสารนี้?")) return;
-    await supabase.from("course_materials").delete().eq("id", id);
+    await supabase.from("course_materials").delete().eq("id", m.id);
+    if (m.file_path) await supabase.storage.from("training-materials").remove([m.file_path]);
     rows.reload();
   }
   return (
     <div className="mt-4 border-t border-slate-100 pt-4">
-      <p className="mb-2 text-sm font-semibold text-navy-900">เอกสารประกอบ / วิดีโอ</p>
+      <p className="text-sm font-semibold text-navy-900">เอกสารอบรม / วิดีโอ</p>
+      <p className="mb-2 text-xs text-slate-500">อัปโหลดไฟล์ให้ลูกค้าดาวน์โหลด ตั้ง “หลังเช็กอิน” = ลูกค้าโหลดได้เมื่อเช็กอินที่สถานที่อบรมแล้ว</p>
       <ul className="mb-3 space-y-1 text-sm">
         {rows.rows.map((m) => (
           <li key={m.id} className="flex items-center justify-between gap-2">
-            <a href={m.url} target="_blank" rel="noreferrer" className="text-navy-700 hover:underline">{m.title}</a>
-            <span className="flex items-center gap-2 text-xs text-slate-500">{VIS[m.visibility]} <button className="text-red-600" onClick={() => remove(m.id)}>ลบ</button></span>
+            {m.file_path
+              ? <button className="text-left text-navy-700 hover:underline" onClick={() => openPrivateFile("training-materials", m.file_path!)}>📄 {m.title}</button>
+              : <a href={m.url ?? "#"} target="_blank" rel="noreferrer" className="text-navy-700 hover:underline">{m.kind === "video" ? "🎬" : "🔗"} {m.title}</a>}
+            <span className="flex shrink-0 items-center gap-2 text-xs text-slate-500">{VIS[m.visibility]} <button className="text-red-600" onClick={() => remove(m)}>ลบ</button></span>
           </li>
         ))}
+        {!rows.loading && rows.rows.length === 0 && <li className="text-xs text-slate-400">ยังไม่มีเอกสาร</li>}
       </ul>
       <div className="grid gap-2 sm:grid-cols-[7rem_1fr_1fr_9rem_auto]">
-        <Select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="video">วิดีโอ</option><option value="file">ไฟล์</option><option value="link">ลิงก์</option></Select>
-        <Input placeholder="ชื่อ" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
-        <Input placeholder="https://" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />
+        <Select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}><option value="file">ไฟล์</option><option value="video">วิดีโอ (ลิงก์)</option><option value="link">ลิงก์</option></Select>
+        <Input placeholder="ชื่อเอกสาร" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
+        {f.kind === "file" ? (
+          <>
+            <Button variant="secondary" onClick={() => fileRef.current?.click()} className="truncate">{file ? file.name : "เลือกไฟล์ (PDF, PPT, ZIP…)"}</Button>
+            <input ref={fileRef} type="file" hidden onChange={(e) => { setFile(e.target.files?.[0] ?? null); e.target.value = ""; }} />
+          </>
+        ) : (
+          <Input placeholder="https://" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />
+        )}
         <Select value={f.visibility} onChange={(e) => setF({ ...f, visibility: e.target.value })}>{Object.entries(VIS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>
-        <Button variant="secondary" onClick={add}>เพิ่ม</Button>
+        <Button onClick={add} loading={busy}>{f.kind === "file" ? "อัปโหลด" : "เพิ่ม"}</Button>
       </div>
       {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
     </div>
