@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { NextSteps } from "../../../components/CareTeam";
 import { ScanButton } from "../../../components/SnScanner";
 import { Alert, Badge, Button, ButtonLink, Card, Empty, Field, Input, Loading, PageTitle, Select, Spinner, Textarea, cx } from "../../../components/ui";
 import {
@@ -457,7 +458,7 @@ export default function MyClaims() {
       <PageTitle title="งานเคลมของฉัน" subtitle="ติดตามสถานะเคลมที่คุณแจ้งไว้" actions={<ButtonLink to="/app/claims/new" variant="sun">+ แจ้งเคลม</ButtonLink>} />
       {st?.created && (
         <div className="mb-4">
-          <Alert tone="green">ส่งแจ้งเคลมแล้ว เลขเคลมของคุณคือ <span className="font-mono font-bold">{st.created}</span> · สถานะ: {CLAIM_STATUS.submitted.label} (รอเจ้าหน้าที่รับเรื่อง) ติดตามสถานะได้ที่หน้านี้</Alert>
+          <NextSteps kind="claim" code={st.created} />
           {st.failed && st.failed.length > 0 && <div className="mt-2"><Alert tone="amber">อัปโหลดไฟล์ไม่สำเร็จ: {st.failed.join(", ")} กรุณากด "แนบไฟล์เพิ่ม" อีกครั้ง</Alert></div>}
         </div>
       )}

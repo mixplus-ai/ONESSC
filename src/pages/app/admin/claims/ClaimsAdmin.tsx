@@ -8,11 +8,12 @@ import { errorMessage, supabase } from "../../../../lib/supabase";
 import { Tabs } from "../../MyRequests";
 import Board from "./Board";
 import { ClaimAudit, ClaimDashboard } from "./Insights";
+import LegacyLink from "./LegacyLink";
 import Queue from "./Queue";
 import ClaimSettingsTab from "./Settings";
 import { BoardCtx, type BoardData, type BrandOpt, type StaffOpt } from "./shared";
 
-type Tab = "queue" | "board" | "dashboard" | "audit" | "settings";
+type Tab = "queue" | "board" | "dashboard" | "audit" | "legacy" | "settings";
 
 export default function ClaimsAdmin() {
   const { isStaff, can } = useAuth();
@@ -72,7 +73,7 @@ export default function ClaimsAdmin() {
     { key: "board", label: "ผัง 5 ขั้นตอน" },
     { key: "dashboard", label: "แดชบอร์ด" },
     { key: "audit", label: "รายงานตรวจสอบ" },
-    ...(canEdit ? [{ key: "settings" as Tab, label: "ตั้งค่า" }] : []),
+    ...(canEdit ? [{ key: "legacy" as Tab, label: "ผูกเคลมเก่ากับลูกค้า" }, { key: "settings" as Tab, label: "ตั้งค่า" }] : []),
   ];
 
   return (
@@ -86,6 +87,7 @@ export default function ClaimsAdmin() {
           {tab === "board" && <Board selected={selected} onSelect={openClaim} />}
           {tab === "dashboard" && <ClaimDashboard />}
           {tab === "audit" && <ClaimAudit onOpen={openClaim} />}
+          {tab === "legacy" && canEdit && <LegacyLink />}
           {tab === "settings" && canEdit && <ClaimSettingsTab />}
         </BoardCtx.Provider>
       )}

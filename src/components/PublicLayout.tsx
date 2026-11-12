@@ -172,13 +172,30 @@ function Footer() {
 function LineButton() {
   const { company } = useSiteSettings();
   const { pathname } = useLocation();
+  // on phones it slides away while scrolling down (so it never sits on top of buttons or sort controls) and comes back on scroll up
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (Math.abs(y - last) < 8) return;
+      setAway(y > last && y > 120);
+      last = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   if (!company.line_oa_url || hidesTabBar(pathname)) return null;
   return (
     <a
       href={company.line_oa_url}
       target="_blank"
       rel="noreferrer"
-      className="fixed right-4 bottom-20 z-40 inline-flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-3 lg:bottom-6 text-sm font-semibold text-white shadow-lg shadow-black/20 transition hover:brightness-110 sm:right-6 sm:bottom-6"
+      aria-label="คุยกับเซลล์ทาง LINE"
+      className={cx(
+        "fixed right-3 bottom-[4.75rem] z-40 inline-flex items-center gap-2 rounded-full bg-[#06C755] p-3 text-sm font-semibold text-white shadow-lg shadow-black/20 transition duration-300 hover:brightness-110 sm:right-6 sm:bottom-6 sm:px-4",
+        away && "translate-x-24 opacity-0 sm:translate-x-0 sm:opacity-100",
+      )}
     >
       <ChatIcon className="h-5 w-5" />
       <span className="hidden sm:inline">คุยกับเซลล์</span>

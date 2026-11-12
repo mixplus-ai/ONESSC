@@ -10,7 +10,8 @@ update public.profiles set role = 'admin' where email = 'sdadmin@ssc.test';
 update public.profiles set role = 'staff' where email in ('sdclerk@ssc.test', 'sdboss@ssc.test');
 insert into public.staff_permissions (user_id, perm) values
   ('00000000-0000-0000-0000-00000000f0b1', 'stock.docs'),
-  ('00000000-0000-0000-0000-00000000f0b2', 'stock.post');
+  ('00000000-0000-0000-0000-00000000f0b2', 'stock.post'),
+  ('00000000-0000-0000-0000-00000000f0b2', 'companies');
 insert into public.stock_levels (sku, stock_group, description, on_hand, available) values ('INV-10K', 'SLE-IVT', 'Inverter 10K', 99, 99);
 insert into public.warehouses (code, name) values ('WH2', 'คลัง 2');
 insert into public.deliveries (delivery_date, customer_name) values ('2026-11-12', 'D Co');

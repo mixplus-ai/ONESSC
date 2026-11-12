@@ -103,8 +103,14 @@ function SupportContact() {
   );
 }
 
+interface Draft { at: string; type: ProductType | ""; brandId: string; f: Record<string, string>; units: Unit[]; items: OptItem[] }
+const draftKey = (id: string | undefined) => `claimDraft:${id ?? "anon"}`;
+function readDraft(id: string | undefined): Draft | null {
+  try { return JSON.parse(localStorage.getItem(draftKey(id)) ?? "null"); } catch { return null; }
+}
+
 export default function NewClaim() {
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
   const nav = useNavigate();
   const [brands, setBrands] = useState<BrandOpt[]>([]);
   const [models, setModels] = useState<ClaimModel[]>([]);
@@ -123,6 +129,37 @@ export default function NewClaim() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  // the form is long: keep a draft on this device so closing the page does not lose it (attached files are not kept)
+  const me = session?.user.id;
+  const [restored, setRestored] = useState<string | null>(null);
+  const loaded = useRef(false);
+  useEffect(() => {
+    if (loaded.current || !me) return;
+    loaded.current = true;
+    const d = readDraft(me);
+    if (!d) return;
+    setType(d.type); setBrandId(d.brandId);
+    setF((x) => ({ ...x, ...d.f }));
+    if (d.units?.length) setUnits(d.units);
+    if (d.items?.length) setItems(d.items);
+    setRestored(d.at);
+  }, [me]);
+  useEffect(() => {
+    if (!loaded.current || !me) return;
+    const t = window.setTimeout(() => {
+      const touched = type || units.some((u) => u.sn || u.symptom) || f.site_id || f.symptom || f.model;
+      try {
+        if (touched) localStorage.setItem(draftKey(me), JSON.stringify({ at: new Date().toISOString(), type, brandId, f, units, items } satisfies Draft));
+      } catch { /* storage full or private mode */ }
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [me, type, brandId, f, units, items]);
+  function clearDraft() {
+    try { localStorage.removeItem(draftKey(me)); } catch { /* ignore */ }
+    setRestored(null);
+    setType(""); setBrandId(""); setUnits([emptyUnit()]); setItems([emptyItem()]);
+    setF((x) => ({ ...x, po_no: "", installer_name: "", site_name: "", site_id: "", model: "", manager_sn: "", case_no: "", ref_inv_sn: "", symptom: "", delivery_type: "pickup", delivery_address: "" }));
+  }
 
   useEffect(() => {
     supabase.rpc("claim_brands").then(({ data }) => setBrands((data ?? []) as BrandOpt[]));
@@ -217,6 +254,7 @@ export default function NewClaim() {
       }
     }
     setBusy(false);
+    try { localStorage.removeItem(draftKey(me)); } catch { /* ignore */ }
     nav("/app/claims", { state: { created: row.claim_no, failed } });
   }
 
@@ -224,6 +262,12 @@ export default function NewClaim() {
   return (
     <>
       <PageTitle title="แจ้งเคลมสินค้า" subtitle="กรอกข้อมูลให้ครบ ส่งแล้วได้เลขเคลมทันที และติดตามสถานะได้ที่หน้าเคลมของฉัน" actions={<Link to="/app/claims" className="text-sm font-semibold text-navy-700 hover:underline">เคลมของฉัน</Link>} />
+      {restored && (
+        <div className="mb-4"><Alert tone="navy">
+          กู้คืนแบบฟอร์มที่กรอกค้างไว้เมื่อ {new Date(restored).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })} แล้ว (ไฟล์แนบต้องเลือกใหม่)
+          {" "}<button type="button" className="font-semibold underline" onClick={clearDraft}>เริ่มกรอกใหม่</button>
+        </Alert></div>
+      )}
       {cfg?.form_note && <div className="mb-4"><Alert tone="navy"><span className="whitespace-pre-line">{cfg.form_note}</span></Alert></div>}
       <form onSubmit={submit} className="space-y-5">
         <Card>

@@ -8,7 +8,7 @@ import { usePricing, type Brand, type Category, type PriceInfo, type Product, ty
 import { useRows, useSiteSettings } from "../../lib/content";
 import { supabase } from "../../lib/supabase";
 
-export const PRODUCT_SELECT = "*, brands(id, name, slug), product_categories(id, name, slug), product_variants(*)";
+export const PRODUCT_SELECT = "*, brands(id, name, slug, logo_url), product_categories(id, name, slug), product_variants(*)";
 
 const SORTS = [
   { v: "", label: "แนะนำ" },
