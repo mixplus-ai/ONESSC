@@ -6,7 +6,7 @@ import { WarrantyBadge, WarrantyFacts } from "../../../components/Warranty";
 import { daysUntil } from "../../../lib/catalog";
 import { errorMessage, supabase } from "../../../lib/supabase";
 
-interface Result { sn: string; sku: string; product_name: string | null; brand: string | null; sold_at: string; warranty_months: number | null; warranty_end: string | null }
+interface Result { sn: string; sku: string; product_name: string | null; brand: string | null; sold_at: string; warranty_months: number | null; warranty_end: string | null; perf_months?: number | null; perf_end?: string | null }
 
 /** Customer: type or scan an S/N → model, purchase (PI) date and warranty end. */
 export default function WarrantyCheck() {
@@ -50,7 +50,7 @@ export default function WarrantyCheck() {
             </div>
             <WarrantyBadge end={res.warranty_end} months={res.warranty_months} />
           </div>
-          <div className="mt-4"><WarrantyFacts soldAt={res.sold_at} months={res.warranty_months} end={res.warranty_end} /></div>
+          <div className="mt-4"><WarrantyFacts soldAt={res.sold_at} months={res.warranty_months} end={res.warranty_end} perfMonths={res.perf_months} perfEnd={res.perf_end} /></div>
           {inWarranty && (
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
               <ButtonLink to="/app/claims/new" variant="sun">แจ้งเคลมสินค้านี้</ButtonLink>

@@ -53,7 +53,7 @@ export function SnLookup({ initial = "" }: { initial?: string }) {
   const [err, setErr] = useState("");
   const [hist, setHist] = useState<History | null>(null);
   const [hits, setHits] = useState<Hit[] | null>(null);
-  const [war, setWar] = useState<{ sold_at: string | null; ref_no: string | null; sold_doc_no: string | null; warranty_months: number | null; warranty_end: string | null } | null>(null);
+  const [war, setWar] = useState<{ sold_at: string | null; ref_no: string | null; sold_doc_no: string | null; warranty_months: number | null; warranty_end: string | null; perf_months?: number | null; perf_end?: string | null } | null>(null);
 
   async function open(sn: string) {
     setBusy(true); setErr(""); setHits(null);
@@ -162,7 +162,7 @@ export function SnLookup({ initial = "" }: { initial?: string }) {
           {s && war && (
             <div className="mt-4 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
               <div className="mb-2 flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-navy-900">การรับประกัน</p><WarrantyBadge end={war.warranty_end} months={war.warranty_months} /></div>
-              <WarrantyFacts soldAt={war.sold_at} piNo={war.ref_no || war.sold_doc_no} months={war.warranty_months} end={war.warranty_end} />
+              <WarrantyFacts soldAt={war.sold_at} piNo={war.ref_no || war.sold_doc_no} months={war.warranty_months} end={war.warranty_end} perfMonths={war.perf_months} perfEnd={war.perf_end} />
             </div>
           )}
           <h3 className="mt-6 text-sm font-semibold text-navy-900">ประวัติ</h3>

@@ -8,8 +8,8 @@ import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 
 /** Product-level fields edited from any of its code rows; variant-level fields per code. */
-type PKey = "name" | "brand_id" | "category_id" | "summary" | "is_published";
-type VKey = "name" | "detail" | "unit" | "is_active" | "base_price" | "show_price" | "special_price" | "special_ends_at";
+type PKey = "name" | "brand_id" | "category_id" | "summary" | "is_published" | "warranty_months" | "perf_warranty_months";
+type VKey = "name" | "detail" | "unit" | "is_active" | "base_price" | "show_price" | "special_price" | "special_ends_at" | "warranty_months" | "perf_warranty_months";
 type Val = string | boolean;
 type Col = {
   id: string; label: string; level: "p" | "v"; key: PKey | VKey; kind: "text" | "num" | "bool" | "date" | "brand" | "cat";
@@ -29,6 +29,10 @@ const COLS: Col[] = [
   { id: "v.show_price", label: "แสดงราคา", level: "v", key: "show_price", kind: "bool", price: true, w: "" },
   { id: "v.special_price", label: "ราคาพิเศษ", level: "v", key: "special_price", kind: "num", price: true, w: "min-w-[7rem]" },
   { id: "v.special_ends_at", label: "ราคาพิเศษถึง", level: "v", key: "special_ends_at", kind: "date", price: true, w: "min-w-[9rem]" },
+  { id: "p.warranty_months", label: "ประกัน (เดือน)", level: "p", key: "warranty_months", kind: "num", w: "min-w-[6rem]" },
+  { id: "p.perf_warranty_months", label: "ประกันประสิทธิภาพ (เดือน)", level: "p", key: "perf_warranty_months", kind: "num", w: "min-w-[7rem]" },
+  { id: "v.warranty_months", label: "ประกันรหัสนี้", level: "v", key: "warranty_months", kind: "num", w: "min-w-[6rem]" },
+  { id: "v.perf_warranty_months", label: "ประสิทธิภาพรหัสนี้", level: "v", key: "perf_warranty_months", kind: "num", w: "min-w-[6rem]" },
   { id: "p.summary", label: "คำอธิบายสั้น", level: "p", key: "summary", kind: "text", w: "min-w-[18rem]" },
 ];
 
@@ -155,9 +159,21 @@ export default function ProductsGrid() {
     };
     const skuOf = new Map(rows.map((r) => [r.v.id, r.v.sku]));
     const nameOf = new Map(rows.map((r) => [r.p.id, r.p.name]));
+    const months = (who: string, label: string, s: Val) => {
+      if (s === "") return null;
+      const n = Number(s);
+      if (!Number.isInteger(n) || n < 0 || n > 600) { bad.push(`${who}: ${label} "${s}" (0–600 เดือน)`); return null; }
+      return n;
+    };
+    const fixMonths = (who: string, o: Record<string, unknown>, e: Partial<Record<string, Val>>) => {
+      if (e.warranty_months !== undefined) o.warranty_months = months(who, "ประกัน", e.warranty_months);
+      if (e.perf_warranty_months !== undefined) o.perf_warranty_months = months(who, "ประกันประสิทธิภาพ", e.perf_warranty_months);
+    };
     const products = Object.entries(pEdit).map(([id, e]) => {
       if (e.name !== undefined && !String(e.name).trim()) bad.push(`${nameOf.get(id)}: ชื่อสินค้าว่าง`);
-      return { id, ...e };
+      const o: Record<string, unknown> = { id, ...e };
+      fixMonths(String(nameOf.get(id)), o, e);
+      return o;
     });
     const variants = Object.entries(vEdit).map(([id, e]) => {
       const sku = skuOf.get(id) ?? id;
@@ -165,6 +181,7 @@ export default function ProductsGrid() {
       if (e.name !== undefined && !String(e.name).trim()) bad.push(`${sku}: ชื่อรุ่นว่าง`);
       if (e.base_price !== undefined) o.base_price = num(sku, "ราคาปกติ", e.base_price);
       if (e.special_price !== undefined) o.special_price = num(sku, "ราคาพิเศษ", e.special_price);
+      fixMonths(sku, o, e);
       if (e.special_ends_at !== undefined) o.special_ends_at = e.special_ends_at ? new Date(`${e.special_ends_at}T23:59:59`).toISOString() : null;
       return o;
     });
@@ -300,7 +317,7 @@ export default function ProductsGrid() {
           </table>
         </div>
       )}
-      <p className="mt-2 text-xs text-slate-500">* ช่องระดับสินค้า: แก้ที่แถวไหนก็เปลี่ยนทุกรหัสของสินค้านั้น · ช่องสีส้ม = แก้แล้วยังไม่บันทึก · ราคาว่าง = สอบถามราคา</p>
+      <p className="mt-2 text-xs text-slate-500">* ช่องระดับสินค้า: แก้ที่แถวไหนก็เปลี่ยนทุกรหัสของสินค้านั้น · ประกันใส่เป็นเดือน (180 = 15 ปี) ช่องประกันรหัสนี้ว่าง = ตามสินค้า · ช่องสีส้ม = แก้แล้วยังไม่บันทึก · ราคาว่าง = สอบถามราคา</p>
 
       <div className="sticky bottom-0 z-30 mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white/95 py-3 backdrop-blur">
         {nCells > 0 ? <Badge tone="amber">แก้ {nCells} ช่อง ใน {nChanged} รายการ</Badge> : <span className="text-sm text-slate-500">ยังไม่มีการแก้ไข</span>}

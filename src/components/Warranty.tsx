@@ -1,5 +1,5 @@
 import { Badge } from "./ui";
-import { daysUntil, fmtWarranty, formatDate } from "../lib/catalog";
+import { daysUntil, fmtWarranty, fmtWarrantyPair, formatDate } from "../lib/catalog";
 
 /** "อยู่ในประกัน · เหลือ 3 ปี 2 เดือน" / "หมดประกันแล้ว" from the warranty end date. */
 export function WarrantyBadge({ end, months }: { end: string | null; months: number | null }) {
@@ -12,12 +12,12 @@ export function WarrantyBadge({ end, months }: { end: string | null; months: num
 }
 
 /** Purchase (PI) date, warranty length and end date as a small definition list. */
-export function WarrantyFacts({ soldAt, piNo, months, end }: { soldAt: string | null; piNo?: string | null; months: number | null; end: string | null }) {
+export function WarrantyFacts({ soldAt, piNo, months, end, perfMonths, perfEnd }: { soldAt: string | null; piNo?: string | null; months: number | null; end: string | null; perfMonths?: number | null; perfEnd?: string | null }) {
   return (
     <dl className="grid gap-3 text-sm sm:grid-cols-3">
       <div><dt className="text-xs text-slate-500">วันที่ซื้อ (ตาม PI)</dt><dd className="font-medium text-navy-900">{soldAt ? formatDate(soldAt) : "-"}{piNo ? <span className="ml-1 text-xs font-normal text-slate-500">{piNo}</span> : null}</dd></div>
-      <div><dt className="text-xs text-slate-500">ระยะประกัน</dt><dd className="font-medium text-navy-900">{months != null ? fmtWarranty(months) : "-"}</dd></div>
-      <div><dt className="text-xs text-slate-500">วันที่หมดประกัน</dt><dd className="font-medium text-navy-900">{end ? formatDate(end) : "-"}</dd></div>
+      <div><dt className="text-xs text-slate-500">ระยะประกัน</dt><dd className="font-medium text-navy-900">{months != null || perfMonths != null ? fmtWarrantyPair(months, perfMonths) : "-"}{perfMonths != null && <span className="block text-xs font-normal text-slate-500">สินค้า / ประสิทธิภาพ</span>}</dd></div>
+      <div><dt className="text-xs text-slate-500">วันที่หมดประกัน</dt><dd className="font-medium text-navy-900">{end ? formatDate(end) : "-"}{perfEnd && <span className="block text-xs font-normal text-slate-500">ประสิทธิภาพถึง {formatDate(perfEnd)}</span>}</dd></div>
     </dl>
   );
 }

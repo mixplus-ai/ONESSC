@@ -8,7 +8,7 @@ import type { Claim } from "../../../../lib/claims";
 import { supabase } from "../../../../lib/supabase";
 import { DOC_LABEL, DOC_STATUS_LABEL, DOC_STATUS_TONE, SERIAL_STATUS_LABEL, SERIAL_STATUS_TONE, type DocStatus, type DocType, type SerialStatus } from "../../../../lib/stockdocs";
 
-interface Info { sn: string; sku: string | null; description: string | null; status: SerialStatus | null; sold_at: string | null; sold_doc_id: string | null; sold_doc_no: string | null; sold_to: string | null; sold_company_id: string | null; ref_no: string | null; warranty_months?: number | null; warranty_end?: string | null }
+interface Info { sn: string; sku: string | null; description: string | null; status: SerialStatus | null; sold_at: string | null; sold_doc_id: string | null; sold_doc_no: string | null; sold_to: string | null; sold_company_id: string | null; ref_no: string | null; warranty_months?: number | null; perf_end?: string | null; warranty_end?: string | null }
 
 const age = (d: string) => {
   const m = Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / (30.44 * 864e5)));
@@ -51,7 +51,7 @@ export function ClaimSnStock({ c }: { c: Claim }) {
                       </> : <span className="text-slate-500">ไม่พบใบขาย</span>}
                     </td>
                     <td className="py-1 pr-3">{r.sold_at ? age(r.sold_at) : "-"}</td>
-                    <td className="py-1 pr-3">{r.status || r.sold_at ? <><WarrantyBadge end={r.warranty_end ?? null} months={r.warranty_months ?? null} />{r.warranty_end && <div className="mt-0.5 text-slate-500">ถึง {formatDate(r.warranty_end)}</div>}</> : "-"}</td>
+                    <td className="py-1 pr-3">{r.status || r.sold_at ? <><WarrantyBadge end={r.warranty_end ?? null} months={r.warranty_months ?? null} />{r.warranty_end && <div className="mt-0.5 text-slate-500">ถึง {formatDate(r.warranty_end)}{r.perf_end ? ` · ประสิทธิภาพถึง ${formatDate(r.perf_end)}` : ""}</div>}</> : "-"}</td>
                   </tr>
                 );
               })}

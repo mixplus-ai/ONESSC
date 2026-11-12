@@ -46,6 +46,8 @@ export interface Variant {
   special_ends_at?: string | null;
   /** months; null = use the product's warranty (migration 29) */
   warranty_months?: number | null;
+  /** ประกันประสิทธิภาพ (months), shown as "15/30 ปี" next to the product warranty */
+  perf_warranty_months?: number | null;
 }
 
 export interface Product {
@@ -69,6 +71,7 @@ export interface Product {
   legacy_ref: string | null;
   /** warranty in months from the PI (sale) date, for every code of this product (migration 29) */
   warranty_months?: number | null;
+  perf_warranty_months?: number | null;
   created_at: string;
   updated_at: string;
   product_variants?: Variant[];
@@ -198,6 +201,13 @@ export function fmtWarranty(m: number | null | undefined): string {
   if (m === 0) return "ไม่มีประกัน";
   const y = Math.floor(m / 12), r = m % 12;
   return [y ? `${y} ปี` : "", r ? `${r} เดือน` : ""].filter(Boolean).join(" ");
+}
+/** "15/30 ปี" (product / performance warranty); falls back to one value when there is no performance warranty */
+export function fmtWarrantyPair(m: number | null | undefined, perf: number | null | undefined): string {
+  if (perf == null) return fmtWarranty(m);
+  if (m == null) return `ประสิทธิภาพ ${fmtWarranty(perf)}`;
+  if (m % 12 === 0 && perf % 12 === 0 && m > 0) return `${m / 12}/${perf / 12} ปี`;
+  return `${fmtWarranty(m)} / ${fmtWarranty(perf)}`;
 }
 /** days from today (Bangkok) to an ISO date; negative = past */
 export function daysUntil(d: string): number {

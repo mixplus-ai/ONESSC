@@ -5,7 +5,7 @@ import { FileUpload, GalleryUpload, IMAGE_SIZES, ImageUpload } from "../../../co
 import { BoxIcon, XIcon } from "../../../components/icons";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Textarea, cx } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
-import { fmtWarranty, formatBaht, productImage, slugify, specialPrice, uploadProductFile, type Brand, type Category, type Product, type Spec, type Variant } from "../../../lib/catalog";
+import { fmtWarranty, fmtWarrantyPair, formatBaht, productImage, slugify, specialPrice, uploadProductFile, type Brand, type Category, type Product, type Spec, type Variant } from "../../../lib/catalog";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 import { Tabs } from "../MyRequests";
@@ -87,6 +87,7 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
       is_featured: p.is_featured,
       sort: p.sort,
       warranty_months: toMonths(p.warranty_months),
+      perf_warranty_months: toMonths(p.perf_warranty_months),
     };
     try {
       let id = p.id;
@@ -113,6 +114,7 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
           unit: v.unit || "ชิ้น",
           base_price: v.base_price,
           warranty_months: toMonths(v.warranty_months),
+          perf_warranty_months: toMonths(v.perf_warranty_months),
           is_active: v.is_active,
           sort: v.sort,
         };
@@ -176,6 +178,7 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
           <Field label="คู่มือ (PDF)"><FileUpload folder="docs" upload={uploadProductFile} value={p.manual_url ?? ""} onChange={(v) => set("manual_url", v)} /></Field>
           <Field label="ลิงก์วิดีโอ"><Input value={p.video_url ?? ""} onChange={(e) => set("video_url", e.target.value)} placeholder="https://youtube.com/..." /></Field>
           <Field label="การรับประกัน (เดือน)" hint={`เริ่มนับจากวันที่ใน PI ที่ขายออกจากคลัง${p.warranty_months ? ` · ${fmtWarranty(Number(p.warranty_months))}` : ""} · ใช้กับทุกรหัส เว้นแต่ตั้งแยกที่รหัส`}><Input type="number" min="0" max="600" step="1" value={p.warranty_months ?? ""} onChange={(e) => set("warranty_months", (e.target.value === "" ? null : Number(e.target.value)) as Product["warranty_months"])} placeholder="เช่น 144 = 12 ปี" /></Field>
+          <Field label="ประกันประสิทธิภาพ (เดือน)" hint={`ถ้ามี เช่น แผงโซลาร์ 15/30 ปี ใส่ 360${p.warranty_months || p.perf_warranty_months ? ` · แสดงเป็น "ประกัน ${fmtWarrantyPair(p.warranty_months != null ? Number(p.warranty_months) : null, p.perf_warranty_months != null ? Number(p.perf_warranty_months) : null)}"` : ""}`}><Input type="number" min="0" max="600" step="1" value={p.perf_warranty_months ?? ""} onChange={(e) => set("perf_warranty_months", (e.target.value === "" ? null : Number(e.target.value)) as Product["perf_warranty_months"])} placeholder="ว่าง = ไม่มี" /></Field>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -199,12 +202,13 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
           </div>
           <div className="space-y-3">
             {variants.map((v) => (
-              <div key={v._key} className="grid gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2 lg:grid-cols-7">
+              <div key={v._key} className="grid gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2 lg:grid-cols-8">
                 <Field label="รหัสสินค้า" required><Input value={v.sku} onChange={(e) => setV(v._key, { sku: e.target.value })} className="font-mono" /></Field>
                 <div className="lg:col-span-2"><Field label="ชื่อรุ่นย่อย"><Input value={v.name} placeholder={v.sku} onChange={(e) => setV(v._key, { name: e.target.value })} /></Field></div>
                 <Field label="ราคาปกติ (บาท)" hint="ว่าง = สอบถามราคา"><Input type="number" min="0" step="0.01" value={v.base_price ?? ""} onChange={(e) => setV(v._key, { base_price: e.target.value === "" ? null : Number(e.target.value) })} /></Field>
                 <Field label="หน่วย"><Input value={v.unit} onChange={(e) => setV(v._key, { unit: e.target.value })} /></Field>
                 <Field label="ประกันรหัสนี้ (เดือน)" hint={v.warranty_months != null && String(v.warranty_months) !== "" ? fmtWarranty(Number(v.warranty_months)) : "ว่าง = ตามสินค้า"}><Input type="number" min="0" max="600" step="1" value={v.warranty_months ?? ""} onChange={(e) => setV(v._key, { warranty_months: e.target.value === "" ? null : Number(e.target.value) })} placeholder={p.warranty_months ? String(p.warranty_months) : ""} /></Field>
+                <Field label="ประสิทธิภาพรหัสนี้ (เดือน)" hint="ว่าง = ตามสินค้า"><Input type="number" min="0" max="600" step="1" value={v.perf_warranty_months ?? ""} onChange={(e) => setV(v._key, { perf_warranty_months: e.target.value === "" ? null : Number(e.target.value) })} placeholder={p.perf_warranty_months ? String(p.perf_warranty_months) : ""} /></Field>
                 <div className="flex items-end gap-3 pb-2">
                   <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={v.is_active} onChange={(e) => setV(v._key, { is_active: e.target.checked })} /> เปิดขาย</label>
                   <button type="button" className="ml-auto text-sm text-red-600 hover:underline" onClick={() => { if (v.id) setRemoved((r) => [...r, v.id as string]); setVariants((vs) => vs.filter((x) => x._key !== v._key)); }}>ลบ</button>
@@ -392,15 +396,16 @@ export default function ProductsAdmin() {
   }
   /** set the warranty (months) of many products at once; codes with their own months keep them */
   async function setWarranty(ids: string[]) {
-    const v = prompt(`ระยะประกัน (เดือน) ของสินค้า ${ids.length} รายการที่เลือก\nเช่น 12 = 1 ปี, 144 = 12 ปี · เว้นว่าง = ล้างค่า`);
+    const v = prompt(`ระยะประกัน (เดือน) ของสินค้า ${ids.length} รายการที่เลือก\nเช่น 144 = 12 ปี · มีประกันประสิทธิภาพด้วยใส่ 180/360 (= 15/30 ปี) · เว้นว่าง = ล้างค่า`);
     if (v === null) return;
-    const m = v.trim() === "" ? null : Math.round(Number(v));
-    if (m != null && (!Number.isFinite(m) || m < 0 || m > 600)) return setErr("กรุณาใส่จำนวนเดือน 0–600");
+    const parts = v.trim() === "" ? [] : v.split("/").map((x) => Math.round(Number(x.trim())));
+    if (parts.length > 2 || parts.some((m) => !Number.isFinite(m) || m < 0 || m > 600)) return setErr("กรุณาใส่จำนวนเดือน 0–600 หรือแบบ 180/360");
+    const m = parts[0] ?? null, perf = parts[1] ?? null;
     setBulkBusy(true); setErr("");
-    const { error } = await supabase.from("products").update({ warranty_months: m }).in("id", ids);
+    const { error } = await supabase.from("products").update({ warranty_months: m, perf_warranty_months: perf }).in("id", ids);
     setBulkBusy(false);
     if (error) return setErr(errorMessage(error));
-    setMsg(`ตั้งประกัน ${m == null ? "ว่าง" : fmtWarranty(m)} ให้ ${ids.length.toLocaleString("th-TH")} รายการแล้ว`);
+    setMsg(`ตั้งประกัน ${m == null && perf == null ? "ว่าง" : fmtWarrantyPair(m, perf)} ให้ ${ids.length.toLocaleString("th-TH")} รายการแล้ว`);
     list.reload();
   }
   const toggleCheck = (id: string) => setChecked((s) => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x; });
@@ -494,7 +499,7 @@ export default function ProductsAdmin() {
                           <span className={cx(sp.length > 0 && "text-slate-400 line-through")}>{prices.length ? formatBaht(Math.min(...prices)) : "ไม่มีราคา"}</span>
                           {sp.length > 0 && <span className="ml-1 font-semibold text-red-600">ราคาพิเศษ {formatBaht(Math.min(...sp))}</span>}
                           {!priceShown(p) && vs.length > 0 && <span className="ml-1 font-semibold text-amber-700">· ซ่อนราคา</span>}
-                          {" · "}{p.warranty_months != null ? <span>ประกัน {fmtWarranty(p.warranty_months)}</span> : <span className="text-amber-700">ยังไม่ตั้งประกัน</span>}
+                          {" · "}{p.warranty_months != null || p.perf_warranty_months != null ? <span>ประกัน {fmtWarrantyPair(p.warranty_months, p.perf_warranty_months)}</span> : <span className="text-amber-700">ยังไม่ตั้งประกัน</span>}
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">

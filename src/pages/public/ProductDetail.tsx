@@ -4,7 +4,7 @@ import { AddToList, NoImage, PriceTag, StockBadge, discountPct } from "../../com
 import { ExternalIcon, FileIcon, ShieldIcon, WrenchIcon } from "../../components/icons";
 import { Alert, Loading } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
-import { formatDateTime, productImage, usePricing, type PriceInfo, type Product, type Spec, fmtWarranty } from "../../lib/catalog";
+import { formatDateTime, productImage, usePricing, type PriceInfo, type Product, type Spec, fmtWarrantyPair } from "../../lib/catalog";
 import { supabase, supabaseConfigured } from "../../lib/supabase";
 import { PRODUCT_SELECT } from "./Products";
 
@@ -104,7 +104,7 @@ export default function ProductDetail() {
           <p className="text-sm font-semibold tracking-wide text-sun-600">{p.brands?.name}{p.product_categories && ` · ${p.product_categories.name}`}</p>
           <h1 className="mt-1 text-3xl font-bold text-navy-900">{p.name}</h1>
           {p.summary && <p className="mt-3 text-slate-600">{p.summary}</p>}
-          {p.warranty_months ? <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700 ring-1 ring-emerald-200">รับประกัน {fmtWarranty(p.warranty_months)}</p> : null}
+          {p.warranty_months || p.perf_warranty_months ? <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700 ring-1 ring-emerald-200">รับประกัน {fmtWarrantyPair(p.warranty_months, p.perf_warranty_months)}</p> : null}
           {p.tags.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">{p.tags.map((t) => <span key={t} className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">{t}</span>)}</div>
           )}
