@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Gate } from "../../../components/AppLayout";
-import { ImageUpload } from "../../../components/ImageUpload";
+import { IMAGE_SIZES, ImageUpload } from "../../../components/ImageUpload";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
 import { useRows } from "../../../lib/content";
@@ -66,7 +66,7 @@ function Editor({ initial, onClose }: { initial: Partial<TeamMember>; onClose: (
         <Field label="เบอร์โทร"><Input type="tel" value={m.phone ?? ""} onChange={(e) => set("phone", e.target.value)} /></Field>
         <Field label="LINE ID"><Input value={m.line_id ?? ""} onChange={(e) => set("line_id", e.target.value)} /></Field>
         <Field label="อีเมล"><Input type="email" value={m.email ?? ""} onChange={(e) => set("email", e.target.value)} /></Field>
-        <div className="sm:col-span-2"><Field label="รูป"><ImageUpload folder="team" value={m.photo_url ?? ""} onChange={(v) => set("photo_url", v)} /></Field></div>
+        <div className="sm:col-span-2"><Field label="รูป"><ImageUpload folder="team" size={IMAGE_SIZES.person} value={m.photo_url ?? ""} onChange={(v) => set("photo_url", v)} /></Field></div>
         <div className="space-y-3">
           <Field label="ลำดับการแสดง"><Input type="number" value={m.sort} onChange={(e) => set("sort", Number(e.target.value) || 0)} /></Field>
           <label className="flex items-center gap-2 text-sm text-slate-700">
