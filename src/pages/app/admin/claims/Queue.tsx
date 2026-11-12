@@ -7,6 +7,7 @@ import {
 } from "../../../../lib/claims";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import { staffName, useBoard, type StaffOpt } from "./shared";
+import { CaseBox } from "./CaseInfo";
 import { ShippingBox } from "./Shipping";
 import { SnChangeHistory, SnChangeQueue, useSnChanges } from "./SnChanges";
 import { ClaimSnStock } from "../stockdocs/ClaimSnStock";
@@ -180,6 +181,7 @@ function QueueCard({ c, onOpenBoard, snChanges }: { c: Claim; onOpenBoard: (id: 
           <Details c={c} />
           <ClaimSnStock c={c} />
           <SnChangeHistory rows={snChanges} />
+          {canHandle && <CaseBox c={c} reload={reload} />}
           {(c.delivery_type === "shipping" || c.ship_status) && <ShippingBox c={c} canHandle={canHandle} reload={reload} />}
           <div>
             <p className="mb-1 text-sm font-medium text-slate-700">ไฟล์</p>
