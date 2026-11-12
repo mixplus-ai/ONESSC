@@ -37,6 +37,7 @@ const Users = lazy(() => import("./pages/app/admin/Users"));
 const Cart = lazy(() => import("./pages/app/Cart"));
 const MyRequests = lazy(() => import("./pages/app/MyRequests"));
 const ProductsAdmin = lazy(() => import("./pages/app/admin/ProductsAdmin"));
+const ProductsGrid = lazy(() => import("./pages/app/admin/ProductsGrid"));
 const Pricing = lazy(() => import("./pages/app/admin/Pricing"));
 const PromotionsAdmin = lazy(() => import("./pages/app/admin/PromotionsAdmin"));
 const StockAdmin = lazy(() => import("./pages/app/admin/StockAdmin"));
@@ -103,6 +104,7 @@ export default function App() {
             <Route path="admin/company-points" element={<CompanyPoints />} />
             <Route path="admin/points" element={<PointsAdmin />} />
             <Route path="admin/products" element={<ProductsAdmin />} />
+            <Route path="admin/products-grid" element={<ProductsGrid />} />
             <Route path="admin/pricing" element={<Pricing />} />
             <Route path="admin/promotions" element={<PromotionsAdmin />} />
             <Route path="admin/stock" element={<StockAdmin />} />

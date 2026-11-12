@@ -106,6 +106,7 @@ export default function AppLayout() {
         { to: "/app/admin/deliveries", label: "ตารางส่งสินค้า", icon: TruckIcon, show: can("deliveries.view") || can("deliveries.manage") },
         { to: "/app/admin/pricing", label: "ราคาเฉพาะบริษัท", icon: TagIcon, show: can("pricing") },
         { to: "/app/admin/products", label: "สินค้า", icon: BoxIcon, show: can("products") },
+        { to: "/app/admin/products-grid", label: "แก้สินค้าแบบตาราง", icon: BoxIcon, show: can("products") || can("products.bulk") || can("products.bulk_price") },
         { to: "/app/admin/promotions", label: "โปรโมชั่นและแพ็กเกจ", icon: TagIcon, show: can("products") },
       ],
     },
