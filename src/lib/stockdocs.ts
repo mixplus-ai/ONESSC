@@ -33,7 +33,30 @@ export interface StockDoc {
   posted_at: string | null;
   cancelled_at: string | null;
   cancel_reason: string | null;
+  checked_by?: string | null;
+  checked_at?: string | null;
 }
+
+/** Stock count (ตรวจนับ, migration 24). */
+export interface StockCount {
+  id: string; count_no: string; warehouse_id: string; skus: string[] | null; status: "open" | "closed" | "cancelled";
+  note: string | null; started_by: string | null; started_at: string; closed_at: string | null; result: CountReport | null;
+}
+export type ScanResult = "ok" | "other_wh" | "out" | "other_sku" | "unknown";
+export interface CountLine { sn: string; result?: ScanResult; sku?: string; description?: string | null; status?: SerialStatus; condition?: Condition; warehouse?: string | null; holder?: string | null; dup?: boolean }
+export interface CountReport {
+  expected: number; scanned: number; matched: number;
+  by_sku: { sku: string; expected: number; counted: number }[];
+  missing: CountLine[]; extra: CountLine[];
+  docs?: { id: string; doc_no: string; doc_type: DocType; n: number }[];
+}
+export const SCAN_RESULT: Record<ScanResult, { label: string; tone: "green" | "amber" | "red" | "navy" }> = {
+  ok: { label: "ตรงกับระบบ", tone: "green" },
+  other_wh: { label: "ในระบบอยู่คลังอื่น", tone: "amber" },
+  out: { label: "ในระบบไม่ได้อยู่ในคลัง", tone: "red" },
+  other_sku: { label: "รหัสอื่น (ไม่อยู่ในรอบนับนี้)", tone: "navy" },
+  unknown: { label: "ไม่มีในระบบ", tone: "red" },
+};
 
 export interface DocItem { id?: string; sku: string; description: string | null; sn: string; condition: Condition; note?: string | null }
 

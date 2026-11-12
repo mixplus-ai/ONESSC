@@ -9,6 +9,7 @@ import {
   snKey, splitSns, type Condition, type DocItem, type DocType, type Serial, type StockDoc, type Warehouse,
 } from "../../../../lib/stockdocs";
 import { DocFiles, uploadDocFiles } from "./DocFiles";
+import { CameraScan } from "./CameraScan";
 import { PhotoScan } from "./PhotoScan";
 import { printStockDoc } from "./print";
 
@@ -23,12 +24,21 @@ interface DeliveryRef { id: string; doc_no: string | null; delivery_date: string
 interface ClaimRef { id: string; claim_no: string; company_id: string | null; company_name: string | null; contact_name: string | null; site_name: string | null; reported_sns: string[] }
 interface ReservationRef { id: string; code: string; company_id: string | null; companies: { name: string; tax_id: string } | null; profiles: { full_name: string | null; email: string } | null; reservation_items: { sku: string; label: string; qty: number }[] }
 
+// add lines, skipping SNs already in the list (fast camera scans can arrive before the list re-renders)
+const uniq = (list: DocItem[], add: DocItem[]) => {
+  const k = new Set(list.map((i) => snKey(i.sn)));
+  return [...list, ...add.filter((i) => !k.has(snKey(i.sn)) && k.add(snKey(i.sn)))];
+};
+
 export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservationId, onClose, onChanged }: {
   id: string | null; type: DocType; warehouses: Warehouse[]; deliveryId?: string | null; claimId?: string | null; reservationId?: string | null;
   onClose: () => void; onChanged: (id: string) => void;
 }) {
-  const { can, isAdmin } = useAuth();
+  const { can, isAdmin, profile } = useAuth();
   const canPost = can("stock.post");
+  const canSave = can("stock.docs") || can("stock.post");
+  const canCheck = can("stock.check") || can("stock.post");
+  const cfg = useRows<{ check_types: DocType[] }>(() => supabase.from("stock_config").select("check_types").eq("id", 1));
   const [head, setHead] = useState<Head>({ doc_type: type, doc_date: today(), warehouse_id: warehouses[0]?.id });
   const [items, setItems] = useState<DocItem[]>([]);
   const [loading, setLoading] = useState(!!id);
@@ -140,7 +150,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     if (t === "OB" || t === "GR" || t === "GN") {
       const code = sku.trim().toUpperCase();
       if (!code) { setWarn(["เลือกรหัสสินค้าก่อนสแกน"]); return; }
-      setItems((list) => [...list, ...fresh.map((sn) => ({ sku: code, description: skuName.get(code) ?? null, sn, condition: cond }))]);
+      setItems((list) => uniq(list, fresh.map((sn) => ({ sku: code, description: skuName.get(code) ?? null, sn, condition: cond }))));
       const { data } = await supabase.from("serials").select("sn, status").in("sn_key", fresh.map(snKey));
       (data ?? []).filter((s) => ["in_stock", "reserved", "borrowed", "withdrawn"].includes(s.status))
         .forEach((s) => w.push(`${s.sn} มีอยู่ในระบบแล้ว (${SERIAL_STATUS_LABEL[s.status as Serial["status"]]})`));
@@ -158,7 +168,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         else if (t === "SO" ? !["in_stock", "reserved"].includes(s.status) : t !== "WO" && t !== "TR" && s.status !== "in_stock") w.push(`${sn} สถานะ${SERIAL_STATUS_LABEL[s.status]}`);
         add.push({ sku: s.sku, description: s.description ?? skuName.get(s.sku) ?? null, sn: s.sn, condition: t === "RT" ? condFor : s.condition });
       }
-      setItems((list) => [...list, ...add]);
+      setItems((list) => uniq(list, add));
     }
     setWarn(w);
     setScan("");
@@ -213,6 +223,16 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     setMsg("ยืนยันแล้ว สต๊อกและสถานะ SN อัปเดตแล้ว");
     onChanged(did);
   });
+  const onCheck = (ok: boolean) => run("check", async () => {
+    let did = head.id ?? null;
+    if (ok && canSave) did = await save();
+    if (!did) return;
+    const { data, error } = await supabase.rpc("check_stock_doc", { p_id: did, p_ok: ok });
+    if (error) return setErr(errorMessage(error));
+    setHead(data as StockDoc);
+    setMsg(ok ? "ตรวจแล้ว รอผู้อนุมัติอีกคนยืนยัน" : "ถอนการตรวจแล้ว");
+    onChanged(did);
+  });
   const onCancel = () => run("cancel", async () => {
     const reason = prompt(head.status === "posted" ? "เหตุผลที่ยกเลิก (SN จะกลับไปสถานะก่อนเอกสารนี้)" : "เหตุผลที่ยกเลิก");
     if (!reason?.trim()) return;
@@ -240,6 +260,8 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
   }, [items]);
 
   if (loading) return <Loading />;
+  const needCheck = (cfg.rows[0]?.check_types ?? []).includes(t);
+  const postBlocked = needCheck && (!head.checked_at || head.checked_by === profile?.id);
   const wh = (wid: string | null | undefined) => warehouses.find((w) => w.id === wid)?.name ?? "-";
   const showCond = t === "RT" || dir === "in";
 
@@ -255,7 +277,10 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       </div>
 
       {head.status === "cancelled" && <Alert>ยกเลิกเมื่อ {formatDateTime(head.cancelled_at)} · {head.cancel_reason}</Alert>}
-      {head.status === "posted" && <Alert tone="green">ยืนยันเมื่อ {formatDateTime(head.posted_at)}</Alert>}
+      {head.status === "posted" && <Alert tone="green">ยืนยันเมื่อ {formatDateTime(head.posted_at)}{head.checked_at ? ` · ผ่านผู้ตรวจเมื่อ ${formatDateTime(head.checked_at)}` : ""}</Alert>}
+      {!locked && needCheck && (head.checked_at
+        ? <Alert tone="green">ผู้ตรวจ (ชั้นที่ 1) ตรวจแล้วเมื่อ {formatDateTime(head.checked_at)}{head.checked_by === profile?.id ? " โดยคุณ ผู้อนุมัติต้องเป็นคนอื่น" : " รอผู้อนุมัติยืนยัน"}</Alert>
+        : <Alert tone="amber">เอกสารประเภทนี้อนุมัติ 2 ชั้น: ผู้ตรวจต้องกด "ตรวจแล้ว" ก่อน แล้วผู้อนุมัติอีกคนจึงยืนยันได้ ถ้าแก้ไขหลังตรวจ ต้องตรวจใหม่</Alert>)}
 
       <Card>
         <div className="grid gap-3 sm:grid-cols-3">
@@ -401,6 +426,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
                 className="block w-full rounded-lg border-0 bg-white px-3 py-2.5 font-mono text-sm shadow-sm ring-1 ring-inset ring-slate-300 placeholder:font-sans placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-navy-600" />
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button variant="secondary" onClick={() => addSns(scan)}>+ เพิ่ม SN</Button>
+                <CameraScan onScan={(sns) => addSns(sns.join("\n"))} last={items.length ? { text: `${items.length} SN · ล่าสุด ${items[items.length - 1].sn}`, tone: "green" } : null} />
                 <PhotoScan knownSkus={new Set(stock.rows.map((r) => r.sku))} existing={new Set(items.map((i) => snKey(i.sn)))} onAdd={(sns, photos) => { addSns(sns.join("\n")); if (photos.length) setPendingFiles((p) => [...p, ...photos]); }} />
                 <span className="text-xs text-slate-500">แยกด้วยบรรทัดใหม่ เครื่องหมาย , หรือแท็บ</span>
               </div>
@@ -444,8 +470,11 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       {err && <Alert>{err}</Alert>}
       {msg && <Alert tone="green">{msg}</Alert>}
       <div className="flex flex-wrap gap-2">
-        {!locked && <Button variant="secondary" onClick={onSave} loading={busy === "save"}>บันทึกร่าง</Button>}
-        {!locked && canPost && <Button onClick={onPost} loading={busy === "post"} disabled={!items.length}>ยืนยันและ{dir === "in" ? "รับเข้า" : dir === "out" ? "ตัดออก" : t === "TR" ? "โอน" : "จอง"}สต๊อก</Button>}
+        {!locked && canSave && <Button variant="secondary" onClick={onSave} loading={busy === "save"}>บันทึกร่าง</Button>}
+        {!locked && needCheck && canCheck && (head.checked_at
+          ? <Button variant="secondary" onClick={() => onCheck(false)} loading={busy === "check"}>ถอนการตรวจ</Button>
+          : <Button variant="secondary" onClick={() => onCheck(true)} loading={busy === "check"} disabled={!items.length}>✓ ตรวจแล้ว ถูกต้อง (ชั้นที่ 1)</Button>)}
+        {!locked && canPost && <Button onClick={onPost} loading={busy === "post"} disabled={!items.length || postBlocked}>ยืนยันและ{dir === "in" ? "รับเข้า" : dir === "out" ? "ตัดออก" : t === "TR" ? "โอน" : "จอง"}สต๊อก</Button>}
         {!locked && !canPost && <p className="self-center text-sm text-slate-500">บันทึกร่างแล้วให้ผู้มีสิทธิ์อนุมัติกดยืนยัน</p>}
         {head.status === "draft" && <Button variant="secondary" onClick={onDelete} loading={busy === "delete"}>ลบร่าง</Button>}
         {head.status === "posted" && canPost && <Button variant="secondary" onClick={onCancel} loading={busy === "cancel"}>ยกเลิกเอกสาร</Button>}

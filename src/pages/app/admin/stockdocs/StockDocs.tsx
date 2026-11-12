@@ -13,8 +13,9 @@ import {
 import { Tabs } from "../../MyRequests";
 import { DocEditor } from "./DocEditor";
 import { SnLookup } from "./SnLookup";
+import { StockCounts } from "./StockCount";
 
-type Tab = "search" | "docs" | "balance" | "out" | "settings";
+type Tab = "search" | "docs" | "balance" | "out" | "count" | "settings";
 
 function DocList({ open, newDoc }: { open: (id: string) => void; newDoc: (t: DocType) => void }) {
   const { can, isAdmin } = useAuth();
@@ -75,7 +76,7 @@ function DocList({ open, newDoc }: { open: (id: string) => void; newDoc: (t: Doc
                   <td className="px-3 py-2">{d.partner_name ?? "-"}</td>
                   <td className="px-3 py-2">{[d.ref_no, d.customer_po].filter(Boolean).join(" · ") || "-"}</td>
                   <td className="px-3 py-2 text-right">{d.stock_doc_items?.[0]?.count ?? 0}</td>
-                  <td className="px-3 py-2"><Badge tone={DOC_STATUS_TONE[d.status]}>{DOC_STATUS_LABEL[d.status]}</Badge></td>
+                  <td className="px-3 py-2"><Badge tone={DOC_STATUS_TONE[d.status]}>{DOC_STATUS_LABEL[d.status]}</Badge>{d.status === "draft" && d.checked_at && <> <Badge tone="navy">ตรวจแล้ว</Badge></>}</td>
                 </tr>
               ))}
             </tbody>
@@ -224,7 +225,7 @@ function OutList({ open }: { open: (id: string) => void }) {
 }
 
 function Settings({ warehouses, reload }: { warehouses: Warehouse[]; reload: () => void }) {
-  const cfg = useRows<{ stock_source: "sheet" | "docs"; docs_start_date: string | null }>(() => supabase.from("stock_config").select("stock_source, docs_start_date").eq("id", 1));
+  const cfg = useRows<{ stock_source: "sheet" | "docs"; docs_start_date: string | null; check_types: DocType[] }>(() => supabase.from("stock_config").select("stock_source, docs_start_date, check_types").eq("id", 1));
   const c = cfg.rows[0];
   const [start, setStart] = useState("");
   const [code, setCode] = useState("");
@@ -240,6 +241,12 @@ function Settings({ warehouses, reload }: { warehouses: Warehouse[]; reload: () 
     setBusy(true);
     const { error } = await supabase.rpc("set_stock_source", { p_source: src, p_start: start || c?.docs_start_date || null });
     setBusy(false);
+    if (error) return setErr(errorMessage(error));
+    cfg.reload();
+  }
+  async function toggleCheck(tp: DocType) {
+    const cur = c?.check_types ?? [];
+    const { error } = await supabase.rpc("set_stock_check_types", { p_types: cur.includes(tp) ? cur.filter((x) => x !== tp) : [...cur, tp] });
     if (error) return setErr(errorMessage(error));
     cfg.reload();
   }
@@ -289,6 +296,20 @@ function Settings({ warehouses, reload }: { warehouses: Warehouse[]; reload: () 
           <Button variant="secondary" onClick={addWh}>+ เพิ่มคลัง</Button>
         </div>
       </Card>
+      <Card className="lg:col-span-2">
+        <h3 className="font-semibold text-navy-900">อนุมัติ 2 ชั้น</h3>
+        <p className="mt-1 text-xs text-slate-500">ประเภทที่เลือก: ผู้ตรวจ (สิทธิ์ "ผู้ตรวจเอกสาร ชั้นที่ 1") ต้องกดตรวจร่างก่อน แล้วผู้อนุมัติอีกคนจึงยืนยันตัดสต๊อกได้ ถ้าแก้ร่างหลังตรวจ ต้องตรวจใหม่ ประเภทที่ไม่เลือกใช้ผู้อนุมัติชั้นเดียวเหมือนเดิม</p>
+        {c ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {DOC_TYPES.map((d) => (
+              <label key={d.type} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm ring-1 ring-slate-200">
+                <input type="checkbox" checked={(c.check_types ?? []).includes(d.type)} onChange={() => toggleCheck(d.type)} />
+                <span className="font-mono text-xs font-bold">{d.type}</span> {d.label}
+              </label>
+            ))}
+          </div>
+        ) : <Loading />}
+      </Card>
       {err && <div className="lg:col-span-2"><Alert>{err}</Alert></div>}
     </div>
   );
@@ -297,7 +318,9 @@ function Settings({ warehouses, reload }: { warehouses: Warehouse[]; reload: () 
 export default function StockDocs() {
   const { can, isAdmin } = useAuth();
   const [params, setParams] = useSearchParams();
-  const tab = (params.get("tab") as Tab) || "search";
+  // someone who only counts or only checks lands on their own tab
+  const home: Tab = can("stock.view") || can("stock.docs") || can("stock.post") ? "search" : can("stock.check") ? "docs" : "count";
+  const tab = (params.get("tab") as Tab) || home;
   const docId = params.get("doc");
   const newType = params.get("new") as DocType | null;
   // a delivery that already has its sale document: open that one instead of starting a second
@@ -320,7 +343,8 @@ export default function StockDocs() {
   const newDoc = (t: DocType) => setParams((p) => { p.set("tab", "docs"); p.set("new", t); p.delete("doc"); return p; });
   const close = () => setParams((p) => { p.delete("doc"); p.delete("new"); return p; });
 
-  const allowed = can("stock.view") || can("stock.docs") || can("stock.post");
+  const allowed = can("stock.view") || can("stock.docs") || can("stock.post") || can("stock.check") || can("stock.count");
+  const canCount = can("stock.count") || can("stock.docs") || can("stock.post");
   return (
     <Gate allow={allowed}>
       <PageTitle title="เอกสารคลังและ Serial Number" subtitle="รับเข้า จ่ายออก ยืม คืน จำหน่าย ทุกชิ้นตาม SN และค้นประวัติ SN ได้ในช่องเดียว" />
@@ -334,12 +358,14 @@ export default function StockDocs() {
             { key: "docs", label: "เอกสาร" },
             { key: "balance", label: "คงเหลือตาม SN" },
             { key: "out", label: "ยืม / เบิก / จอง ค้าง" },
+            ...(canCount ? [{ key: "count" as Tab, label: "ตรวจนับ" }] : []),
             ...(isAdmin ? [{ key: "settings" as Tab, label: "ตั้งค่า" }] : []),
           ]} />
           {tab === "search" && <SnLookup initial={params.get("sn") ?? ""} />}
           {tab === "docs" && <DocList key={listKey} open={open} newDoc={newDoc} />}
           {tab === "balance" && <Balance warehouses={active} open={open} />}
           {tab === "out" && <OutList open={open} />}
+          {tab === "count" && canCount && <StockCounts warehouses={active} openDoc={open} />}
           {tab === "settings" && isAdmin && <Settings warehouses={wh.rows} reload={wh.reload} />}
         </>
       )}

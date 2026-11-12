@@ -94,7 +94,7 @@ export default function AppLayout() {
       items: [
         { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: can("requests") },
         { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: ChartIcon, show: can("stock.view") },
-        { to: "/app/admin/stock-docs", label: stockAlert ? `เอกสารคลังและ SN (${stockAlert})` : "เอกสารคลังและ SN", icon: FileIcon, show: can("stock.view") || can("stock.docs") || can("stock.post") },
+        { to: "/app/admin/stock-docs", label: stockAlert ? `เอกสารคลังและ SN (${stockAlert})` : "เอกสารคลังและ SN", icon: FileIcon, show: can("stock.view") || can("stock.docs") || can("stock.post") || can("stock.check") || can("stock.count") },
         { to: "/app/admin/deliveries", label: "ตารางส่งสินค้า", icon: TruckIcon, show: can("deliveries.view") || can("deliveries.manage") },
         { to: "/app/admin/pricing", label: "ราคาเฉพาะบริษัท", icon: TagIcon, show: can("pricing") },
         { to: "/app/admin/products", label: "สินค้า", icon: BoxIcon, show: can("products") },

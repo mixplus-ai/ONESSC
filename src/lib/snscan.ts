@@ -138,3 +138,18 @@ export async function scanText(file: Blob, angle = 0, onProgress?: (p: number) =
     await worker.terminate();
   }
 }
+
+/** Fast read of one camera frame (live scanning): barcode values only, no tilt or text. */
+export async function readFrame(img: ImageData): Promise<string[]> {
+  const m = await zxing();
+  const res = await m.readBarcodes(img, { maxNumberOfSymbols: 20, tryHarder: false, tryRotate: true, tryInvert: false, tryDownscale: true });
+  const out: string[] = [];
+  for (const r of res) {
+    if (!r.isValid || !r.text) continue;
+    for (const part of r.text.split(/[\r\n;,|]+/)) {
+      const t = clean(part);
+      if (t.length >= 4 && t.length <= 60 && !/^HTTPS?:/.test(t)) out.push(t);
+    }
+  }
+  return out;
+}
