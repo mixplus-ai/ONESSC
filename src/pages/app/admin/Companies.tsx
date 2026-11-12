@@ -4,8 +4,9 @@ import { Alert, Badge, Button, Card, Empty, Input, Loading, PageTitle, cx } from
 import { useAuth } from "../../../lib/auth";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
-import { CareTeamPicker } from "../../../components/CareTeam";
-import type { Company, Profile } from "../../../lib/types";
+import { Avatar } from "../../../components/Avatar";
+import { CARE_ROLE_LABEL, CareTeamPicker } from "../../../components/CareTeam";
+import type { Company, Profile, TeamMember } from "../../../lib/types";
 
 function PendingList({ onChange }: { onChange: () => void }) {
   const pending = useRows<Profile>(() =>
@@ -61,7 +62,19 @@ function PendingList({ onChange }: { onChange: () => void }) {
   );
 }
 
-function CompanyRow({ c, members, onSaved }: { c: Company; members: Profile[]; onSaved: () => void }) {
+function CarePerson({ role, m }: { role: "sales" | "support"; m: TeamMember | undefined }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5 ring-1 ring-slate-200">
+      {m ? <Avatar url={m.photo_url} name={m.full_name} className="h-8 w-8 shrink-0 text-xs" /> : <span className="h-8 w-8 shrink-0 rounded-full bg-slate-200" />}
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold text-sun-600">{CARE_ROLE_LABEL[role]}</p>
+        <p className={cx("truncate text-sm", m ? "font-medium text-navy-900" : "text-slate-400")}>{m ? m.full_name : "ยังไม่กำหนด"}</p>
+      </div>
+    </div>
+  );
+}
+
+function CompanyRow({ c, members, team, onSaved }: { c: Company; members: Profile[]; team: Map<string, TeamMember>; onSaved: () => void }) {
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState(c.name);
   const [phone, setPhone] = useState(c.phone ?? "");
@@ -84,6 +97,10 @@ function CompanyRow({ c, members, onSaved }: { c: Company; members: Profile[]; o
         <div>
           <p className="font-semibold text-navy-900">{c.name}</p>
           <p className="text-sm text-slate-500">เลขผู้เสียภาษี {c.tax_id}{c.phone ? ` · ${c.phone}` : ""}</p>
+        </div>
+        <div className="grid min-w-0 flex-1 gap-2 sm:max-w-md sm:grid-cols-2">
+          <CarePerson role="sales" m={c.sales_member_id ? team.get(c.sales_member_id) : undefined} />
+          <CarePerson role="support" m={c.support_member_id ? team.get(c.support_member_id) : undefined} />
         </div>
         <div className="flex items-center gap-2">
           <Badge tone="navy">{members.length} ผู้ใช้</Badge>
@@ -115,6 +132,8 @@ export default function Companies() {
   const [tab, setTab] = useState<"pending" | "all">("pending");
   const companies = useRows<Company>(() => supabase.from("companies").select("*").order("name"));
   const members = useRows<Profile>(() => supabase.from("profiles").select("*").eq("company_status", "approved"));
+  const teamRows = useRows<TeamMember>(() => supabase.from("team_members").select("*"));
+  const team = useMemo(() => new Map(teamRows.rows.map((m) => [m.id, m])), [teamRows.rows]);
   const [q, setQ] = useState("");
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -141,7 +160,7 @@ export default function Companies() {
           ) : shown.length ? (
             <div className="space-y-3">
               {shown.map((c) => (
-                <CompanyRow key={c.id} c={c} members={members.rows.filter((m) => m.company_id === c.id)} onSaved={companies.reload} />
+                <CompanyRow key={c.id} c={c} members={members.rows.filter((m) => m.company_id === c.id)} team={team} onSaved={companies.reload} />
               ))}
             </div>
           ) : (

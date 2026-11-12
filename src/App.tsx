@@ -40,6 +40,7 @@ const ProductsAdmin = lazy(() => import("./pages/app/admin/ProductsAdmin"));
 const Pricing = lazy(() => import("./pages/app/admin/Pricing"));
 const PromotionsAdmin = lazy(() => import("./pages/app/admin/PromotionsAdmin"));
 const StockAdmin = lazy(() => import("./pages/app/admin/StockAdmin"));
+const StockDocs = lazy(() => import("./pages/app/admin/stockdocs/StockDocs"));
 const RequestsAdmin = lazy(() => import("./pages/app/admin/RequestsAdmin"));
 const MyTraining = lazy(() => import("./pages/app/training/MyTraining"));
 const Book = lazy(() => import("./pages/app/training/Book"));
@@ -103,6 +104,7 @@ export default function App() {
             <Route path="admin/pricing" element={<Pricing />} />
             <Route path="admin/promotions" element={<PromotionsAdmin />} />
             <Route path="admin/stock" element={<StockAdmin />} />
+            <Route path="admin/stock-docs" element={<StockDocs />} />
             <Route path="admin/deliveries" element={<DeliveriesAdmin />} />
             <Route path="admin/reports" element={<Reports />} />
             <Route path="admin/requests" element={<RequestsAdmin />} />

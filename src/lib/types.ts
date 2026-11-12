@@ -114,6 +114,11 @@ export interface CompanySettings {
   map_embed_url: string;
   office_hours: string;
   logo_url: string;
+  /** Letterhead on printed documents (blank = taken from the address / web name). */
+  legal_name_th?: string;
+  legal_name_en?: string;
+  tax_id?: string;
+  doc_address?: string;
   /** Branches such as head office and warehouse; empty = one location from the fields above. */
   locations?: CompanyLocation[];
 }
