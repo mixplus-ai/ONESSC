@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Gate } from "../../../../components/AppLayout";
 import { Alert, Loading, PageTitle } from "../../../../components/ui";
 import { useAuth } from "../../../../lib/auth";
-import { boardStatus, duplicateIssueClaims, groupUnits, loadBoard, type BoardStatus, type Claim, type ClaimUnit } from "../../../../lib/claims";
+import { boardCache, boardStatus, duplicateIssueClaims, groupUnits, loadBoard, type BoardStatus, type Claim, type ClaimUnit } from "../../../../lib/claims";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import { Tabs } from "../../MyRequests";
 import Board from "./Board";
@@ -23,13 +23,13 @@ export default function ClaimsAdmin() {
   const setTab = (t: Tab) => setParams((p) => { p.set("tab", t); return p; }, { replace: true });
   const openClaim = (id: string | null) => setParams((p) => { p.set("tab", "board"); if (id) p.set("claim", id); else p.delete("claim"); return p; });
 
-  const [claims, setClaims] = useState<Claim[]>([]);
-  const [units, setUnits] = useState<ClaimUnit[]>([]);
+  const [claims, setClaims] = useState<Claim[]>(() => boardCache?.claims ?? []);
+  const [units, setUnits] = useState<ClaimUnit[]>(() => boardCache?.units ?? []);
   const [staff, setStaff] = useState<StaffOpt[]>([]);
   const [brands, setBrands] = useState<BrandOpt[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!boardCache);
   const [err, setErr] = useState("");
-  const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  const [loadedAt, setLoadedAt] = useState<Date | null>(() => boardCache?.at ?? null);
 
   const reload = useCallback(async () => {
     try {

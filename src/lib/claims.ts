@@ -575,24 +575,42 @@ export function sheetRows(claims: Claim[], unitsBy: Map<string, ClaimUnit[]>): (
  * row count has been read, so a lower cap can never silently cut the list short.
  */
 export async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown; count?: number | null }>): Promise<T[]> {
-  const out: T[] = [];
-  let total: number | null = null;
-  for (;;) {
-    const { data, error, count } = await build(out.length, out.length + 999);
+  // first page tells the total and the real page size; the rest are fetched at the same time
+  const first = await build(0, 999);
+  if (first.error) throw first.error;
+  const out: T[] = [...(first.data ?? [])];
+  const size = out.length;
+  const total = typeof first.count === "number" ? first.count : null;
+  if (!size || (total !== null ? size >= total : size < 1000)) return out;
+  if (total !== null) {
+    const starts: number[] = [];
+    for (let a = size; a < total; a += size) starts.push(a);
+    const pages = await Promise.all(starts.map((a) => build(a, a + size - 1)));
+    for (const pg of pages) {
+      if (pg.error) throw pg.error;
+      out.push(...(pg.data ?? []));
+    }
+  }
+  // no count, or rows were added while loading: read on until a short page
+  while (out.length % size === 0) {
+    const { data, error } = await build(out.length, out.length + size - 1);
     if (error) throw error;
-    if (total === null && typeof count === "number") total = count;
     const rows = data ?? [];
     out.push(...rows);
-    if (rows.length === 0 || (total !== null ? out.length >= total : rows.length < 1000)) break;
+    if (rows.length < size) break;
   }
   return out;
 }
+
+/** Last board read in this tab, so coming back to the claims page shows it at once while it refreshes. */
+export let boardCache: { claims: Claim[]; units: ClaimUnit[]; at: Date } | null = null;
 
 export async function loadBoard(): Promise<{ claims: Claim[]; units: ClaimUnit[] }> {
   const [claims, units] = await Promise.all([
     fetchAll<Claim>((a, b) => supabase.from("claims").select("*", { count: "exact" }).order("claim_no").range(a, b)),
     fetchAll<ClaimUnit>((a, b) => supabase.from("claim_units").select("*", { count: "exact" }).order("claim_id").order("seq").range(a, b)),
   ]);
+  boardCache = { claims, units, at: new Date() };
   return { claims, units };
 }
 
