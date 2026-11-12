@@ -408,9 +408,10 @@ export default function NewClaim() {
               </label>
             ))}
           </div>
-          {f.delivery_type === "shipping" && (
+          {f.delivery_type === "shipping" && (<>
+            <div className="mt-4"><Alert tone="navy">บริษัทจะออกค่าจัดส่งให้ก่อน เมื่อส่งของแล้วจะแจ้งยอดพร้อมใบเสร็จในหน้าเคลมของฉัน ให้โอนแล้วแนบสลิปได้ที่หน้านั้น</Alert></div>
             <div className="mt-4"><Field label="ที่อยู่จัดส่ง" required><Textarea rows={3} value={f.delivery_address} onChange={(e) => set("delivery_address", e.target.value)} required /></Field></div>
-          )}
+          </>)}
         </Card>
 
         {err && <Alert>{err}</Alert>}

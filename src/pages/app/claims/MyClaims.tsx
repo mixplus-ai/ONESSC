@@ -1,10 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { NextSteps } from "../../../components/CareTeam";
 import { ScanButton } from "../../../components/SnScanner";
 import { Alert, Badge, Button, ButtonLink, Card, Empty, Field, Input, Loading, PageTitle, Select, Spinner, Textarea, cx } from "../../../components/ui";
 import {
-  CLAIM_STATUS, SN_CHANGE_STATUS, SN_REASON, fmtThai, fmtThaiTime, openClaimFile, productTypeLabel, splitSns, uploadClaimFile,
+  CLAIM_STATUS, SHIP_STATUS, fmtBaht, SN_CHANGE_STATUS, SN_REASON, fmtThai, fmtThaiTime, openClaimFile, productTypeLabel, splitSns, uploadClaimFile,
   type MyClaim, type SnChange, type SnChangeReason,
 } from "../../../lib/claims";
 import { useRows } from "../../../lib/content";
@@ -326,7 +326,48 @@ function AddFiles({ c, onDone }: { c: MyClaim; onDone: () => void }) {
   );
 }
 
-function ClaimCard({ c, changes, onChanged }: { c: MyClaim; changes: SnChange[]; onChanged: () => void }) {
+/** Shipping fee: the company paid the courier; the customer transfers and attaches the slip. */
+function ShipPay({ c, bank, onDone }: { c: MyClaim; bank: string | null; onDone: () => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  if (!c.ship_status) return null;
+  const st = SHIP_STATUS[c.ship_status];
+  const canSend = c.mine && (c.ship_status === "unpaid" || c.ship_status === "rejected");
+  async function up(f: File) {
+    setBusy(true); setErr("");
+    try {
+      await uploadClaimFile(c.id, "ship_slip", f);
+      onDone();
+    } catch (e) {
+      setErr(errorMessage(e));
+    }
+    setBusy(false);
+  }
+  return (
+    <div className={cx("mt-3 rounded-xl p-4 ring-1", c.ship_status === "paid" ? "bg-emerald-50 ring-emerald-200" : "bg-amber-50 ring-amber-200")}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-semibold text-navy-900">ค่าจัดส่ง {fmtBaht(c.ship_fee)}</p>
+        <Badge tone={st.tone}>{st.label}</Badge>
+      </div>
+      <p className="mt-1 text-sm text-slate-700">
+        บริษัทออกค่าจัดส่งให้ก่อน{c.ship_carrier ? ` · ส่งทาง ${c.ship_carrier}` : ""}{c.ship_tracking ? <> · เลขพัสดุ <span className="font-mono">{c.ship_tracking}</span></> : null}
+      </p>
+      {c.ship_status === "rejected" && c.ship_note && <p className="mt-2 text-sm font-medium text-red-700">สลิปไม่ถูกต้อง: {c.ship_note} กรุณาแนบใหม่</p>}
+      {canSend && bank && <p className="mt-2 whitespace-pre-line rounded-lg bg-white p-3 text-sm text-slate-800 ring-1 ring-slate-200">{bank}</p>}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {c.ship_receipt_path && <Button variant="secondary" className="!py-1.5" onClick={() => openClaimFile(c.ship_receipt_path!)}>ดาวน์โหลดใบเสร็จค่าส่ง</Button>}
+        {canSend && <Button variant="sun" className="!py-1.5" onClick={() => ref.current?.click()} loading={busy}>แนบสลิปโอน</Button>}
+        {c.ship_slip_path && !canSend && <button type="button" className="text-sm text-navy-700 underline" onClick={() => openClaimFile(c.ship_slip_path!)}>ดูสลิปที่แนบ</button>}
+        <input ref={ref} type="file" hidden accept="image/*,.pdf" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) up(f); }} />
+      </div>
+      {c.ship_status === "slip" && <p className="mt-2 text-xs text-slate-500">ได้รับสลิปแล้ว รอเจ้าหน้าที่ตรวจสอบ</p>}
+      {err && <p className="mt-2 text-xs text-red-600">{err}</p>}
+    </div>
+  );
+}
+
+function ClaimCard({ c, changes, onChanged, bank }: { c: MyClaim; changes: SnChange[]; onChanged: () => void; bank: string | null }) {
   const [open, setOpen] = useState(false);
   const st = CLAIM_STATUS[c.status];
   const doc = c.files.find((f) => f.kind === "claim_doc" && f.path === c.claim_doc_path) ?? c.files.find((f) => f.kind === "claim_doc");
@@ -347,6 +388,7 @@ function ClaimCard({ c, changes, onChanged }: { c: MyClaim; changes: SnChange[];
           </div>
           <div className="flex flex-col items-end gap-1">
             <Badge tone={st.tone}>{st.label}</Badge>
+            {c.ship_status && c.ship_status !== "paid" && <Badge tone={SHIP_STATUS[c.ship_status].tone}>{SHIP_STATUS[c.ship_status].label}</Badge>}
             <span className="text-xs text-slate-500">อัปเดต {fmtThaiTime(lastAt)}</span>
           </div>
         </div>
@@ -370,6 +412,7 @@ function ClaimCard({ c, changes, onChanged }: { c: MyClaim; changes: SnChange[];
             <Button variant="secondary" onClick={() => openClaimFile(doc.path)}>ดาวน์โหลดใบเคลม</Button>
           </div>
         )}
+        <ShipPay c={c} bank={bank} onDone={onChanged} />
         {c.status === "done" && <ReturnForm c={c} onDone={onChanged} />}
         {(c.status === "done" || open || changes.some((x) => x.status === "pending")) && <SnChangePanel c={c} changes={changes} onDone={onChanged} />}
         {c.status === "returned" && <p className="mt-3 text-sm text-slate-600">ส่งของคืนแล้ว {c.returned_sns?.length ?? 0} รายการ ตรงกับ SN ที่แจ้งครบ · รอ{c.handler ? ` ${c.handler} (ผู้รับผิดชอบ)` : "ทีมงาน"}ตรวจรับเพื่อปิดงาน</p>}
@@ -446,6 +489,10 @@ export default function MyClaims() {
     return { data: (data ?? []) as SnChange[], error };
   });
   const reloadAll = () => { list.reload(); snChanges.reload(); };
+  const [bank, setBank] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.from("claim_settings").select("ship_bank_info").eq("id", 1).maybeSingle().then(({ data }) => setBank((data as { ship_bank_info: string | null } | null)?.ship_bank_info ?? null));
+  }, []);
   const [filter, setFilter] = useState<"open" | "all">("all");
   const [q, setQ] = useState("");
   const term = q.trim().toLowerCase();
@@ -476,7 +523,7 @@ export default function MyClaims() {
           <Link to="/app/claims/new" className="font-semibold text-navy-700 underline">แจ้งเคลมใหม่</Link>
         </Empty>
       ) : (
-        <div className="space-y-4">{rows.map((c) => <ClaimCard key={c.id} c={c} changes={snChanges.rows.filter((x) => x.claim_id === c.id)} onChanged={reloadAll} />)}</div>
+        <div className="space-y-4">{rows.map((c) => <ClaimCard key={c.id} c={c} changes={snChanges.rows.filter((x) => x.claim_id === c.id)} onChanged={reloadAll} bank={bank} />)}</div>
       )}
       <p className="mt-6 text-xs text-slate-500">สอบถามเพิ่มเติม ติดต่อฝ่ายบริการผ่าน LINE OA หรือ <Link to="/contact?topic=service" className="underline">หน้าติดต่อเรา</Link></p>
     </>
