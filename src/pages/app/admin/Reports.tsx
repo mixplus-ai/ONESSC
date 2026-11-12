@@ -7,6 +7,7 @@ import {
   type Cell, type ReportDef, type Sheet,
 } from "../../../lib/reports";
 import { errorMessage } from "../../../lib/supabase";
+import { openPrintDoc, preparePrintWindow, table as printTable } from "../../../lib/printdoc";
 
 // ---------------------------------------------------------------------------
 // date presets (Bangkok calendar days)
@@ -80,11 +81,13 @@ export default function Reports() {
     return { key: d.key, q: JSON.stringify([d.key, d.dateCol ? from : "", d.dateCol ? to : "", st]), sheet: { name: d.label, ...t }, total: rows.length, truncated };
   }
 
-  async function run(kind: "preview" | "xlsx" | "csv") {
+  async function run(kind: "preview" | "xlsx" | "csv" | "print") {
     if (!def) return;
     if (!cols.length) return setErr("เลือกหัวข้ออย่างน้อย 1 หัวข้อ");
     setErr("");
     setBusy(kind);
+    const pw = kind === "print" ? preparePrintWindow() : null;
+    if (kind === "print" && !pw) return setBusy("");
     try {
       // reuse the preview when nothing changed, but rebuild columns (cheap) by reloading only if needed
       const data = await fetchSheet(def, cols, status);
@@ -92,7 +95,9 @@ export default function Reports() {
       const name = `${def.key}_${rangeText(def.dateCol ? from : "", def.dateCol ? to : "")}_${stamp()}`;
       if (kind === "xlsx") await exportXlsx(`${name}.xlsx`, [data.sheet]);
       if (kind === "csv") exportCsv(`${name}.csv`, data.sheet);
+      if (kind === "print") printReport(data, pw);
     } catch (e) {
+      pw?.close();
       setErr(errorMessage(e));
     }
     setBusy("");
@@ -113,12 +118,34 @@ export default function Reports() {
     setBusy("");
   }
 
+  // printed report on the shared document layout; wide reports go landscape, very long ones are cut with a note
+  function printReport(data: Loaded, pw: Window | null) {
+    const MAX = 3000;
+    const { header, body, numeric } = data.sheet;
+    const th = (d: string) => (d ? new Date(d).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" }) : "");
+    const range = def.dateCol ? (from || to ? `${th(from) || "…"} – ${th(to) || "…"}` : "ทั้งหมด") : "ข้อมูล ณ ปัจจุบัน";
+    const fmt = (v: string | number | null, i: number) => (numeric[i] && typeof v === "number" ? v.toLocaleString("th-TH") : v);
+    openPrintDoc({
+      title: def.label, titleEn: "REPORT", docNo: null,
+      date: new Date().toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" }),
+      extra: [["ช่วงข้อมูล", range], ["จำนวน", `${data.total.toLocaleString("th-TH")} รายการ`]],
+      landscape: header.length > 6,
+      panels: [{ heading: "เงื่อนไขรายงาน", rows: [["รายงาน", `${def.group} · ${def.label}`], [def.dateLabel ?? "ช่วงเวลา", range], [statusLabel, status && def.statuses ? def.statuses[status] : null], ["หัวข้อ", header.join(", ")]] }],
+      body: printTable([["#", "c"], ...header.map((h, i) => [h, numeric[i] ? "r" : ""] as [string, string])],
+        body.slice(0, MAX).map((r, i) => [i + 1, ...r.map(fmt)]), { small: header.length > 6 })
+        + (body.length > MAX ? `<p class="muted">แสดง ${MAX.toLocaleString("th-TH")} รายการแรกจาก ${body.length.toLocaleString("th-TH")} รายการ ส่งออก Excel เพื่อดูทั้งหมด</p>` : "")
+        + (data.truncated ? `<p class="muted">ข้อมูลมากเกินกำหนด ระบบดึงมาเพียงบางส่วน</p>` : ""),
+      signatures: ["ผู้จัดทำรายงาน", "ผู้ตรวจสอบ"],
+      fileName: `${def.label} ${range}`,
+    }, pw);
+  }
+
   const preview = loaded && loaded.q === qKey ? loaded : null;
   const statusLabel = def?.statusCol === "role" ? "บทบาท" : def?.statusCol === "kind" ? "ประเภท" : "สถานะ";
 
   return (
     <Gate allow={can("reports")}>
-      <PageTitle title="รายงานและส่งออกข้อมูล" subtitle="เลือกรายงาน ช่วงเวลา และหัวข้อที่ต้องการ แล้วส่งออกเป็น Excel หรือ CSV" />
+      <PageTitle title="รายงานและส่งออกข้อมูล" subtitle="เลือกรายงาน ช่วงเวลา และหัวข้อที่ต้องการ แล้วส่งออกเป็น Excel, CSV หรือพิมพ์ / PDF" />
       {!allowed.length ? (
         <Alert tone="amber">ยังไม่มีรายงานที่คุณเปิดได้ รายงานแต่ละหัวข้อต้องมีสิทธิ์ของหน้านั้นด้วย กรุณาติดต่อ Admin</Alert>
       ) : (
@@ -243,6 +270,7 @@ export default function Reports() {
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <Button variant="sun" onClick={() => run("xlsx")} loading={busy === "xlsx"} disabled={Boolean(busy)}>ส่งออก Excel</Button>
                 <Button variant="secondary" onClick={() => run("csv")} loading={busy === "csv"} disabled={Boolean(busy)}>ส่งออก CSV</Button>
+                <Button variant="secondary" onClick={() => run("print")} loading={busy === "print"} disabled={Boolean(busy)}>พิมพ์ / PDF</Button>
                 <Button variant="ghost" onClick={() => run("preview")} loading={busy === "preview"} disabled={Boolean(busy)}>ดูตัวอย่าง</Button>
                 {busy && progress > 0 && <span className="text-xs text-slate-500">กำลังโหลด {progress.toLocaleString("th-TH")} แถว…</span>}
               </div>

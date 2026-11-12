@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "@zxing/browser": "^0.2.1",
     "html-to-image": "^1.11.13",
     "pdfjs-dist": "^4.10.38",
@@ -20,7 +21,10 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.5",
     "read-excel-file": "^9.3.14",
-    "write-excel-file": "^4.1.1"
+    "tesseract.js": "^7.0.0",
+    "tesseract.js-core": "^7.0.0",
+    "write-excel-file": "^4.1.1",
+    "zxing-wasm": "^3.1.6"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.5",

@@ -187,6 +187,16 @@ export default function Content() {
             </div>
           </Card>
           <Card>
+            <h3 className="font-semibold text-navy-900">หัวเอกสารที่พิมพ์ / PDF</h3>
+            <p className="mb-4 text-sm text-slate-500">ใช้กับเอกสารคลัง ใบสรุปงานเคลม รายงาน และใบตรวจนับ ช่องที่เว้นว่างจะใช้ชื่อและที่อยู่ด้านบนแทน</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="ชื่อนิติบุคคล (ไทย)"><Input value={s.company.legal_name_th ?? ""} placeholder="บริษัท … จำกัด (สำนักงานใหญ่)" onChange={(e) => set("company", "legal_name_th", e.target.value)} /></Field>
+              <Field label="ชื่อนิติบุคคล (อังกฤษ)"><Input value={s.company.legal_name_en ?? ""} placeholder="… Co., Ltd." onChange={(e) => set("company", "legal_name_en", e.target.value)} /></Field>
+              <Field label="เลขประจำตัวผู้เสียภาษี"><Input value={s.company.tax_id ?? ""} inputMode="numeric" onChange={(e) => set("company", "tax_id", e.target.value)} /></Field>
+              <div className="sm:col-span-2"><Field label="ที่อยู่บนเอกสาร"><Textarea rows={2} value={s.company.doc_address ?? ""} onChange={(e) => set("company", "doc_address", e.target.value)} /></Field></div>
+            </div>
+          </Card>
+          <Card>
             <h3 className="font-semibold text-navy-900">โซเชียลมีเดีย</h3>
             <p className="mb-4 text-sm text-slate-500">ใส่ลิงก์เต็ม (https://…) ช่องไหนเว้นว่าง ไอคอนนั้นจะไม่แสดง โลโก้จะแสดงที่ท้ายเว็บทุกหน้าและหน้าติดต่อเรา</p>
             <div className="grid gap-4 sm:grid-cols-2">
