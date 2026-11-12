@@ -8,6 +8,7 @@ import {
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import { staffName, useBoard, type StaffOpt } from "./shared";
 import { SnChangeHistory, SnChangeQueue, useSnChanges } from "./SnChanges";
+import { ClaimSnStock } from "../stockdocs/ClaimSnStock";
 import type { SnChange } from "../../../../lib/claims";
 
 const actorName = (staff: StaffOpt[], id: string | null) => {
@@ -157,6 +158,7 @@ function QueueCard({ c, onOpenBoard, snChanges }: { c: Claim; onOpenBoard: (id: 
       {open && (
         <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
           <Details c={c} />
+          <ClaimSnStock c={c} />
           <SnChangeHistory rows={snChanges} />
           <div>
             <p className="mb-1 text-sm font-medium text-slate-700">ไฟล์</p>

@@ -19,12 +19,13 @@ function near(a: string, b: string) {
 interface Row extends SnCandidate { key: string; on: boolean; photo: number; dup: boolean }
 
 /** Attach or take photos of SN labels / a packing list; read every barcode (and text if asked) and pick what to add. */
-export function PhotoScan({ knownSkus, existing, onAdd }: { knownSkus: Set<string>; existing: Set<string>; onAdd: (sns: string[]) => void }) {
+export function PhotoScan({ knownSkus, existing, onAdd }: { knownSkus: Set<string>; existing: Set<string>; onAdd: (sns: string[], photos: File[]) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [urls, setUrls] = useState<string[]>([]);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [angles, setAngles] = useState<number[]>([]);
+  const [keep, setKeep] = useState(true);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
 
@@ -85,8 +86,9 @@ export function PhotoScan({ knownSkus, existing, onAdd }: { knownSkus: Set<strin
       <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <Modal open={rows !== null} onClose={close} wide title="อ่าน SN จากรูป"
         footer={<>
+          <label className="mr-auto flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> เก็บรูปไว้กับเอกสารเป็นหลักฐาน</label>
           <Button variant="ghost" onClick={close}>ปิด</Button>
-          <Button disabled={!chosen.length || !!busy} onClick={() => { onAdd(chosen.map((r) => r.text)); close(); }}>เพิ่ม {chosen.length} SN ที่เลือก</Button>
+          <Button disabled={!chosen.length || !!busy} onClick={() => { onAdd(chosen.map((r) => r.text), keep ? files : []); close(); }}>เพิ่ม {chosen.length} SN ที่เลือก</Button>
         </>}>
         <div className="grid gap-4 md:grid-cols-[14rem_1fr]">
           <div className="space-y-2">

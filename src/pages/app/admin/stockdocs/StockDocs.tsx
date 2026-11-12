@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Gate } from "../../../../components/AppLayout";
-import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select } from "../../../../components/ui";
+import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, Modal, PageTitle, Select } from "../../../../components/ui";
 import { useAuth } from "../../../../lib/auth";
 import { formatDate } from "../../../../lib/catalog";
 import { useRows } from "../../../../lib/content";
@@ -86,7 +86,52 @@ function DocList({ open, newDoc }: { open: (id: string) => void; newDoc: (t: Doc
   );
 }
 
-function Balance({ warehouses }: { warehouses: Warehouse[] }) {
+/** Stock card for one code: every posted document in date order with in / out / running balance. */
+function StockCard({ sku, onClose, open }: { sku: string; onClose: () => void; open: (id: string) => void }) {
+  type Line = { doc_id: string; stock_docs: { doc_no: string; doc_type: DocType; doc_date: string; partner_name: string | null; ref_no: string | null; posted_at: string } };
+  const lines = useRows<Line>(() => supabase.from("stock_doc_items").select("doc_id, stock_docs!inner(doc_no, doc_type, doc_date, partner_name, ref_no, posted_at, status)")
+    .eq("sku", sku).eq("stock_docs.status", "posted").limit(5000) as unknown as PromiseLike<{ data: Line[] | null; error: unknown }>, [sku]);
+  const docs = useMemo(() => {
+    const m = new Map<string, { id: string; d: Line["stock_docs"]; n: number }>();
+    for (const l of lines.rows) { const x = m.get(l.doc_id) ?? { id: l.doc_id, d: l.stock_docs, n: 0 }; x.n++; m.set(l.doc_id, x); }
+    let bal = 0;
+    return [...m.values()].sort((a, b) => (a.d.doc_date + a.d.posted_at).localeCompare(b.d.doc_date + b.d.posted_at)).map((x) => {
+      const dir = DIR[x.d.doc_type];
+      const inn = dir === "in" ? x.n : 0, out = dir === "out" ? x.n : 0;
+      bal += inn - out;
+      return { ...x, inn, out, bal };
+    });
+  }, [lines.rows]);
+  return (
+    <Modal open onClose={onClose} wide title={`สต๊อกการ์ด ${sku}`}>
+      {lines.loading ? <Loading /> : docs.length ? (
+        <div className="max-h-[65vh] overflow-auto">
+          <table className="min-w-full text-sm">
+            <thead className="sticky top-0 bg-white text-left text-xs text-slate-500">
+              <tr><th className="py-1 pr-3">วันที่</th><th className="py-1 pr-3">เอกสาร</th><th className="py-1 pr-3">คู่ค้า / ลูกค้า</th><th className="py-1 pr-3 text-right">รับ</th><th className="py-1 pr-3 text-right">จ่าย</th><th className="py-1 text-right">คงเหลือ</th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {docs.map((x) => (
+                <tr key={x.id}>
+                  <td className="py-1 pr-3">{formatDate(x.d.doc_date)}</td>
+                  <td className="py-1 pr-3"><button onClick={() => open(x.id)} className="font-mono text-navy-700 underline">{x.d.doc_no}</button> <span className="text-xs text-slate-500">{DOC_LABEL[x.d.doc_type]}</span></td>
+                  <td className="py-1 pr-3">{x.d.partner_name ?? "-"}{x.d.ref_no ? <span className="text-xs text-slate-500"> · {x.d.ref_no}</span> : null}</td>
+                  <td className="py-1 pr-3 text-right text-emerald-700">{x.inn || ""}</td>
+                  <td className="py-1 pr-3 text-right text-red-700">{x.out || ""}</td>
+                  <td className="py-1 text-right font-semibold">{x.bal}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2 text-xs text-slate-500">คงเหลือนับรวมของเสียที่รับคืนเข้าคลัง · ใบโอนคลังและใบจองไม่เปลี่ยนยอดรวม</p>
+        </div>
+      ) : <Empty>ยังไม่มีเอกสารที่ยืนยันสำหรับรหัสนี้</Empty>}
+    </Modal>
+  );
+}
+
+function Balance({ warehouses, open }: { warehouses: Warehouse[]; open: (id: string) => void }) {
+  const [card, setCard] = useState<string | null>(null);
   const serials = useRows<Serial>(async () => {
     const out: Serial[] = [];
     for (let from = 0; ; from += 1000) {
@@ -131,7 +176,7 @@ function Balance({ warehouses }: { warehouses: Warehouse[] }) {
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => (
                 <tr key={r.sku}>
-                  <td className="px-3 py-2 font-mono">{r.sku}</td>
+                  <td className="px-3 py-2 font-mono"><button onClick={() => setCard(r.sku)} className="text-navy-700 underline" title="ดูสต๊อกการ์ด">{r.sku}</button></td>
                   <td className="px-3 py-2">{r.description}</td>
                   {cols.map((c) => <td key={c.k} className={`px-3 py-2 text-right ${c.k === "in_stock" ? "font-semibold text-navy-900" : "text-slate-600"}`}>{r.c[c.k] ?? ""}</td>)}
                   {warehouses.length > 1 && warehouses.map((w) => <td key={w.id} className="px-3 py-2 text-right">{r.c["wh:" + w.id] ?? ""}</td>)}
@@ -141,6 +186,7 @@ function Balance({ warehouses }: { warehouses: Warehouse[] }) {
           </table>
         </div>
       ) : <Empty>ยังไม่มี SN ในระบบ เริ่มจากใบยอดยกมาหรือใบรับสินค้า</Empty>}
+      {card && <StockCard sku={card} onClose={() => setCard(null)} open={open} />}
     </div>
   );
 }
@@ -255,13 +301,13 @@ export default function StockDocs() {
   const docId = params.get("doc");
   const newType = params.get("new") as DocType | null;
   // a delivery that already has its sale document: open that one instead of starting a second
-  const deliveryParam = params.get("delivery");
+  const deliveryParam = params.get("delivery") ?? (params.get("reservation") ? `r:${params.get("reservation")}` : null);
   const [checked, setChecked] = useState(!deliveryParam);
   useEffect(() => {
     if (!deliveryParam || !newType) return setChecked(true);
-    supabase.from("stock_docs").select("id").eq("delivery_id", deliveryParam).neq("status", "cancelled").limit(1)
+    supabase.from("stock_docs").select("id").eq(deliveryParam.startsWith("r:") ? "reservation_id" : "delivery_id", deliveryParam.replace(/^r:/, "")).eq("doc_type", newType).neq("status", "cancelled").limit(1)
       .then(({ data }) => {
-        if (data?.[0]) setParams((p) => { p.set("doc", data[0].id); p.delete("new"); p.delete("delivery"); return p; }, { replace: true });
+        if (data?.[0]) setParams((p) => { p.set("doc", data[0].id); p.delete("new"); p.delete("delivery"); p.delete("reservation"); return p; }, { replace: true });
         setChecked(true);
       });
   }, [deliveryParam, newType]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -279,7 +325,7 @@ export default function StockDocs() {
     <Gate allow={allowed}>
       <PageTitle title="เอกสารคลังและ Serial Number" subtitle="รับเข้า จ่ายออก ยืม คืน จำหน่าย ทุกชิ้นตาม SN และค้นประวัติ SN ได้ในช่องเดียว" />
       {(docId || newType) && !wh.loading && checked ? (
-        <DocEditor key={docId ?? newType} id={docId} type={newType ?? "GR"} warehouses={docId ? wh.rows : active} deliveryId={params.get("delivery")}
+        <DocEditor key={docId ?? newType} id={docId} type={newType ?? "GR"} warehouses={docId ? wh.rows : active} deliveryId={params.get("delivery")} claimId={params.get("claim")} reservationId={params.get("reservation")}
           onClose={close} onChanged={() => setListKey((k) => k + 1)} />
       ) : (
         <>
@@ -292,7 +338,7 @@ export default function StockDocs() {
           ]} />
           {tab === "search" && <SnLookup initial={params.get("sn") ?? ""} />}
           {tab === "docs" && <DocList key={listKey} open={open} newDoc={newDoc} />}
-          {tab === "balance" && <Balance warehouses={active} />}
+          {tab === "balance" && <Balance warehouses={active} open={open} />}
           {tab === "out" && <OutList open={open} />}
           {tab === "settings" && isAdmin && <Settings warehouses={wh.rows} reload={wh.reload} />}
         </>

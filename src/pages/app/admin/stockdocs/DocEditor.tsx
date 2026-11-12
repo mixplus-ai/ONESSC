@@ -8,6 +8,7 @@ import {
   CONDITION_LABEL, DIR, DOC_LABEL, DOC_STATUS_LABEL, DOC_STATUS_TONE, DOC_TYPES, PARTNER_LABEL, REF_LABEL, SERIAL_STATUS_LABEL,
   snKey, splitSns, type Condition, type DocItem, type DocType, type Serial, type StockDoc, type Warehouse,
 } from "../../../../lib/stockdocs";
+import { DocFiles, uploadDocFiles } from "./DocFiles";
 import { PhotoScan } from "./PhotoScan";
 import { printStockDoc } from "./print";
 
@@ -19,8 +20,12 @@ const today = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10)
 
 interface DeliveryRef { id: string; doc_no: string | null; delivery_date: string; customer_name: string; customer_tax_id: string | null; company_id: string | null; site: string | null; warehouse: string | null; delivery_items: { model: string; description: string | null; qty: number }[] }
 
-export function DocEditor({ id, type, warehouses, deliveryId, onClose, onChanged }: {
-  id: string | null; type: DocType; warehouses: Warehouse[]; deliveryId?: string | null; onClose: () => void; onChanged: (id: string) => void;
+interface ClaimRef { id: string; claim_no: string; company_id: string | null; company_name: string | null; contact_name: string | null; site_name: string | null; reported_sns: string[] }
+interface ReservationRef { id: string; code: string; company_id: string | null; companies: { name: string; tax_id: string } | null; profiles: { full_name: string | null; email: string } | null; reservation_items: { sku: string; label: string; qty: number }[] }
+
+export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservationId, onClose, onChanged }: {
+  id: string | null; type: DocType; warehouses: Warehouse[]; deliveryId?: string | null; claimId?: string | null; reservationId?: string | null;
+  onClose: () => void; onChanged: (id: string) => void;
 }) {
   const { can, isAdmin } = useAuth();
   const canPost = can("stock.post");
@@ -35,6 +40,8 @@ export function DocEditor({ id, type, warehouses, deliveryId, onClose, onChanged
   const [scan, setScan] = useState("");
   const [warn, setWarn] = useState<string[]>([]);
   const scanRef = useRef<HTMLTextAreaElement>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [fileTick, setFileTick] = useState(0);
 
   const t = head.doc_type;
   const dir = DIR[t];
@@ -81,10 +88,47 @@ export function DocEditor({ id, type, warehouses, deliveryId, onClose, onChanged
       });
   }, [deliveryId, head.delivery_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // started from a claim: receive the defective units (RT) or send the replacement (SO)
+  const [claim, setClaim] = useState<ClaimRef | null>(null);
+  useEffect(() => {
+    const cid = claimId ?? (head.claim_id || null);
+    if (!cid || claim?.id === cid) return;
+    supabase.from("claims").select("id, claim_no, company_id, company_name, contact_name, site_name, reported_sns").eq("id", cid).single()
+      .then(({ data }) => {
+        if (!data) return;
+        const c = data as ClaimRef;
+        setClaim(c);
+        if (id) return;
+        setHead((h) => ({
+          ...h, claim_id: c.id, partner_name: c.company_name || c.contact_name, company_id: c.company_id, ref_no: `เคลม ${c.claim_no}`, site_name: c.site_name,
+          ...(t === "RT" ? { reason: `รับของเสียจากเคลม ${c.claim_no}` } : { note: `ส่งของเปลี่ยนตามเคลม ${c.claim_no}` }),
+        }));
+        if (t === "RT" && c.reported_sns.length) { setCond("defective"); addSns(c.reported_sns.join("\n"), "defective"); }
+      });
+  }, [claimId, head.claim_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // started from a web reservation (RS-…)
+  const [resv, setResv] = useState<ReservationRef | null>(null);
+  useEffect(() => {
+    const rid = reservationId ?? (head.reservation_id || null);
+    if (!rid || resv?.id === rid) return;
+    supabase.from("reservations").select("id, code, company_id, companies(name, tax_id), profiles(full_name, email), reservation_items(sku, label, qty)").eq("id", rid).single()
+      .then(({ data }) => {
+        if (!data) return;
+        const r = data as unknown as ReservationRef;
+        setResv(r);
+        if (id) return;
+        setHead((h) => ({
+          ...h, reservation_id: r.id, company_id: r.company_id, ref_no: r.code,
+          partner_name: r.companies?.name ?? r.profiles?.full_name ?? r.profiles?.email ?? null, partner_tax_id: r.companies?.tax_id ?? null,
+        }));
+      });
+  }, [reservationId, head.reservation_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const set = (k: keyof StockDoc, v: string | null) => setHead((h) => ({ ...h, [k]: v || null }));
 
   // add scanned SNs: in-docs use the chosen code; others look the SN up to get its code
-  async function addSns(raw: string) {
+  async function addSns(raw: string, condFor: Condition = cond) {
     const sns = splitSns(raw);
     if (!sns.length) return;
     const have = new Set(items.map((i) => snKey(i.sn)));
@@ -112,7 +156,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, onClose, onChanged
         } else if (s.warehouse_id !== head.warehouse_id) w.push(`${sn} ไม่ได้อยู่ในคลังที่เลือก (${SERIAL_STATUS_LABEL[s.status]})`);
         else if (["SO", "BR", "WD", "RV"].includes(t) && s.condition !== "good") w.push(`${sn} เป็นของเสีย`);
         else if (t === "SO" ? !["in_stock", "reserved"].includes(s.status) : t !== "WO" && t !== "TR" && s.status !== "in_stock") w.push(`${sn} สถานะ${SERIAL_STATUS_LABEL[s.status]}`);
-        add.push({ sku: s.sku, description: s.description ?? skuName.get(s.sku) ?? null, sn: s.sn, condition: t === "RT" ? cond : s.condition });
+        add.push({ sku: s.sku, description: s.description ?? skuName.get(s.sku) ?? null, sn: s.sn, condition: t === "RT" ? condFor : s.condition });
       }
       setItems((list) => [...list, ...add]);
     }
@@ -142,8 +186,17 @@ export function DocEditor({ id, type, warehouses, deliveryId, onClose, onChanged
       p_items: items.map((i) => ({ sku: i.sku, description: i.description, sn: i.sn, condition: i.condition, note: i.note ?? null })),
     });
     if (error) { setErr(errorMessage(error)); return null; }
-    const d = data as StockDoc;
+    let d = data as StockDoc;
+    if (head.reservation_id && !d.reservation_id) {
+      const r = await supabase.rpc("save_stock_doc_reservation", { p_id: d.id, p_reservation: head.reservation_id });
+      if (r.error) { setErr(errorMessage(r.error)); return null; }
+      d = { ...d, reservation_id: head.reservation_id };
+    }
     setHead(d);
+    if (pendingFiles.length) {
+      try { await uploadDocFiles(d.id, pendingFiles); setPendingFiles([]); setFileTick((x) => x + 1); }
+      catch (e) { setErr("บันทึกเอกสารแล้ว แต่อัปโหลดรูปไม่สำเร็จ: " + errorMessage(e)); }
+    }
     onChanged(d.id);
     return d.id;
   }
@@ -290,6 +343,21 @@ export function DocEditor({ id, type, warehouses, deliveryId, onClose, onChanged
         </div>
       </Card>
 
+      {claim && (
+        <Alert tone="navy">
+          จากงานเคลม <b>{claim.claim_no}</b> · {claim.company_name ?? claim.contact_name} · SN ที่แจ้ง: <span className="font-mono">{claim.reported_sns.join(", ") || "-"}</span>
+          {t === "RT" ? " · ระบบใส่ SN ที่แจ้งเป็นสภาพเสียให้แล้ว (SN ที่ไม่เคยขายจากระบบจะไม่ถูกเพิ่ม)" : " · สแกน SN ตัวใหม่ที่ส่งเปลี่ยนให้ลูกค้า"}
+        </Alert>
+      )}
+      {resv && (
+        <Alert tone="navy">
+          ตามใบจอง {resv.code}:{" "}
+          {resv.reservation_items.map((i) => {
+            const n = items.filter((x) => x.sku === i.sku.toUpperCase()).length;
+            return <span key={i.sku} className="mr-3 inline-block">{i.sku} × {Number(i.qty)}{" "}<b className={n === Number(i.qty) ? "text-emerald-700" : "text-amber-700"}>(สแกนแล้ว {n})</b></span>;
+          })}
+        </Alert>
+      )}
       {delivery && (
         <Alert tone="navy">
           ตามใบส่งสินค้า {delivery.doc_no} ({formatDate(delivery.delivery_date)}):{" "}
@@ -333,7 +401,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, onClose, onChanged
                 className="block w-full rounded-lg border-0 bg-white px-3 py-2.5 font-mono text-sm shadow-sm ring-1 ring-inset ring-slate-300 placeholder:font-sans placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-navy-600" />
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button variant="secondary" onClick={() => addSns(scan)}>+ เพิ่ม SN</Button>
-                <PhotoScan knownSkus={new Set(stock.rows.map((r) => r.sku))} existing={new Set(items.map((i) => snKey(i.sn)))} onAdd={(sns) => addSns(sns.join("\n"))} />
+                <PhotoScan knownSkus={new Set(stock.rows.map((r) => r.sku))} existing={new Set(items.map((i) => snKey(i.sn)))} onAdd={(sns, photos) => { addSns(sns.join("\n")); if (photos.length) setPendingFiles((p) => [...p, ...photos]); }} />
                 <span className="text-xs text-slate-500">แยกด้วยบรรทัดใหม่ เครื่องหมาย , หรือแท็บ</span>
               </div>
             </div>
@@ -366,6 +434,11 @@ export function DocEditor({ id, type, warehouses, deliveryId, onClose, onChanged
           ))}
           {!items.length && <p className="text-sm text-slate-500">ยังไม่มี SN</p>}
         </div>
+      </Card>
+
+      <Card>
+        <DocFiles docId={head.id ?? null} draft={!locked} pending={pendingFiles} setPending={setPendingFiles} tick={fileTick} />
+        {head.id && pendingFiles.length > 0 && <p className="mt-2 text-xs text-amber-700">มีรูปรออัปโหลด {pendingFiles.length} ไฟล์ กดบันทึกร่างหรือยืนยันเพื่ออัปโหลด</p>}
       </Card>
 
       {err && <Alert>{err}</Alert>}

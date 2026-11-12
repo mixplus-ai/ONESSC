@@ -146,7 +146,8 @@ function StaffDashboard() {
   const { isAdmin, can } = useAuth();
   const claimsOk = can("claims.view") || can("claims");
   const trainingOk = can("training.view") || can("courses");
-  const [stats, setStats] = useState({ pending: 0, messages: 0, users: 0, staff: 0, companies: 0, quotes: 0, reservations: 0, coupons: 0, slips: 0, sessions: 0, claimsNew: 0, claimsOpen: 0 });
+  const stockOk = can("stock.view") || can("stock.docs") || can("stock.post");
+  const [stats, setStats] = useState({ pending: 0, messages: 0, users: 0, staff: 0, companies: 0, quotes: 0, reservations: 0, coupons: 0, slips: 0, sessions: 0, claimsNew: 0, claimsOpen: 0, overdue: 0, drafts: 0 });
   useEffect(() => {
     const count = (q: PromiseLike<{ count: number | null }>) => Promise.resolve(q).then((r) => r.count ?? 0);
     Promise.all([
@@ -162,8 +163,10 @@ function StaffDashboard() {
       count(supabase.from("course_sessions").select("id", { count: "exact", head: true }).eq("is_archived", false).neq("status", "cancelled").gte("starts_on", todayBkk())),
       count(supabase.from("claims").select("id", { count: "exact", head: true }).eq("source", "customer").eq("status", "submitted")),
       count(supabase.from("claims").select("id", { count: "exact", head: true }).eq("source", "customer").in("status", ["in_progress", "done", "returned"])),
-    ]).then(([pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions, claimsNew, claimsOpen]) =>
-      setStats({ pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions, claimsNew, claimsOpen }));
+      stockOk ? count(supabase.from("serials").select("sn_key", { count: "exact", head: true }).in("status", ["borrowed", "withdrawn"]).lt("due_date", todayBkk())) : Promise.resolve(0),
+      stockOk ? count(supabase.from("stock_docs").select("id", { count: "exact", head: true }).eq("status", "draft")) : Promise.resolve(0),
+    ]).then(([pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions, claimsNew, claimsOpen, overdue, drafts]) =>
+      setStats({ pending, messages, users, staff, companies, quotes, reservations, coupons, slips, sessions, claimsNew, claimsOpen, overdue, drafts }));
   }, [can]);
 
   return (
@@ -171,6 +174,8 @@ function StaffDashboard() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {claimsOk && <Stat label="เคลมใหม่รอรับเรื่อง" value={stats.claimsNew} to="/app/admin/claims?tab=queue" icon={WrenchIcon} />}
         {claimsOk && <Stat label="เคลมค้าง (กำลังดำเนินการ)" value={stats.claimsOpen} to="/app/admin/claims?tab=queue" icon={WrenchIcon} />}
+        {stockOk && <Stat label="ของยืม/เบิก เลยกำหนดคืน" value={stats.overdue} to="/app/admin/stock-docs?tab=out" icon={BoxIcon} />}
+        {stockOk && <Stat label="เอกสารคลังรอยืนยัน" value={stats.drafts} to="/app/admin/stock-docs?tab=docs" icon={InboxIcon} />}
         {can("requests") && <Stat label="คำขอใบเสนอราคาที่เปิดอยู่" value={stats.quotes} to="/app/admin/requests?tab=quotes" icon={InboxIcon} />}
         {can("requests") && <Stat label="การจองที่รอดำเนินการ" value={stats.reservations} to="/app/admin/requests?tab=reservations" icon={BoxIcon} />}
         {can("companies") && <Stat label="รออนุมัติผูกบริษัท" value={stats.pending} to="/app/admin/companies" icon={BuildingIcon} />}

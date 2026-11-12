@@ -1,5 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode, type SVGProps } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABEL } from "../lib/types";
 import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, StarIcon, TagIcon, UserIcon, UsersIcon, WrenchIcon, XIcon, TruckIcon } from "./icons";
@@ -46,6 +47,17 @@ export default function AppLayout() {
   useEffect(() => {
     setOpen(false);
   }, [loc.pathname]);
+  // stock: loans/withdrawals past their return date + drafts waiting for approval
+  const stockOk = can("stock.view") || can("stock.docs") || can("stock.post");
+  const [stockAlert, setStockAlert] = useState(0);
+  useEffect(() => {
+    if (!stockOk) return;
+    const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+    Promise.all([
+      supabase.from("serials").select("sn_key", { count: "exact", head: true }).in("status", ["borrowed", "withdrawn"]).lt("due_date", today),
+      can("stock.post") ? supabase.from("stock_docs").select("id", { count: "exact", head: true }).eq("status", "draft") : Promise.resolve({ count: 0 }),
+    ]).then(([a, b]) => setStockAlert((a.count ?? 0) + (b.count ?? 0)));
+  }, [stockOk, loc.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCustomer = profile?.role === "user";
   const mine: Item[] = [
@@ -82,7 +94,7 @@ export default function AppLayout() {
       items: [
         { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: can("requests") },
         { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: ChartIcon, show: can("stock.view") },
-        { to: "/app/admin/stock-docs", label: "เอกสารคลังและ SN", icon: FileIcon, show: can("stock.view") || can("stock.docs") || can("stock.post") },
+        { to: "/app/admin/stock-docs", label: stockAlert ? `เอกสารคลังและ SN (${stockAlert})` : "เอกสารคลังและ SN", icon: FileIcon, show: can("stock.view") || can("stock.docs") || can("stock.post") },
         { to: "/app/admin/deliveries", label: "ตารางส่งสินค้า", icon: TruckIcon, show: can("deliveries.view") || can("deliveries.manage") },
         { to: "/app/admin/pricing", label: "ราคาเฉพาะบริษัท", icon: TagIcon, show: can("pricing") },
         { to: "/app/admin/products", label: "สินค้า", icon: BoxIcon, show: can("products") },
