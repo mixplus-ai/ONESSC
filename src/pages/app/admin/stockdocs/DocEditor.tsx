@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, Field, Input, Loading, Select, cx } from "../../../../components/ui";
 import { useAuth } from "../../../../lib/auth";
-import { formatDate, formatDateTime } from "../../../../lib/catalog";
+import { fmtWarranty, formatDate, formatDateTime } from "../../../../lib/catalog";
 import { useRows } from "../../../../lib/content";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import {
@@ -63,6 +63,35 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     [t],
   );
   const skuName = useMemo(() => new Map(stock.rows.map((r) => [r.sku, r.description])), [stock.rows]);
+  // product default warranty per code (placeholder on SO lines; the PI line can override it for a promotion)
+  const defWar = useRows<{ sku: string; warranty_months: number | null; products: { warranty_months: number | null } | null }>(
+    () => t === "SO" ? supabase.from("product_variants").select("sku, warranty_months, products(warranty_months)") : Promise.resolve({ data: [], error: null }),
+    [t],
+  );
+  const defMonths = useMemo(() => new Map(defWar.rows.map((r) => [r.sku.toUpperCase(), r.warranty_months ?? r.products?.warranty_months ?? null])), [defWar.rows]);
+  const groupWarranty = useMemo(() => {
+    const m = new Map<string, number>();
+    items.forEach((i) => { if (i.warranty_months != null && !m.has(i.sku)) m.set(i.sku, i.warranty_months); });
+    return m;
+  }, [items]);
+  function setGroupWarranty(code: string, v: string) {
+    const n = v.trim() === "" ? null : Math.max(0, Math.min(600, Math.round(Number(v))));
+    if (n !== null && Number.isNaN(n)) return;
+    setItems((l) => l.map((x) => x.sku === code ? { ...x, warranty_months: n } : x));
+  }
+  async function fixPostedWarranty(code: string) {
+    if (!head.id) return;
+    const cur = groupWarranty.get(code);
+    const v = prompt(`ประกันของ ${code} ในใบนี้ (เดือน) เว้นว่าง = ตามข้อมูลสินค้า`, cur != null ? String(cur) : "");
+    if (v === null) return;
+    const n = v.trim() === "" ? null : Math.round(Number(v));
+    if (n !== null && (Number.isNaN(n) || n < 0 || n > 600)) return setErr("ประกันต้องเป็นตัวเลข 0–600 เดือน");
+    const { error } = await supabase.rpc("set_doc_item_warranty", { p_doc: head.id, p_sku: code, p_months: n });
+    if (error) return setErr(errorMessage(error));
+    const it = await supabase.from("stock_doc_items").select("*").eq("doc_id", head.id).order("sort");
+    setItems((it.data ?? []) as DocItem[]);
+    setMsg(`แก้ประกัน ${code} แล้ว`);
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -193,7 +222,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     const { data, error } = await supabase.rpc("save_stock_doc", {
       p_id: id ?? head.id ?? null,
       p_doc: payload,
-      p_items: items.map((i) => ({ sku: i.sku, description: i.description, sn: i.sn, condition: i.condition, note: i.note ?? null })),
+      p_items: items.map((i) => ({ sku: i.sku, description: i.description, sn: i.sn, condition: i.condition, note: i.note ?? null, warranty_months: t === "SO" ? groupWarranty.get(i.sku) ?? null : null })),
     });
     if (error) { setErr(errorMessage(error)); return null; }
     let d = data as StockDoc;
@@ -438,7 +467,30 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         <div className="mt-4 space-y-4">
           {groups.map((g) => (
             <div key={g.sku}>
-              <p className="text-sm font-semibold text-navy-900">{g.sku} <span className="font-normal text-slate-500">{g.description ?? skuName.get(g.sku) ?? ""}</span> · {g.rows.length} ชิ้น</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-navy-900">{g.sku} <span className="font-normal text-slate-500">{g.description ?? skuName.get(g.sku) ?? ""}</span> · {g.rows.length} ชิ้น</p>
+                {t === "SO" && (() => {
+                  const def = defMonths.get(g.sku.toUpperCase()) ?? null;
+                  const cur = groupWarranty.get(g.sku);
+                  const promo = cur != null && def != null && cur !== def;
+                  return locked ? (
+                    <p className="flex items-center gap-2 text-xs text-slate-600">
+                      ประกัน <span className={cx("font-semibold", promo ? "text-amber-700" : "text-navy-900")}>{cur != null ? fmtWarranty(cur) : def != null ? fmtWarranty(def) : "ยังไม่ตั้ง"}</span>
+                      {promo && <Badge tone="amber">ปกติ {fmtWarranty(def)}</Badge>}
+                      {canPost && head.status === "posted" && <button onClick={() => fixPostedWarranty(g.sku)} className="text-navy-700 underline">แก้</button>}
+                    </p>
+                  ) : (
+                    <label className="flex items-center gap-2 text-xs text-slate-600">
+                      ประกันในบิลนี้
+                      <input type="number" min={0} max={600} inputMode="numeric" value={cur ?? ""} placeholder={def != null ? String(def) : "-"}
+                        onChange={(e) => setGroupWarranty(g.sku, e.target.value)}
+                        className={cx("h-8 w-20 rounded-lg border px-2 text-right text-sm", promo ? "border-amber-400 bg-amber-50" : "border-slate-300")} />
+                      เดือน
+                      {promo ? <Badge tone="amber">ปกติ {fmtWarranty(def)}</Badge> : <span className="text-slate-400">{def != null ? `ว่าง = ตามสินค้า ${fmtWarranty(def)}` : "สินค้ายังไม่ตั้งประกัน"}</span>}
+                    </label>
+                  );
+                })()}
+              </div>
               <div className="mt-1 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
                 {g.rows.map(({ item, idx }) => (
                   <div key={item.sn} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">

@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, ButtonLink, Spinner } from "../../../../components/ui";
+import { WarrantyBadge } from "../../../../components/Warranty";
 import { useAuth } from "../../../../lib/auth";
 import { formatDate } from "../../../../lib/catalog";
 import type { Claim } from "../../../../lib/claims";
 import { supabase } from "../../../../lib/supabase";
 import { DOC_LABEL, DOC_STATUS_LABEL, DOC_STATUS_TONE, SERIAL_STATUS_LABEL, SERIAL_STATUS_TONE, type DocStatus, type DocType, type SerialStatus } from "../../../../lib/stockdocs";
 
-interface Info { sn: string; sku: string | null; description: string | null; status: SerialStatus | null; sold_at: string | null; sold_doc_id: string | null; sold_doc_no: string | null; sold_to: string | null; sold_company_id: string | null; ref_no: string | null }
+interface Info { sn: string; sku: string | null; description: string | null; status: SerialStatus | null; sold_at: string | null; sold_doc_id: string | null; sold_doc_no: string | null; sold_to: string | null; sold_company_id: string | null; ref_no: string | null; warranty_months?: number | null; warranty_end?: string | null }
 
 const age = (d: string) => {
   const m = Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / (30.44 * 864e5)));
@@ -34,7 +35,7 @@ export function ClaimSnStock({ c }: { c: Claim }) {
       {rows === null ? <Spinner className="h-4 w-4" /> : !rows.length ? <p className="text-sm text-slate-500">ไม่มี SN ที่แจ้ง</p> : (
         <div className="overflow-x-auto">
           <table className="min-w-full text-xs">
-            <thead><tr className="text-left text-slate-500"><th className="py-1 pr-3">S/N</th><th className="py-1 pr-3">สถานะ</th><th className="py-1 pr-3">ขายโดยเรา</th><th className="py-1 pr-3">ใช้งานมา</th></tr></thead>
+            <thead><tr className="text-left text-slate-500"><th className="py-1 pr-3">S/N</th><th className="py-1 pr-3">สถานะ</th><th className="py-1 pr-3">ขายโดยเรา</th><th className="py-1 pr-3">ใช้งานมา</th><th className="py-1 pr-3">ประกัน</th></tr></thead>
             <tbody>
               {rows.map((r) => {
                 const other = r.sold_company_id && c.company_id && r.sold_company_id !== c.company_id;
@@ -50,6 +51,7 @@ export function ClaimSnStock({ c }: { c: Claim }) {
                       </> : <span className="text-slate-500">ไม่พบใบขาย</span>}
                     </td>
                     <td className="py-1 pr-3">{r.sold_at ? age(r.sold_at) : "-"}</td>
+                    <td className="py-1 pr-3">{r.status || r.sold_at ? <><WarrantyBadge end={r.warranty_end ?? null} months={r.warranty_months ?? null} />{r.warranty_end && <div className="mt-0.5 text-slate-500">ถึง {formatDate(r.warranty_end)}</div>}</> : "-"}</td>
                   </tr>
                 );
               })}

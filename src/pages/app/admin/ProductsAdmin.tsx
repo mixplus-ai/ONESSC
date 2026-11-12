@@ -4,7 +4,7 @@ import { FileUpload, GalleryUpload, IMAGE_SIZES, ImageUpload } from "../../../co
 import { BoxIcon, XIcon } from "../../../components/icons";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Textarea, cx } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
-import { formatBaht, productImage, slugify, specialPrice, uploadProductFile, type Brand, type Category, type Product, type Spec, type Variant } from "../../../lib/catalog";
+import { fmtWarranty, formatBaht, productImage, slugify, specialPrice, uploadProductFile, type Brand, type Category, type Product, type Spec, type Variant } from "../../../lib/catalog";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 import { Tabs } from "../MyRequests";
@@ -37,6 +37,8 @@ const specsFromText = (t: string): Spec[] =>
     return i > 0 ? { label: l.slice(0, i).trim(), value: l.slice(i + 1).trim() } : { label: l, value: "" };
   });
 
+/** form value → months or null ("" / bad input = not set) */
+const toMonths = (v: unknown): number | null => { if (v === "" || v == null) return null; const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 ? n : null; };
 type VariantDraft = Omit<Variant, "id" | "product_id"> & { id?: string; _key: string };
 const newVariant = (sort: number): VariantDraft => ({ _key: crypto.randomUUID(), sku: "", name: "", detail: "", specs: [], unit: "ชิ้น", base_price: null, is_active: true, sort });
 
@@ -83,6 +85,7 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
       is_published: p.is_published,
       is_featured: p.is_featured,
       sort: p.sort,
+      warranty_months: toMonths(p.warranty_months),
     };
     try {
       let id = p.id;
@@ -108,6 +111,7 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
           specs: v.specs.filter((s) => s.label.trim()),
           unit: v.unit || "ชิ้น",
           base_price: v.base_price,
+          warranty_months: toMonths(v.warranty_months),
           is_active: v.is_active,
           sort: v.sort,
         };
@@ -170,6 +174,7 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
           <Field label="Datasheet (PDF)"><FileUpload folder="docs" upload={uploadProductFile} value={p.datasheet_url ?? ""} onChange={(v) => set("datasheet_url", v)} /></Field>
           <Field label="คู่มือ (PDF)"><FileUpload folder="docs" upload={uploadProductFile} value={p.manual_url ?? ""} onChange={(v) => set("manual_url", v)} /></Field>
           <Field label="ลิงก์วิดีโอ"><Input value={p.video_url ?? ""} onChange={(e) => set("video_url", e.target.value)} placeholder="https://youtube.com/..." /></Field>
+          <Field label="การรับประกัน (เดือน)" hint={`เริ่มนับจากวันที่ใน PI ที่ขายออกจากคลัง${p.warranty_months ? ` · ${fmtWarranty(Number(p.warranty_months))}` : ""} · ใช้กับทุกรหัส เว้นแต่ตั้งแยกที่รหัส`}><Input type="number" min="0" max="600" step="1" value={p.warranty_months ?? ""} onChange={(e) => set("warranty_months", (e.target.value === "" ? null : Number(e.target.value)) as Product["warranty_months"])} placeholder="เช่น 144 = 12 ปี" /></Field>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -193,16 +198,17 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
           </div>
           <div className="space-y-3">
             {variants.map((v) => (
-              <div key={v._key} className="grid gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2 lg:grid-cols-6">
+              <div key={v._key} className="grid gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2 lg:grid-cols-7">
                 <Field label="รหัสสินค้า" required><Input value={v.sku} onChange={(e) => setV(v._key, { sku: e.target.value })} className="font-mono" /></Field>
                 <div className="lg:col-span-2"><Field label="ชื่อรุ่นย่อย"><Input value={v.name} placeholder={v.sku} onChange={(e) => setV(v._key, { name: e.target.value })} /></Field></div>
                 <Field label="ราคาปกติ (บาท)" hint="ว่าง = สอบถามราคา"><Input type="number" min="0" step="0.01" value={v.base_price ?? ""} onChange={(e) => setV(v._key, { base_price: e.target.value === "" ? null : Number(e.target.value) })} /></Field>
                 <Field label="หน่วย"><Input value={v.unit} onChange={(e) => setV(v._key, { unit: e.target.value })} /></Field>
+                <Field label="ประกันรหัสนี้ (เดือน)" hint={v.warranty_months != null && String(v.warranty_months) !== "" ? fmtWarranty(Number(v.warranty_months)) : "ว่าง = ตามสินค้า"}><Input type="number" min="0" max="600" step="1" value={v.warranty_months ?? ""} onChange={(e) => setV(v._key, { warranty_months: e.target.value === "" ? null : Number(e.target.value) })} placeholder={p.warranty_months ? String(p.warranty_months) : ""} /></Field>
                 <div className="flex items-end gap-3 pb-2">
                   <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={v.is_active} onChange={(e) => setV(v._key, { is_active: e.target.checked })} /> เปิดขาย</label>
                   <button type="button" className="ml-auto text-sm text-red-600 hover:underline" onClick={() => { if (v.id) setRemoved((r) => [...r, v.id as string]); setVariants((vs) => vs.filter((x) => x._key !== v._key)); }}>ลบ</button>
                 </div>
-                <div className="sm:col-span-2 lg:col-span-6"><Field label="รายละเอียดเฉพาะรหัสนี้"><Input value={v.detail ?? ""} onChange={(e) => setV(v._key, { detail: e.target.value })} /></Field></div>
+                <div className="sm:col-span-2 lg:col-span-7"><Field label="รายละเอียดเฉพาะรหัสนี้"><Input value={v.detail ?? ""} onChange={(e) => setV(v._key, { detail: e.target.value })} /></Field></div>
               </div>
             ))}
             <button type="button" onClick={() => setVariants((vs) => [...vs, newVariant(vs.length)])} className="text-sm font-semibold text-navy-700 hover:underline">+ เพิ่มรหัสสินค้า</button>
@@ -383,6 +389,19 @@ export default function ProductsAdmin() {
     setMsg(`${label} ${ids.length.toLocaleString("th-TH")} รายการแล้ว`);
     list.reload();
   }
+  /** set the warranty (months) of many products at once; codes with their own months keep them */
+  async function setWarranty(ids: string[]) {
+    const v = prompt(`ระยะประกัน (เดือน) ของสินค้า ${ids.length} รายการที่เลือก\nเช่น 12 = 1 ปี, 144 = 12 ปี · เว้นว่าง = ล้างค่า`);
+    if (v === null) return;
+    const m = v.trim() === "" ? null : Math.round(Number(v));
+    if (m != null && (!Number.isFinite(m) || m < 0 || m > 600)) return setErr("กรุณาใส่จำนวนเดือน 0–600");
+    setBulkBusy(true); setErr("");
+    const { error } = await supabase.from("products").update({ warranty_months: m }).in("id", ids);
+    setBulkBusy(false);
+    if (error) return setErr(errorMessage(error));
+    setMsg(`ตั้งประกัน ${m == null ? "ว่าง" : fmtWarranty(m)} ให้ ${ids.length.toLocaleString("th-TH")} รายการแล้ว`);
+    list.reload();
+  }
   const toggleCheck = (id: string) => setChecked((s) => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x; });
   const allChecked = rows.length > 0 && rows.every((p) => checked.has(p.id));
   const ids = rows.filter((p) => checked.has(p.id)).map((p) => p.id);
@@ -448,6 +467,7 @@ export default function ProductsAdmin() {
                     <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "sell", false)}>ปิดขาย</Button>
                     <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "price", true)}>แสดงราคา</Button>
                     <Button variant="secondary" disabled={bulkBusy} onClick={() => setFlag(ids, "price", false)}>ซ่อนราคา</Button>
+                    <Button variant="secondary" disabled={bulkBusy} onClick={() => setWarranty(ids)}>ตั้งประกัน…</Button>
                     <button type="button" onClick={() => setChecked(new Set())} className="px-2 text-slate-500 hover:text-navy-800">ยกเลิก</button>
                   </div>
                 )}
@@ -472,6 +492,7 @@ export default function ProductsAdmin() {
                           <span className={cx(sp.length > 0 && "text-slate-400 line-through")}>{prices.length ? formatBaht(Math.min(...prices)) : "ไม่มีราคา"}</span>
                           {sp.length > 0 && <span className="ml-1 font-semibold text-red-600">ราคาพิเศษ {formatBaht(Math.min(...sp))}</span>}
                           {!priceShown(p) && vs.length > 0 && <span className="ml-1 font-semibold text-amber-700">· ซ่อนราคา</span>}
+                          {" · "}{p.warranty_months != null ? <span>ประกัน {fmtWarranty(p.warranty_months)}</span> : <span className="text-amber-700">ยังไม่ตั้งประกัน</span>}
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center">
