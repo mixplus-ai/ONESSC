@@ -107,3 +107,38 @@ export function CareTeamPicker({ company, onSaved }: { company: Company; onSaved
     </div>
   );
 }
+
+/** After sending a claim / quote / reservation: what happens next, when to expect an answer, who looks after it. */
+export function NextSteps({ kind, code }: { kind: "claim" | "quote" | "reserve"; code: string }) {
+  const { profile } = useAuth();
+  const { company } = useSiteSettings();
+  const [team, setTeam] = useState<CareMember[]>([]);
+  useEffect(() => {
+    if (profile?.company_status !== "approved") return;
+    supabase.rpc("my_care_team").then(({ data }) => setTeam((data ?? []) as CareMember[]));
+  }, [profile?.company_status]);
+  const role: CareMember["role"] = kind === "claim" ? "support" : "sales";
+  const who = team.find((m) => m.role === role) ?? team[0];
+  const steps = {
+    claim: ["เจ้าหน้าที่รับเรื่องและตรวจข้อมูล S/N", "ส่งเรื่องเคลมกับแบรนด์ แจ้งผลและใบเคลมในหน้านี้", "ส่งสินค้าตัวเก่ากลับ แล้วกดยืนยัน S/N ที่ส่งคืน"],
+    quote: ["เซลล์ตรวจรายการและราคาเฉพาะบริษัทของคุณ", "ส่งใบเสนอราคาให้ดาวน์โหลดในหน้านี้", "ยืนยันสั่งซื้อกับเซลล์ที่ดูแล"],
+    reserve: ["เซลล์ยืนยันการจองและกันสินค้าไว้ให้", "นัดวันรับ / ส่งสินค้า", "สินค้าที่จองจะถูกปล่อยเมื่อพ้นวันกันสินค้า"],
+  }[kind];
+  const label = { claim: "เลขเคลม", quote: "เลขคำขอ", reserve: "เลขการจอง" }[kind];
+  return (
+    <div className="rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-200">
+      <p className="font-semibold text-emerald-900">ส่งเรียบร้อยแล้ว · {label} <span className="font-mono">{code}</span></p>
+      <p className="mt-1 text-sm text-emerald-900/80">ทีมงานจะติดต่อกลับภายใน 1 วันทำการ (จันทร์–ศุกร์){kind === "claim" ? " และอัปเดตสถานะในหน้านี้ทุกขั้นตอน" : ""}</p>
+      <ol className="mt-3 grid gap-1 text-sm text-slate-700 sm:grid-cols-3">
+        {steps.map((s, i) => (
+          <li key={s} className="flex gap-2"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-600 text-[11px] font-bold text-white">{i + 1}</span>{s}</li>
+        ))}
+      </ol>
+      {who ? (
+        <div className="mt-3"><CareMemberCard m={who} role={who.role} /></div>
+      ) : company.line_oa_url ? (
+        <p className="mt-3 text-sm text-slate-600">มีคำถามเพิ่มเติม <a href={company.line_oa_url} target="_blank" rel="noreferrer" className="font-semibold text-emerald-800 underline">ติดต่อทาง LINE</a></p>
+      ) : null}
+    </div>
+  );
+}

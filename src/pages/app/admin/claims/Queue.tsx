@@ -34,6 +34,17 @@ const NEXT: Record<ClaimStatus, { to: ClaimStatus; label: string; variant?: "pri
   rejected: [{ to: "submitted", label: "เปิดเคลมอีกครั้ง", variant: "secondary" }],
 };
 
+/** Days a claim has been open (since it was reported); null once closed or rejected. */
+export const openDays = (c: Claim) =>
+  ["closed", "rejected"].includes(c.status) ? null : Math.floor((Date.now() - new Date(c.created_at).getTime()) / 86_400_000);
+
+function AgeBadge({ c }: { c: Claim }) {
+  const d = openDays(c);
+  if (d == null) return null;
+  const cls = d > 30 ? "bg-red-100 text-red-700" : d > 7 ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600";
+  return <span className={cx("rounded-full px-2 py-0.5 text-xs font-semibold", cls)} title="จำนวนวันตั้งแต่แจ้งเคลม">{d === 0 ? "วันนี้" : `ค้าง ${d} วัน`}</span>;
+}
+
 function Details({ c }: { c: Claim }) {
   const d = c.details ?? {};
   return (
@@ -138,7 +149,7 @@ function QueueCard({ c, onOpenBoard, snChanges }: { c: Claim; onOpenBoard: (id: 
           <p className="text-xs text-slate-500">{c.qty} ชิ้น · SN {c.reported_sns.slice(0, 3).join(", ") || "-"}{c.reported_sns.length > 3 ? ` +${c.reported_sns.length - 3}` : ""}</p>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <Badge tone={st.tone}>{st.label}</Badge>
+          <span className="flex items-center gap-1"><AgeBadge c={c} /><Badge tone={st.tone}>{st.label}</Badge></span>
           <span className={cx("text-xs", c.assigned_to ? "text-slate-600" : "font-semibold text-amber-700")}>{staffName(staff, c.assigned_to)}</span>
         </div>
       </div>
@@ -209,11 +220,17 @@ export default function Queue({ onOpenBoard }: { onOpenBoard: (id: string) => vo
   const me = session?.user.id ?? "";
   const [tab, setTab] = useState<QTab>("new");
   const [q, setQ] = useState("");
+  const [age, setAge] = useState<"" | "7" | "30">("");
+  const [oldFirst, setOldFirst] = useState(false);
   const sn = useSnChanges();
   const customer = useMemo(() => claims.filter((c) => c.source === "customer").sort((a, b) => b.created_at.localeCompare(a.created_at)), [claims]);
   const t = QTABS.find((x) => x.key === tab)!;
   const needle = q.trim().toLowerCase();
-  const rows = customer.filter((c) => t.match(c, me)).filter((c) => !needle || [c.claim_no, c.company_name, c.contact_name, c.contact_phone, c.model, c.site_name, ...c.reported_sns].some((v) => v?.toLowerCase().includes(needle)));
+  const rows = customer.filter((c) => t.match(c, me))
+    .filter((c) => !age || (openDays(c) ?? -1) > Number(age))
+    .filter((c) => !needle || [c.claim_no, c.company_name, c.contact_name, c.contact_phone, c.model, c.site_name, ...c.reported_sns].some((v) => v?.toLowerCase().includes(needle)));
+  if (oldFirst) rows.reverse();
+  const late = customer.filter((c) => (openDays(c) ?? -1) > 7).length;
   return (
     <div>
       <div className="mb-4 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1" role="tablist">
@@ -228,7 +245,18 @@ export default function Queue({ onOpenBoard }: { onOpenBoard: (id: string) => vo
         })}
       </div>
       <SnChangeQueue rows={sn.rows} reload={sn.reload} onOpen={onOpenBoard} />
-      <Input className="mb-4" placeholder="ค้นหา เลขเคลม บริษัท ชื่อ เบอร์ รุ่น SN" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Input className="min-w-0 flex-1" placeholder="ค้นหา เลขเคลม บริษัท ชื่อ เบอร์ รุ่น SN" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Select className="!w-auto" value={age} onChange={(e) => setAge(e.target.value as "" | "7" | "30")} aria-label="อายุงาน">
+          <option value="">ทุกอายุงาน</option>
+          <option value="7">ค้างเกิน 7 วัน{late ? ` (${late})` : ""}</option>
+          <option value="30">ค้างเกิน 30 วัน</option>
+        </Select>
+        <Select className="!w-auto" value={oldFirst ? "old" : "new"} onChange={(e) => setOldFirst(e.target.value === "old")} aria-label="เรียงลำดับ">
+          <option value="new">ล่าสุดก่อน</option>
+          <option value="old">ค้างนานสุดก่อน</option>
+        </Select>
+      </div>
       {rows.length === 0 ? <Empty>ไม่มีรายการ</Empty> : <div className="space-y-3">{rows.slice(0, 200).map((c) => <QueueCard key={c.id} c={c} onOpenBoard={onOpenBoard} snChanges={sn.rows.filter((r) => r.claim_id === c.id)} />)}</div>}
     </div>
   );

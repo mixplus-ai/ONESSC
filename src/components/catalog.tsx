@@ -54,6 +54,15 @@ export function StockBadge({ info }: { info?: StockInfo }) {
 export const discountPct = (info?: PriceInfo | null) =>
   info && info.price != null && info.base != null && info.price < info.base ? Math.round((1 - info.price / info.base) * 100) : 0;
 
+/** Stand-in while a product has no photo: the brand's logo (or name) instead of an empty box. */
+export function NoImage({ brand, big }: { brand?: { name: string; logo_url?: string | null } | null; big?: boolean }) {
+  if (brand?.logo_url)
+    return <img src={brand.logo_url} alt="" loading="lazy" className={cx("object-contain opacity-60 grayscale-[30%]", big ? "max-h-32 max-w-[60%]" : "max-h-16 max-w-[60%]")} />;
+  if (brand?.name)
+    return <span className={cx("px-3 text-center font-bold tracking-wide text-slate-300", big ? "text-4xl" : "text-xl")}>{brand.name}</span>;
+  return <BoxIcon className={big ? "h-16 w-16 text-slate-300" : "h-10 w-10 text-slate-300"} />;
+}
+
 export function ProductCard({ p, price, stockSummary }: { p: Product; price?: PriceInfo | null; stockSummary?: StockInfo }) {
   const img = productImage(p);
   const alt = (p.images ?? []).find((u) => u && u !== img);
@@ -73,7 +82,7 @@ export function ProductCard({ p, price, stockSummary }: { p: Product; price?: Pr
             <img src={img} alt="" loading="lazy" className={cx("absolute inset-0 h-full w-full object-contain p-3 transition duration-300 group-hover:scale-105", alt && "lg:group-hover:opacity-0")} />
             {alt && <img src={alt} alt="" loading="lazy" className="absolute inset-0 hidden h-full w-full object-contain p-3 opacity-0 transition duration-300 group-hover:scale-105 lg:block lg:group-hover:opacity-100" />}
           </span>
-        ) : <BoxIcon className="h-10 w-10 text-slate-300" />}
+        ) : <NoImage brand={p.brands} />}
       </Link>
       <div className="flex flex-1 flex-col gap-0.5 p-3 sm:gap-1 sm:p-4">
         <p className="truncate text-[11px] font-semibold tracking-wide text-sun-600 sm:text-xs">{p.brands?.name ?? ""}{p.product_categories ? ` · ${p.product_categories.name}` : ""}</p>

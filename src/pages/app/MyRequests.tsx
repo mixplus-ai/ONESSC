@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
+import { NextSteps } from "../../components/CareTeam";
 import { Alert, Badge, Button, Card, Empty, Loading, PageTitle, cx } from "../../components/ui";
 import { Stepper } from "../../components/Stepper";
 import { useAuth } from "../../lib/auth";
@@ -81,7 +82,7 @@ export default function MyRequests() {
   return (
     <>
       <PageTitle title="คำขอของฉัน" subtitle="ติดตามใบเสนอราคาและการจองสินค้าที่ส่งถึงทีมขาย" />
-      {created?.created && <div className="mb-4"><Alert tone="green">ส่งรายการ {created.created} เรียบร้อย ทีมงานจะติดต่อกลับโดยเร็ว</Alert></div>}
+      {created?.created && <div className="mb-4"><NextSteps kind={created.kind === "reserve" ? "reserve" : "quote"} code={created.created} /></div>}
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
       <Tabs
         value={tab}

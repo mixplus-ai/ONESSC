@@ -6,6 +6,7 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('00000000-0000-0000-0000-0000000ca0b1', 'ctuser@ssc.test', '{}'),
   ('00000000-0000-0000-0000-0000000ca0c1', 'ctother@ssc.test', '{}');
 update public.profiles set role = 'staff' where email = 'ctstaff@ssc.test';
+insert into public.staff_permissions (user_id, perm) values ('00000000-0000-0000-0000-0000000ca0a1', 'companies');
 insert into public.companies (id, tax_id, name) values
   ('40000000-0000-0000-0000-0000000000c1', '2222222222220', 'CT Co'),
   ('40000000-0000-0000-0000-0000000000c2', '3333333333330', 'Other Co');
