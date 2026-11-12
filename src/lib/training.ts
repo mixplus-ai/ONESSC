@@ -91,6 +91,8 @@ export interface Registration {
   registered_at: string;
   checked_in_at: string | null;
   check_in_method: string | null;
+  checked_out_at: string | null;
+  check_out_method: string | null;
   points_awarded: number | null;
   evaluated_at: string | null;
   evaluation: Record<string, unknown> | null;
@@ -129,6 +131,8 @@ export interface TrainingSettings {
   auto_no_show: boolean;
   checkin_open_minutes: number;
   checkin_radius_m: number;
+  checkout_open_minutes: number;
+  checkout_close_minutes: number;
   cert_format: string;
   cert_run_digits: number;
   cert_valid_months: number;
@@ -375,7 +379,7 @@ export async function uploadTrainingMedia(file: File, folder: string): Promise<s
   if (error) throw error;
   return supabase.storage.from("training-media").getPublicUrl(path).data.publicUrl;
 }
-export async function openPrivateFile(bucket: "training-files" | "point-files", path: string) {
+export async function openPrivateFile(bucket: "training-files" | "point-files" | "training-materials", path: string) {
   const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 600);
   if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
   return Boolean(data?.signedUrl);
@@ -385,6 +389,24 @@ export const qrDataUrl = (text: string, size = 240, color = "#111111") =>
   QRCode.toDataURL(text, { width: size, margin: 1, color: { dark: color, light: "#ffffff" } });
 
 export const checkinUrl = (sessionId: string, code: string) => `${window.location.origin}/app/training/checkin?s=${sessionId}&c=${code}`;
+export const checkoutUrl = (sessionId: string, code: string) => `${window.location.origin}/app/training/checkin?m=out&s=${sessionId}&c=${code}`;
+
+/** Venue pin from a Google Maps link (short links are resolved by the map-coords Netlify function). */
+export async function mapLinkCoords(link: string): Promise<{ lat: number; lng: number }> {
+  const res = await fetch(`/.netlify/functions/map-coords?url=${encodeURIComponent(link.trim())}`);
+  const body = (await res.json().catch(() => ({}))) as { lat?: number; lng?: number; error?: string };
+  if (!res.ok || body.lat == null || body.lng == null) throw new Error(body.error || "ดึงพิกัดจากลิงก์ไม่ได้");
+  return { lat: Number(body.lat.toFixed(6)), lng: Number(body.lng.toFixed(6)) };
+}
+
+/** Course file (staff upload) → private bucket training-materials/<course_id>/… */
+export async function uploadCourseMaterial(courseId: string, file: File): Promise<string> {
+  const ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+  const path = `${courseId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabase.storage.from("training-materials").upload(path, file, { contentType: file.type || undefined });
+  if (error) throw error;
+  return path;
+}
 export const verifyUrl = (certNo: string) => `${window.location.origin}/verify/${encodeURIComponent(certNo)}`;
 
 /** Reads the user's GPS position (resolves null when unavailable/denied). */
