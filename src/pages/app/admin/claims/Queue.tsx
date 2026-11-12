@@ -49,6 +49,25 @@ function Details({ c }: { c: Claim }) {
         <div className="sm:col-span-2"><dt className="text-slate-500">Optimizer</dt>
           <dd><ul className="list-disc pl-5">{d.items.map((i, k) => <li key={k}>{i.model} × {i.qty} · เสีย <span className="font-mono">{i.bad_sn || "-"}</span>{i.ref_inv_sn ? <> · Ref Inv <span className="font-mono">{i.ref_inv_sn}</span></> : null}</li>)}</ul></dd></div>
       )}
+      {(d.po_no || c.site_id) && <div><dt className="inline text-slate-500">PO / PI: </dt><dd className="inline">{d.po_no || "-"}</dd>{c.site_id && <> · <dt className="inline text-slate-500">Site ID: </dt><dd className="inline font-mono">{c.site_id}</dd></>}</div>}
+      {d.units && d.units.length > 0 && (
+        <div className="sm:col-span-2">
+          <dt className="text-slate-500">S/N และอาการรายตัว</dt>
+          <dd className="mt-1 overflow-x-auto">
+            <table className="min-w-full text-xs">
+              <thead><tr className="text-left text-slate-500"><th className="py-1 pr-3">#</th><th className="py-1 pr-3">รุ่น</th><th className="py-1 pr-3">S/N</th><th className="py-1 pr-3">อาการ</th>{d.units.some((u) => u.volt || u.ohm) && <><th className="py-1 pr-3">V</th><th className="py-1 pr-3">Ω</th></>}</tr></thead>
+              <tbody>
+                {d.units.map((u, k) => (
+                  <tr key={k} className="border-t border-slate-100">
+                    <td className="py-1 pr-3 text-slate-400">{k + 1}</td><td className="py-1 pr-3">{u.model ?? "-"}</td><td className="py-1 pr-3 font-mono">{u.sn || "-"}</td><td className="py-1 pr-3">{u.symptom || "-"}</td>
+                    {d.units!.some((x) => x.volt || x.ohm) && <><td className="py-1 pr-3">{u.volt || "-"}</td><td className="py-1 pr-3">{u.ohm || "-"}</td></>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </dd>
+        </div>
+      )}
       {c.symptom && <div className="sm:col-span-2"><dt className="inline text-slate-500">อาการ: </dt><dd className="inline whitespace-pre-line">{c.symptom}</dd></div>}
       <div className="sm:col-span-2"><dt className="inline text-slate-500">การรับสินค้า: </dt><dd className="inline">{c.delivery_type === "pickup" ? "รับเองที่คลัง" : `จัดส่ง · ${c.delivery_address ?? ""}`}</dd></div>
     </dl>

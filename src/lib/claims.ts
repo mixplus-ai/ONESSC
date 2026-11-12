@@ -85,6 +85,9 @@ export interface ClaimDetails {
   qty?: number;
   sn?: string;
   items?: { model: string; qty: number; bad_sn?: string; ref_inv_sn?: string }[];
+  /** claim form v2: one row per S/N with its own symptom (optimizer: measured V and resistance) */
+  units?: { model?: string; sn?: string; symptom?: string; volt?: string; ohm?: string }[];
+  po_no?: string;
 }
 
 export interface ClaimUnit {

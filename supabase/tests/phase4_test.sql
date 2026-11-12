@@ -27,16 +27,16 @@ declare
   se uuid := (select id from public.brands where slug = 'solaredge');
 begin
   begin
-    perform public.submit_claim(jsonb_build_object('product_type', 'inverter', 'contact_name', 'A', 'contact_phone', '081',
+    perform public.submit_claim(jsonb_build_object('product_type', 'inverter', 'contact_name', 'A', 'contact_phone', '081', 'site_id', 'S-1',
       'brand_id', se, 'model', 'SE10K-TH0TEBNN4', 'details', jsonb_build_object('bad_sn', '7E12345')));
     assert false, 'SolarEdge rule requires case_no';
   exception when raise_exception then null;
   end;
-  select * into v from public.submit_claim(jsonb_build_object('product_type', 'inverter', 'contact_name', 'A', 'contact_phone', '081',
+  select * into v from public.submit_claim(jsonb_build_object('product_type', 'inverter', 'contact_name', 'A', 'contact_phone', '081', 'site_id', 'S-1',
       'brand_id', se, 'model', 'SE10K-TH0TEBNN4', 'details', jsonb_build_object('bad_sn', '7e12345', 'case_no', 'C-1')));
   assert v.claim_no ~ '^[0-9]{2}-[0-9]{4}$', 'claim no format YY-NNNN';
   assert v.claim_no like lpad(((extract(year from now() at time zone 'Asia/Bangkok')::int) % 100)::text, 2, '0') || '-%', 'YY is CE year';
-  select * into v2 from public.submit_claim(jsonb_build_object('product_type', 'optimizer', 'contact_name', 'A', 'contact_phone', '081',
+  select * into v2 from public.submit_claim(jsonb_build_object('product_type', 'optimizer', 'contact_name', 'A', 'contact_phone', '081', 'site_id', 'S-1',
       'details', jsonb_build_object('items', jsonb_build_array(
          jsonb_build_object('model', 'P500', 'qty', 2, 'bad_sn', 'SN1, SN2'),
          jsonb_build_object('model', 'P850', 'qty', 1, 'bad_sn', 'SN3')))));
