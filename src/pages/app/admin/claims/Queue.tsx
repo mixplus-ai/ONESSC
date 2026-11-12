@@ -25,7 +25,7 @@ const QTABS: { key: QTab; label: string; match: (c: Claim, me: string) => boolea
 ];
 const NEXT: Record<ClaimStatus, { to: ClaimStatus; label: string; variant?: "primary" | "secondary" | "danger" | "sun" }[]> = {
   submitted: [{ to: "in_progress", label: "เริ่มดำเนินการ", variant: "sun" }, { to: "rejected", label: "ไม่อนุมัติ", variant: "danger" }],
-  in_progress: [{ to: "done", label: "ดำเนินการเสร็จ (ส่งใบเคลม)", variant: "sun" }, { to: "rejected", label: "ไม่อนุมัติ", variant: "danger" }],
+  in_progress: [{ to: "done", label: "ดำเนินการเสร็จ (ส่งใบเคลม)", variant: "sun" }, { to: "submitted", label: "ย้อนกลับ: เคลมใหม่", variant: "secondary" }, { to: "rejected", label: "ไม่อนุมัติ", variant: "danger" }],
   done: [{ to: "returned", label: "บันทึกว่าลูกค้าส่งคืนแล้ว", variant: "secondary" }, { to: "in_progress", label: "ย้อนกลับ: กำลังดำเนินการ", variant: "secondary" }],
   returned: [{ to: "closed", label: "ยืนยันรับของคืนครบ · ปิดงาน", variant: "sun" }, { to: "done", label: "ย้อนกลับ: รอส่งคืน", variant: "secondary" }],
   closed: [{ to: "returned", label: "เปิดงานอีกครั้ง", variant: "secondary" }],
