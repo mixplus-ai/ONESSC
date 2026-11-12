@@ -11,7 +11,7 @@ import { PRODUCT_SELECT } from "./Products";
 const TRUST = [
   { icon: ShieldIcon, label: "สินค้าแท้จากตัวแทนจำหน่าย" },
   { icon: FileIcon, label: "ขอใบเสนอราคาออนไลน์" },
-  { icon: WrenchIcon, label: "แจ้งเคลมและติดตามในระบบ" },
+  { icon: WrenchIcon, label: "บริการด้านเทคนิคโดยบริษัท" },
 ];
 
 export default function ProductDetail() {
