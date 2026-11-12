@@ -30,6 +30,25 @@ begin
   assert r.warranty_end = '2051-01-15', 'opt override';
   select * into r from public.sns_info(array['WAR-0003']);
   assert r.sold_at is null and r.warranty_end is null and r.warranty_months = 144, 'not sold yet: no end date';
+  -- promotion: shorter warranty written on the PI line; snapshot survives later product changes
+  d := public.save_stock_doc(null, jsonb_build_object('doc_type', 'SO', 'warehouse_id', wh, 'partner_name', 'Promo', 'ref_no', 'PI-W2', 'doc_date', '2026-03-01'), '[{"sku":"W-INV","sn":"WAR-0003","warranty_months":"60"}]');
+  assert (select warranty_months from public.stock_doc_items where doc_id = d.id) = 60, 'draft keeps line warranty';
+  perform public.post_stock_doc(d.id);
+  select * into r from public.sns_info(array['WAR-0003']);
+  assert r.warranty_months = 60 and r.warranty_end = '2031-03-01', 'promo warranty ' || coalesce(r.warranty_end::text, '-');
+  assert (select warranty_months from public.stock_doc_items i join public.stock_docs x on x.id = i.doc_id where x.ref_no = 'PI-W1' and i.sn = 'WAR-0001') = 144, 'snapshot on post';
+  update public.products set warranty_months = 120 where id = '29000000-0000-0000-0000-000000000001';
+  select * into r from public.sns_info(array['WAR-0001']);
+  assert r.warranty_end = '2038-01-15', 'sold unit keeps warranty from sale';
+  assert public.set_doc_item_warranty(d.id, 'w-inv', 36) = 1, 'correct posted SO';
+  select * into r from public.sns_info(array['WAR-0003']);
+  assert r.warranty_end = '2029-03-01', 'corrected';
+  perform public.set_doc_item_warranty(d.id, 'W-INV', null);
+  assert (select warranty_months from public.stock_doc_items where doc_id = d.id) = 120, 'reset to product default';
+  -- non-SO lines never carry a warranty
+  d := public.save_stock_doc(null, jsonb_build_object('doc_type', 'GR', 'warehouse_id', wh), '[{"sku":"W-INV","sn":"WAR-0009","warranty_months":"12"}]');
+  assert (select warranty_months from public.stock_doc_items where doc_id = d.id) is null, 'GR ignores warranty';
+  begin perform public.set_doc_item_warranty(d.id, 'W-INV', 12); assert false, 'draft GR not editable'; exception when raise_exception then null; end;
 end $$;
 
 -- customer: dates and model only, no buyer
@@ -39,7 +58,9 @@ declare r record;
 begin
   select * into r from public.warranty_check('war-0001');
   assert r.sold_at = '2026-01-15' and r.warranty_end = '2038-01-15' and r.product_name = 'Inverter W', 'customer check';
-  assert (select count(*) from public.warranty_check('WAR-0003')) = 0, 'unsold SN not shown';
+  select * into r from public.warranty_check('WAR-0003');
+  assert r.warranty_months = 120 and r.sold_at = '2026-03-01', 'customer sees PI line warranty';
+  assert (select count(*) from public.warranty_check('WAR-0009')) = 0, 'unsold SN not shown';
   assert (select count(*) from public.warranty_check('WAR')) = 0, 'too short';
   begin perform public.sns_info(array['WAR-0001']); assert false, 'customer cannot use staff view'; exception when insufficient_privilege then null; end;
 end $$;

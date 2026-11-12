@@ -58,7 +58,7 @@ export const SCAN_RESULT: Record<ScanResult, { label: string; tone: "green" | "a
   unknown: { label: "ไม่มีในระบบ", tone: "red" },
 };
 
-export interface DocItem { id?: string; sku: string; description: string | null; sn: string; condition: Condition; note?: string | null }
+export interface DocItem { id?: string; sku: string; description: string | null; sn: string; condition: Condition; note?: string | null; warranty_months?: number | null }
 
 export interface Serial {
   sn_key: string;
