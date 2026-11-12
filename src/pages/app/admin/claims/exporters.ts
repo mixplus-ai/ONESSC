@@ -1,6 +1,7 @@
 // "ใบสรุปรายละเอียดงานเคลม": print / PDF (browser print), PNG and Excel, like ssccare.
 import { STEPS, fmtDmy, productTypeLabel, stepProgress, STEP_STATE_LABEL, type Claim, type ClaimUnit, type UnitField } from "../../../../lib/claims";
 import type { BrandOpt } from "./shared";
+import { heading, openPrintDoc, table } from "../../../../lib/printdoc";
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -34,14 +35,32 @@ function summaryHtml(c: Claim, units: ClaimUnit[], brands: BrandOpt[]): string {
 </div>`;
 }
 
+/** Claim summary on the shared document layout (A4 landscape): letterhead, claim facts, 5-step progress, every unit. */
 export function printClaim(c: Claim, units: ClaimUnit[], brands: BrandOpt[]) {
-  const w = window.open("", "_blank", "width=1200,height=800");
-  if (!w) return alert("เบราว์เซอร์บล็อกหน้าต่างใหม่ กรุณาอนุญาต pop-up");
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>ใบเคลม ${esc(c.claim_no)}</title>
-    <style>@page{size:A4 landscape;margin:10mm}body{margin:0}</style></head><body>${summaryHtml(c, units, brands)}</body></html>`);
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 300);
+  const p = stepProgress(c, units);
+  const cols = STEPS.slice(1).flatMap((s) => s.fields);
+  const body = [
+    heading("ความคืบหน้า 5 ขั้นตอน"),
+    table([["ขั้น", "c"], ["ขั้นตอน"], ["ทิศทาง"], ["ความคืบหน้า"]],
+      STEPS.map((s, i) => [s.n, s.short, s.dir, s.n === 5 ? (p[i].count ? `${p[i].count} รายการ` : "ไม่มีรายการ") : `${p[i].count}/${p[i].qty} · ${STEP_STATE_LABEL[p[i].state]}`]),
+      { widths: ["44px"] }),
+    heading(`รายการสินค้า (${units.length})`),
+    table([["#", "c"], ["รหัสสินค้า"], ...cols.map((f) => [`${f.col} ${f.label}`, f.type === "sn" ? "m" : ""] as [string, string])],
+      units.map((u) => [u.seq, u.pcode, ...cols.map((f) => { const v = u[f.key as UnitField] as string | null; return f.type === "date" ? fmtDmy(v) : v; })]),
+      { small: true }),
+  ].join("");
+  return openPrintDoc({
+    title: "ใบสรุปรายละเอียดงานเคลม", titleEn: "SERVICE & WARRANTY CLAIM", docNo: c.claim_no, date: fmtDmy(c.voucher_date) || null,
+    extra: [["Case ID", c.case_id]],
+    landscape: true,
+    panels: [
+      { heading: "ลูกค้า", rows: [["บริษัท", c.company_name ?? "-"], ["SiteID", c.site_id], ["รหัสเซลล์", c.sales_code]] },
+      { heading: "สินค้า", rows: [["แบรนด์ / ประเภท", [brands.find((b) => b.id === c.brand_id)?.name, c.product_type && productTypeLabel(c.product_type)].filter(Boolean).join(" · ") || "-"], ["จำนวน", `${c.qty} ชิ้น`]] },
+      { heading: "เอกสาร", rows: [["เลขใบสำคัญ", c.voucher_no], ["วันที่ใบสำคัญ", fmtDmy(c.voucher_date)], ["วันนัดรับ", c.pickup_on]] },
+    ],
+    body,
+    signatures: ["ผู้จัดทำ", "ลูกค้า / ผู้ส่งเคลม", "ผู้อนุมัติ"],
+  });
 }
 
 export async function exportClaimImage(c: Claim, units: ClaimUnit[], brands: BrandOpt[]) {

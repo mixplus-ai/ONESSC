@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Gate } from "../../../components/AppLayout";
-import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Spinner, Textarea } from "../../../components/ui";
+import { Alert, Badge, Button, ButtonLink, Card, Empty, Field, Input, Loading, PageTitle, Select, Spinner, Textarea } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
 import {
   formatBaht,
@@ -133,6 +133,7 @@ function QuoteCard({ q, onSaved }: { q: QuoteRequest; onSaved: () => void }) {
 }
 
 function ReservationCard({ r, onSaved }: { r: Reservation; onSaved: () => void }) {
+  const { can } = useAuth();
   const [note, setNote] = useState(r.staff_note ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -172,6 +173,10 @@ function ReservationCard({ r, onSaved }: { r: Reservation; onSaved: () => void }
             {r.status === "pending" && <Button onClick={() => set("confirmed")} loading={busy}>ยืนยันการจอง</Button>}
             <Button variant="secondary" onClick={() => set("closed")} disabled={busy} title="บันทึกเข้าไฟล์สต๊อกแล้ว (จะเห็นในคอลัมน์หักจองหลังซิงก์)">บันทึกเข้าสต๊อกแล้ว</Button>
             <Button variant="ghost" onClick={extend} disabled={busy}>ต่ออายุ 7 วัน</Button>
+            {(can("stock.docs") || can("stock.post")) && <>
+              <ButtonLink variant="secondary" to={`/app/admin/stock-docs?tab=docs&new=RV&reservation=${r.id}`}>จอง SN ในคลัง</ButtonLink>
+              <ButtonLink variant="secondary" to={`/app/admin/stock-docs?tab=docs&new=SO&reservation=${r.id}`}>ออกใบขาย / ตัดสต๊อก</ButtonLink>
+            </>}
             <Button variant="ghost" className="text-red-600" onClick={() => confirm("ยกเลิกการจองนี้?") && set("cancelled")} disabled={busy}>ยกเลิก</Button>
           </div>
           <p className="text-xs text-slate-500">ระหว่างรอ/ยืนยัน ระบบหักจำนวนนี้ออกจาก “ขายได้” ในแอป เมื่อบันทึกเข้าไฟล์สต๊อกแล้วให้กด “บันทึกเข้าสต๊อกแล้ว” เพื่อไม่ให้หักซ้ำ</p>

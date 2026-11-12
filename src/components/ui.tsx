@@ -54,7 +54,7 @@ export function ButtonLink({
   );
 }
 
-const fieldBase =
+export const fieldBase =
   "block w-full rounded-lg border-0 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-navy-600 disabled:bg-slate-100 disabled:text-slate-500";
 
 export function Field({ label, hint, children, required }: { label: string; hint?: ReactNode; children: ReactNode; required?: boolean }) {
