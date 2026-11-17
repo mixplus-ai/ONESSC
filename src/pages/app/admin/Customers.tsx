@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Gate } from "../../../components/AppLayout";
 import { Avatar } from "../../../components/Avatar";
 import { CareTeamPicker } from "../../../components/CareTeam";
+import { SalesScopeNote } from "../../../components/SalesScope";
 import { Badge, Card, Empty, Input, Loading, PageTitle, cx } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
 import { useRows } from "../../../lib/content";
@@ -38,6 +39,7 @@ export default function Customers() {
   return (
     <Gate allow={can("companies")}>
       <PageTitle title="ลูกค้า" subtitle="ดูข้อมูลส่วนตัว บริษัท และข้อมูลออกใบกำกับของลูกค้า และกำหนดเซลล์/ซัพพอร์ตที่ดูแล" />
+      <SalesScopeNote />
       <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
         <div className={cx(sel && "hidden lg:block")}>
           <Input type="search" placeholder="ค้นหาชื่อ อีเมล เบอร์ บริษัท หรือเลขผู้เสียภาษี" value={q} onChange={(e) => setQ(e.target.value)} />
