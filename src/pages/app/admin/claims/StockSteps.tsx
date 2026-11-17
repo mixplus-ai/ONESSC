@@ -13,7 +13,7 @@ import { useBoard } from "./shared";
 //   step 4  mfr_in → GN from the manufacturer into main stock
 
 export type StockAction = "reserve" | "issue" | "receive" | "inspect" | "writeoff" | "mfr_in";
-type Role = "main" | "claim_hold" | "claim_check" | "defect";
+type Role = "main" | "other" | "claim_hold" | "claim_check" | "defect";
 interface WhRow extends Warehouse { role: Role }
 interface SnRow { sn: string; sn_key: string; sku: string; status: SerialStatus; condition: "good" | "defective"; warehouse_id: string | null; role: Role | null; mine: boolean }
 type DocRow = StockDoc & { items: DocItem[] };
@@ -40,7 +40,7 @@ export async function autoClaimStock(claimId: string, steps: number[]) {
   window.dispatchEvent(new CustomEvent(EVT, { detail: { claimId, result: out } }));
 }
 
-const ROLE_LABEL: Record<Role, string> = { main: "คลังหลัก", claim_hold: "คลังจองเคลม", claim_check: "คลังรับเคลมรอตรวจ", defect: "คลังของเสีย" };
+const ROLE_LABEL: Record<Role, string> = { main: "คลังหลัก", other: "คลังอื่น", claim_hold: "คลังจองเคลม", claim_check: "คลังรับเคลมรอตรวจ", defect: "คลังของเสีย" };
 
 function state(s: SnRow | undefined, whName: (id: string | null) => string): { label: string; tone: "slate" | "green" | "amber" | "red" | "navy" } {
   if (!s) return { label: "ไม่พบในเอกสารคลัง", tone: "slate" };

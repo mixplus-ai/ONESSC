@@ -187,3 +187,26 @@ end $$;
 
 rollback;
 \echo ALL CLAIM MULTI STOCK TESTS PASSED
+
+-- Migration 41: warehouse roles set by Admin
+begin;
+insert into auth.users (id, email, raw_user_meta_data) values ('00000000-0000-0000-0000-0000000f41a1', 'wradmin@ssc.test', '{}');
+update public.profiles set role = 'admin' where email = 'wradmin@ssc.test';
+insert into public.warehouses (code, name) values ('SAMPLE', 'ของตัวอย่าง'), ('BAD2', 'ของเสีย');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f41a1', true);
+do $$
+declare m jsonb := (select jsonb_object_agg(id, role) from public.warehouses);
+begin
+  m := m || jsonb_build_object((select id from public.warehouses where code = 'SAMPLE')::text, 'other',
+                               (select id from public.warehouses where code = 'BAD2')::text, 'defect',
+                               (select id from public.warehouses where code = 'DEFECT')::text, 'other');
+  perform public.set_warehouse_roles(m);
+  assert (select role from public.warehouses where code = 'BAD2') = 'defect', 'defect moved';
+  assert (select role from public.warehouses where code = 'DEFECT') = 'other', 'old defect other';
+  assert (select role from public.warehouses where code = 'SAMPLE') = 'other', 'sample not for sale';
+  begin perform public.set_warehouse_roles(m || jsonb_build_object((select id from public.warehouses where code = 'SAMPLE')::text, 'defect'));
+    assert false, 'two defect'; exception when raise_exception then null; end;
+end $$;
+rollback;
+\echo ALL WAREHOUSE ROLE TESTS PASSED
