@@ -33,6 +33,9 @@ export interface ShopDoc {
   sales?: { full_name: string; phone?: string | null; email?: string | null; line_id?: string | null } | null;
 }
 
+/** Name in the signature box at the end of the document (owner's wording, 17 Nov 2026). */
+const SELLER = "บริษัท สยาม โซล่าร์ เซลล์ จำกัด";
+
 const money = (n: number | null | undefined) => (n == null ? "สอบถามราคา" : Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
 /** The signed-in customer's sales person (care team). */
@@ -130,6 +133,12 @@ export async function printShopDoc(doc: ShopDoc, prepared?: Window | null) {
     doc.staffNote ? `<div class="note"><b>ข้อความจากพนักงานขาย:</b> ${esc(doc.staffNote)}</div>` : "",
     `<div class="note"><b>หมายเหตุ:</b> ${esc(refNote)}${doc.stockAsOf ? ` · สถานะสินค้าอ้างอิงตามสต๊อก ณ วันที่ ${esc(formatDate(doc.stockAsOf))} กรุณาจองหรือติดต่อพนักงานขาย` : ""}</div>`,
     await datasheetBlock(doc.lines).catch(() => ""),
+    `<div style="display:flex;justify-content:flex-end;margin-top:26px;break-inside:avoid"><div style="text-align:center;min-width:250px;font-size:10pt">
+      <div style="font-weight:700;color:#0f2a4a">${doc.kind === "reservation" ? "ผู้รับจอง" : "ผู้เสนอราคา"}</div>
+      <div style="margin-top:4px">${esc(SELLER)}</div>
+      <div style="border-bottom:1px dotted #475569;height:34px;margin:0 10px"></div>
+      <div style="margin-top:6px;color:#475569">วันที่ ${esc(formatDate(doc.date ?? new Date().toISOString()))}</div>
+    </div></div>`,
   ].join("");
 
   await openPrintDoc(
