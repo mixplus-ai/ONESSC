@@ -143,18 +143,38 @@ begin
   exception when raise_exception then null;
   end;
   v := public.check_in('30000000-0000-0000-0000-000000000001', '111111', 13.7003, 100.6, 'qr');
-  assert (v ->> 'points')::numeric = 6, '6 hours × 1 point';
+  assert (v ->> 'points')::numeric = 0, 'no points at check-in (they come after check-out)';
+  assert public.point_balance('personal', auth.uid()) = 0, 'balance 0 after check-in';
+  begin
+    perform public.submit_evaluation((select t.v::uuid from t where t.k = 'reg1'), '{"q1":5}'::jsonb);
+    assert false, 'evaluation needs check-out first';
+  exception when raise_exception then null;
+  end;
+end $$;
+
+-- check-out (staff shows the check-out QR) → evaluation → certificate → points
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', true);
+update public.course_sessions set checkout_code = '999999',
+       ends_on = (now() at time zone 'Asia/Bangkok' + interval '30 minutes')::date,
+       end_time = (now() at time zone 'Asia/Bangkok' + interval '30 minutes')::time
+ where id = '30000000-0000-0000-0000-000000000001';
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000c', true);
+do $$
+declare v jsonb; r public.training_registrations;
+begin
+  begin
+    perform public.check_out('30000000-0000-0000-0000-000000000001', '999999', 13.8, 100.6);
+    assert false, 'check-out too far';
+  exception when raise_exception then null;
+  end;
+  v := public.check_out('30000000-0000-0000-0000-000000000001', '999999', 13.7003, 100.6, 'qr');
+  assert (v ->> 'needs_evaluation')::boolean and (v ->> 'points')::numeric = 0, 'check-out → evaluation next';
+  r := public.submit_evaluation((select t.v::uuid from t where t.k = 'reg1'), '{"q1":5,"comment":"ดีมาก"}'::jsonb);
+  assert r.cert_no = 'SSC-OM-' || to_char(public.bkk_today(), 'YYYY') || '-0001', 'cert number ' || r.cert_no;
+  assert r.points_awarded = 6, '6 hours × 1 point with the certificate';
   assert public.point_balance('personal', auth.uid()) = 6, 'balance 6';
   assert (select expires_on from public.point_ledger where user_id = auth.uid() and kind = 'earn')
          = make_date(extract(year from public.bkk_today())::int, 12, 31), 'personal points expire 31 Dec';
-end $$;
-
--- evaluation → certificate, verifiable by anyone
-do $$
-declare r public.training_registrations;
-begin
-  r := public.submit_evaluation((select v::uuid from t where k = 'reg1'), '{"q1":5,"comment":"ดีมาก"}'::jsonb);
-  assert r.cert_no = 'SSC-OM-' || to_char(public.bkk_today(), 'YYYY') || '-0001', 'cert number ' || r.cert_no;
   insert into t values ('cert', r.cert_no);
 end $$;
 reset role;

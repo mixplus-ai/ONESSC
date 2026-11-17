@@ -6,6 +6,9 @@ import { errorMessage, supabase } from "../../../../lib/supabase";
 import {
   BILLING_TYPE,
   checkinUrl,
+  checkoutUrl,
+  getPosition,
+  mapLinkCoords,
   formatMoney,
   formatThaiDate,
   loadSeats,
@@ -40,16 +43,44 @@ function SessionForm({ value, courses, templates, onSaved, onClose }: { value: P
   const [err, setErr] = useState("");
   const set = <K extends keyof Session>(k: K, v: Session[K] | null) => setF((x) => ({ ...x, [k]: v }));
   const numOrNull = (v: string) => (v === "" ? null : Number(v));
+  const [pin, setPin] = useState("");
+
+  async function pinFromLink(link = f.map_url ?? "") {
+    if (!link.trim()) return setPin("กรุณาวางลิงก์แผนที่ก่อน");
+    setPin("กำลังดึงพิกัด…");
+    try {
+      const c = await mapLinkCoords(link);
+      setF((x) => ({ ...x, lat: c.lat, lng: c.lng }));
+      setPin(`ได้พิกัด ${c.lat}, ${c.lng}`);
+      return c;
+    } catch (e) {
+      setPin(errorMessage(e));
+    }
+  }
+  async function pinFromHere() {
+    setPin("กำลังอ่านตำแหน่งของคุณ…");
+    const p = await getPosition();
+    if (!p) return setPin("อ่านตำแหน่งไม่ได้ กรุณาอนุญาต GPS");
+    setF((x) => ({ ...x, lat: Number(p.lat.toFixed(6)), lng: Number(p.lng.toFixed(6)) }));
+    setPin(`ใช้ตำแหน่งปัจจุบัน ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
+  }
 
   async function save() {
     if (!f.course_id) return setErr("กรุณาเลือกหลักสูตร");
     if (!f.starts_on) return setErr("กรุณาเลือกวันที่");
     setBusy(true);
     setErr("");
+    // a new / changed map link without a pin: try to read the pin from the link
+    let { lat, lng } = f;
+    const pinEdited = lat !== value.lat || lng !== value.lng;
+    if (f.map_url && (lat == null || lng == null || (f.map_url !== value.map_url && !pinEdited))) {
+      const c = await pinFromLink(f.map_url);
+      if (c) ({ lat, lng } = c);
+    }
     const row = {
       course_id: f.course_id, title: f.title || null, starts_on: f.starts_on, ends_on: f.ends_on || null,
       start_time: f.start_time, end_time: f.end_time, hours: f.hours, location: f.location || null, map_url: f.map_url || null,
-      lat: f.lat, lng: f.lng, capacity: f.capacity, status: f.status, price: f.price, vat: f.vat, wht_allowed: f.wht_allowed,
+      lat, lng, capacity: f.capacity, status: f.status, price: f.price, vat: f.vat, wht_allowed: f.wht_allowed,
       note: f.note || null, cert_template_id: f.cert_template_id || null,
     };
     // never ask for the row back: the check-in code column is not selectable
@@ -77,9 +108,17 @@ function SessionForm({ value, courses, templates, onSaved, onClose }: { value: P
         <Field label="เวลาเริ่ม"><Input type="time" value={f.start_time?.slice(0, 5) ?? ""} onChange={(e) => set("start_time", e.target.value)} /></Field>
         <Field label="เวลาสิ้นสุด"><Input type="time" value={f.end_time?.slice(0, 5) ?? ""} onChange={(e) => set("end_time", e.target.value)} /></Field>
         <div className="sm:col-span-2"><Field label="สถานที่"><Input value={f.location ?? ""} onChange={(e) => set("location", e.target.value)} /></Field></div>
-        <div className="sm:col-span-2"><Field label="ลิงก์แผนที่"><Input value={f.map_url ?? ""} onChange={(e) => set("map_url", e.target.value)} /></Field></div>
-        <Field label="ละติจูด (GPS เช็กอิน)" hint="เว้นว่าง = ไม่ตรวจระยะ"><Input type="number" step="any" value={f.lat ?? ""} onChange={(e) => set("lat", numOrNull(e.target.value))} /></Field>
+        <div className="sm:col-span-2"><Field label="ลิงก์แผนที่ (Google Maps)" hint="ระบบดึงพิกัดจากลิงก์ให้ ใช้ตรวจรัศมีเช็กอิน/เช็กเอาต์"><Input value={f.map_url ?? ""} onChange={(e) => set("map_url", e.target.value)} onBlur={() => { if (f.map_url && f.map_url !== value.map_url) pinFromLink(); }} /></Field></div>
+        <Field label="ละติจูด (GPS เช็กอิน/เช็กเอาต์)" hint="เว้นว่าง = ไม่ตรวจระยะ"><Input type="number" step="any" value={f.lat ?? ""} onChange={(e) => set("lat", numOrNull(e.target.value))} /></Field>
         <Field label="ลองจิจูด"><Input type="number" step="any" value={f.lng ?? ""} onChange={(e) => set("lng", numOrNull(e.target.value))} /></Field>
+        <div className="flex flex-col justify-end gap-1 sm:col-span-2">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" className="!px-3 !py-1.5" onClick={() => pinFromLink()}>ดึงพิกัดจากลิงก์</Button>
+            <Button variant="ghost" className="!px-3 !py-1.5" onClick={pinFromHere}>ใช้ตำแหน่งปัจจุบัน (อยู่ที่สถานที่)</Button>
+            {f.lat != null && f.lng != null && <a className="self-center text-sm text-navy-700 underline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${f.lat},${f.lng}`}>ดูหมุด</a>}
+          </div>
+          {pin && <p className="text-xs text-slate-600">{pin}</p>}
+        </div>
         <Field label="จำนวนที่นั่ง"><Input type="number" min={1} value={f.capacity ?? 30} onChange={(e) => set("capacity", Number(e.target.value))} /></Field>
         <Field label="ชั่วโมง (แต้ม)" hint="ว่าง = ตามหลักสูตร"><Input type="number" min={0} step="0.5" value={f.hours ?? ""} onChange={(e) => set("hours", numOrNull(e.target.value))} /></Field>
         <Field label="ราคา (บาท ก่อน VAT)" hint="ว่าง = ตามหลักสูตร · 0 = ฟรี"><Input type="number" min={0} value={f.price ?? ""} onChange={(e) => set("price", numOrNull(e.target.value))} /></Field>
@@ -106,40 +145,59 @@ function SessionForm({ value, courses, templates, onSaved, onClose }: { value: P
   );
 }
 
-function CheckinPanel({ s }: { s: S }) {
+function CodePanel({ s, kind }: { s: S; kind: "in" | "out" }) {
   const [code, setCode] = useState("");
   const [qr, setQr] = useState("");
+  const label = kind === "in" ? "เช็กอิน" : "เช็กเอาต์";
+  const url = (c: string) => (kind === "in" ? checkinUrl(s.id, c) : checkoutUrl(s.id, c));
+  const col = kind === "in" ? "checkin_code" : "checkout_code";
   useEffect(() => {
-    supabase.rpc("session_checkin_code", { p_session_id: s.id }).then(async ({ data }) => {
+    supabase.rpc(kind === "in" ? "session_checkin_code" : "session_checkout_code", { p_session_id: s.id }).then(async ({ data }) => {
       if (!data) return;
       setCode(data as string);
-      setQr(await qrDataUrl(checkinUrl(s.id, data as string), 360));
+      setQr(await qrDataUrl(url(data as string), 360));
     });
-  }, [s.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.id, kind]);
   async function regenerate() {
-    if (!confirm("สร้างรหัสเช็กอินใหม่? QR เดิมจะใช้ไม่ได้")) return;
+    if (!confirm(`สร้างรหัส${label}ใหม่? QR เดิมจะใช้ไม่ได้`)) return;
     const c = String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
-    await supabase.from("course_sessions").update({ checkin_code: c }).eq("id", s.id);
+    await supabase.from("course_sessions").update({ [col]: c }).eq("id", s.id);
     setCode(c);
-    setQr(await qrDataUrl(checkinUrl(s.id, c), 360));
+    setQr(await qrDataUrl(url(c), 360));
   }
   function show() {
     const w = window.open("", "_blank");
     if (!w) return;
-    w.document.write(`<!doctype html><title>เช็กอิน ${s.courses.code}</title><body style="font-family:sans-serif;text-align:center;padding:40px"><h1>${s.courses.title}</h1><p>${sessionDateText(s)}</p><img src="${qr}" style="width:60vmin"><p style="font-size:64px;letter-spacing:12px;font-weight:bold">${code}</p><p>สแกน QR หรือเข้า One App → การอบรมของฉัน → เช็กอิน แล้วกรอกรหัส</p></body>`);
+    const how = kind === "in"
+      ? "สแกน QR เพื่อเช็กอิน แล้วดาวน์โหลดเอกสารอบรมใน One App → การอบรมของฉัน"
+      : "จบอบรมแล้ว สแกน QR เพื่อเช็กเอาต์ → ทำแบบประเมิน → รับใบประกาศและแต้ม (ไม่เช็กเอาต์ = ไม่ได้แต้ม)";
+    w.document.write(`<!doctype html><meta charset="utf-8"><title>${label} ${s.courses.code}</title><body style="font-family:sans-serif;text-align:center;padding:40px"><p style="font-size:40px;font-weight:bold;margin:0;color:${kind === "in" ? "#16235a" : "#b45309"}">${label.toUpperCase()}</p><h1>${s.courses.title}</h1><p>${sessionDateText(s)}</p><img src="${qr}" style="width:60vmin"><p style="font-size:64px;letter-spacing:12px;font-weight:bold">${code}</p><p>${how}</p></body>`);
     w.document.close();
   }
   if (!code) return null;
   return (
-    <div className="flex flex-wrap items-center gap-4 rounded-xl bg-navy-50 p-4">
-      {qr && <img src={qr} alt="QR เช็กอิน" className="h-28 w-28 rounded-lg bg-white" />}
+    <div className={`flex flex-1 flex-wrap items-center gap-4 rounded-xl p-4 ${kind === "in" ? "bg-navy-50" : "bg-amber-50"}`}>
+      {qr && <img src={qr} alt={`QR ${label}`} className="h-28 w-28 rounded-lg bg-white" />}
       <div>
-        <p className="text-xs text-slate-500">รหัสเช็กอิน</p>
+        <p className="text-xs font-semibold text-slate-600">รหัส{label}{kind === "out" ? " (แสดงตอนจบอบรม)" : ""}</p>
         <p className="font-mono text-3xl font-bold tracking-widest text-navy-900">{code}</p>
         <div className="mt-2 flex gap-2">
           <Button variant="secondary" className="!px-3 !py-1.5" onClick={show}>เปิดจอแสดง QR</Button>
           <Button variant="ghost" className="!px-3 !py-1.5" onClick={regenerate}>สร้างรหัสใหม่</Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CheckinPanel({ s }: { s: S }) {
+  return (
+    <div className="space-y-2">
+      {(s.lat == null || s.lng == null) && <Alert tone="amber">รอบนี้ยังไม่มีพิกัดสถานที่ ระบบจะไม่ตรวจรัศมีเช็กอิน/เช็กเอาต์ กด “แก้ไข” แล้ววางลิงก์แผนที่</Alert>}
+      <div className="flex flex-col gap-3 lg:flex-row">
+        <CodePanel s={s} kind="in" />
+        <CodePanel s={s} kind="out" />
       </div>
     </div>
   );
@@ -195,6 +253,7 @@ function RosterRow({ r, edit, onChange }: { r: Registration; edit: boolean; onCh
         <Badge tone={REG_STATUS[r.status].tone}>{REG_STATUS[r.status].label}</Badge>
         {r.total > 0 && <Badge tone={PAY_STATUS[r.pay_status].tone}>{PAY_STATUS[r.pay_status].label}</Badge>}
         {r.coupon_code && r.discount > 0 && <Badge tone="green">{r.total <= 0 ? "ฟรี" : "ส่วนลด"} · {r.coupon_code}</Badge>}
+        {r.status === "attended" && (r.checked_out_at ? <Badge tone="green">เช็กเอาต์แล้ว</Badge> : <Badge tone="amber">ยังไม่เช็กเอาต์</Badge>)}
         {r.cert_no && <span className="font-mono text-xs text-slate-500">{r.cert_no}</span>}
         {edit && ["registered", "attended", "no_show"].includes(r.status) && (
           <Select value={r.status} disabled={busy === "att"} onChange={(e) => attendance(e.target.value)} className="!w-auto !py-1.5">
@@ -219,6 +278,8 @@ function RosterRow({ r, edit, onChange }: { r: Registration; edit: boolean; onCh
             {r.source && <p className="mt-1 text-slate-500">รู้จักจาก: {r.source}</p>}
             {r.note && <p className="mt-1 text-slate-500">หมายเหตุลูกค้า: {r.note}</p>}
             {r.checked_in_at && <p className="mt-1 text-slate-500">เช็กอิน {formatThaiDate(r.checked_in_at, { dateStyle: "medium", timeStyle: "short" } as Intl.DateTimeFormatOptions)} ({r.check_in_method})</p>}
+            {r.checked_out_at && <p className="mt-1 text-slate-500">เช็กเอาต์ {formatThaiDate(r.checked_out_at, { dateStyle: "medium", timeStyle: "short" } as Intl.DateTimeFormatOptions)} ({r.check_out_method})</p>}
+            {Number(r.points_awarded ?? 0) > 0 && <p className="mt-1 text-emerald-700">ได้แต้มอบรม {r.points_awarded}</p>}
             {r.evaluation && <p className="mt-1 text-slate-500">ประเมิน: {Object.entries(r.evaluation).map(([k, v]) => `${k}: ${v}`).join(" · ")}</p>}
             <div className="mt-2 flex flex-wrap gap-3">
               {r.slip_path && <button className="text-navy-700 underline" onClick={() => openPrivateFile("training-files", r.slip_path!)}>สลิป</button>}
@@ -245,7 +306,14 @@ function RosterRow({ r, edit, onChange }: { r: Registration; edit: boolean; onCh
               <Field label="ข้อความถึงลูกค้า"><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
               <div className="flex flex-wrap gap-2">
                 <Button loading={busy === "save"} onClick={() => rpc("save", () => supabase.from("training_registrations").update({ pay_status: pay, staff_note: note || null }).eq("id", r.id))}>บันทึก</Button>
-                {r.status === "attended" && !r.cert_no && <Button variant="secondary" loading={busy === "cert"} onClick={() => rpc("cert", () => supabase.rpc("issue_certificate", { p_reg_id: r.id }))}>ออกใบประกาศ</Button>}
+                {r.status === "attended" && !r.checked_out_at && <Button variant="secondary" loading={busy === "out"} onClick={() => { if (confirm("เช็กเอาต์แทนลูกค้า?")) rpc("out", () => supabase.rpc("staff_check_out", { p_reg_id: r.id })); }}>เช็กเอาต์แทน</Button>}
+                {r.status === "attended" && r.checked_out_at && (
+                  <Button variant="ghost" loading={busy === "undo"} onClick={() => {
+                    const reason = prompt("เหตุผลที่ยกเลิกเช็กเอาต์ (แต้มอบรมจะถูกหักคืน)");
+                    if (reason) rpc("undo", () => supabase.rpc("staff_check_out", { p_reg_id: r.id, p_undo: true, p_reason: reason }));
+                  }}>ยกเลิกเช็กเอาต์</Button>
+                )}
+                {r.status === "attended" && r.checked_out_at && !r.cert_no && <Button variant="secondary" loading={busy === "cert"} onClick={() => rpc("cert", () => supabase.rpc("issue_certificate", { p_reg_id: r.id }))}>ออกใบประกาศ (ไม่ต้องประเมิน)</Button>}
                 {r.status === "registered" && (
                   <Button variant="ghost" className="text-red-600" loading={busy === "cancel"} onClick={() => {
                     const reason = prompt("เหตุผลที่ยกเลิก");
@@ -274,8 +342,9 @@ function Roster({ s, edit }: { s: S; edit: boolean }) {
   const shown = showAll ? regs.rows : active;
 
   function exportCsv() {
-    const head = ["เลขที่", "ชื่อ", "อีเมล", "โทร", "สถานะ", "ชำระเงิน", "ยอด", "ออกใบเสร็จในนาม", "เลขผู้เสียภาษี", "Sale", "ช่องทาง", "เลขใบประกาศ"];
-    const rows = regs.rows.map((r) => [r.code, r.profiles?.full_name ?? "", r.profiles?.email ?? "", r.profiles?.phone ?? "", REG_STATUS[r.status].label, PAY_STATUS[r.pay_status].label, r.total, r.billing?.name ?? "", r.billing?.tax_id ?? "", r.sale_name ?? "", r.source ?? "", r.cert_no ?? ""]);
+    const head = ["เลขที่", "ชื่อ", "อีเมล", "โทร", "สถานะ", "เช็กอิน", "เช็กเอาต์", "ประเมิน", "ชำระเงิน", "ยอด", "ออกใบเสร็จในนาม", "เลขผู้เสียภาษี", "Sale", "ช่องทาง", "เลขใบประกาศ", "แต้ม"];
+    const t = (v: string | null) => (v ? new Date(v).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }) : "");
+    const rows = regs.rows.map((r) => [r.code, r.profiles?.full_name ?? "", r.profiles?.email ?? "", r.profiles?.phone ?? "", REG_STATUS[r.status].label, t(r.checked_in_at), t(r.checked_out_at), t(r.evaluated_at), PAY_STATUS[r.pay_status].label, r.total, r.billing?.name ?? "", r.billing?.tax_id ?? "", r.sale_name ?? "", r.source ?? "", r.cert_no ?? "", r.points_awarded ?? ""]);
     const csv = "﻿" + [head, ...rows].map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -288,7 +357,7 @@ function Roster({ s, edit }: { s: S; edit: boolean }) {
       {edit && <CheckinPanel s={s} />}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-slate-600">
-          ผู้ลงทะเบียน {active.length}/{s.capacity} · เข้าอบรม {regs.rows.filter((r) => r.status === "attended").length}
+          ผู้ลงทะเบียน {active.length}/{s.capacity} · เช็กอิน {regs.rows.filter((r) => r.status === "attended").length} · เช็กเอาต์ {regs.rows.filter((r) => r.checked_out_at).length} · ใบประกาศ {regs.rows.filter((r) => r.cert_no).length}
         </p>
         <div className="flex gap-2">
           <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> แสดงที่ยกเลิก/เลื่อน</label>
@@ -359,7 +428,7 @@ export default function SessionsTab() {
                     <p className="text-xs font-semibold text-sun-600">{s.courses?.code}</p>
                     <p className="font-semibold text-navy-900">{s.courses?.title}{s.title ? ` · ${s.title}` : ""}</p>
                     <p className="text-sm text-slate-600">{sessionDateText(s)} · {s.location}</p>
-                    <p className="text-xs text-slate-500">{sessionPrice(s, s.courses) > 0 ? formatMoney(sessionPrice(s, s.courses)) : "ฟรี"} · {s.lat != null ? "ตรวจ GPS" : "ไม่ตรวจ GPS"}</p>
+                    <p className="text-xs text-slate-500">{sessionPrice(s, s.courses) > 0 ? formatMoney(sessionPrice(s, s.courses)) : "ฟรี"} · {s.lat != null ? "ตรวจ GPS" : <span className="font-semibold text-amber-700">ยังไม่มีพิกัด (ไม่ตรวจ GPS)</span>}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <Badge tone={SESSION_STATUS[s.status].tone}>{SESSION_STATUS[s.status].label}</Badge>

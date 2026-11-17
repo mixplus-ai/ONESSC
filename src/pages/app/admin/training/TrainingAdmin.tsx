@@ -45,7 +45,9 @@ function SettingsTab() {
         {numField("change_days_before", "เลื่อน/ยกเลิกได้ถึงกี่วันก่อนอบรม")}
         {numField("strike_limit", "เลื่อน/ยกเลิก/ไม่มาได้กี่ครั้งต่อปี", "เกินนี้ = ยกเลิกทุกการจองและระงับสิทธิ์ถึงสิ้นปี")}
         {numField("checkin_open_minutes", "เปิดเช็กอินก่อนเริ่ม (นาที)")}
-        {numField("checkin_radius_m", "รัศมี GPS (เมตร)", "0 = ไม่ตรวจตำแหน่ง")}
+        {numField("checkin_radius_m", "รัศมี GPS เช็กอิน/เช็กเอาต์ (เมตร)", "0 = ไม่ตรวจตำแหน่ง")}
+        {numField("checkout_open_minutes", "เปิดเช็กเอาต์ก่อนเลิก (นาที)")}
+        {numField("checkout_close_minutes", "ปิดเช็กเอาต์หลังเลิก (นาที)")}
         <div className="flex flex-col justify-end gap-2">{boolField("auto_no_show", "รอบที่จบแล้วแต่ไม่เช็กอิน นับเป็น “ไม่มา”")}</div>
       </div>
       <h3 className="mt-6 font-semibold text-navy-900">ใบประกาศ</h3>

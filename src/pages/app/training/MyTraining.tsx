@@ -34,7 +34,7 @@ const REG_SELECT = `*, course_sessions(${SESSION_COLS}, courses(*))`;
 
 function useMaterials(regs: Registration[]) {
   const ids = regs.map((r) => r.course_sessions?.course_id).filter(Boolean).join(",");
-  return useRows<{ id: string; course_id: string | null; session_id: string | null; kind: string; title: string; url: string; visibility: string }>(
+  return useRows<{ id: string; course_id: string | null; session_id: string | null; kind: string; title: string; url: string | null; file_path: string | null; visibility: string }>(
     () => supabase.from("course_materials").select("*").order("sort"),
     [ids],
   );
@@ -87,6 +87,33 @@ function Evaluation({ reg, questions, onDone }: { reg: Registration; questions: 
   );
 }
 
+/** Post-course steps: check-in → check-out → evaluation → certificate → points */
+function Steps({ r, needsEval }: { r: Registration; needsEval: boolean }) {
+  const steps = [
+    { label: "เช็กอิน", done: r.status === "attended" },
+    { label: "เช็กเอาต์", done: Boolean(r.checked_out_at) },
+    ...(needsEval ? [{ label: "แบบประเมิน", done: Boolean(r.evaluated_at) }] : []),
+    { label: "ใบประกาศ", done: Boolean(r.cert_no) },
+    { label: "แต้มอบรม", done: Number(r.points_awarded ?? 0) > 0 },
+  ];
+  const next = steps.findIndex((x) => !x.done);
+  return (
+    <div className="mt-3">
+      <ol className="flex flex-wrap items-center gap-1 text-xs">
+        {steps.map((x, i) => (
+          <li key={x.label} className="flex items-center gap-1">
+            <span className={`rounded-full px-2 py-1 font-medium ${x.done ? "bg-emerald-100 text-emerald-800" : i === next ? "bg-sun-500/20 text-navy-900 ring-1 ring-sun-500" : "bg-slate-100 text-slate-500"}`}>
+              {x.done ? "✓ " : ""}{x.label}
+            </span>
+            {i < steps.length - 1 && <span className="text-slate-300">→</span>}
+          </li>
+        ))}
+      </ol>
+      {r.status === "attended" && !r.checked_out_at && <p className="mt-1 text-xs text-amber-700">เมื่ออบรมจบ สแกน QR เช็กเอาต์ที่สถานที่อบรม ไม่เช็กเอาต์จะไม่ได้รับใบประกาศและแต้ม</p>}
+    </div>
+  );
+}
+
 function RegCard({ r, cfg, status, templates, materials, onChange }: {
   r: Registration;
   cfg: TrainingSettings | null;
@@ -110,6 +137,9 @@ function RegCard({ r, cfg, status, templates, materials, onChange }: {
   const canChange = r.status === "registered" && days >= (cfg?.change_days_before ?? 3);
   const now = Date.now();
   const checkinOpen = r.status === "registered" && now >= sessionStart(s).getTime() - (cfg?.checkin_open_minutes ?? 120) * 60000 && now <= sessionEnd(s).getTime();
+  const checkoutOpen = r.status === "attended" && !r.checked_out_at && now >= sessionEnd(s).getTime() - (cfg?.checkout_open_minutes ?? 60) * 60000
+    && now <= sessionEnd(s).getTime() + (cfg?.checkout_close_minutes ?? 240) * 60000;
+  const needsEval = cfg?.cert_requires_evaluation ?? true;
   const mats = materials.filter((m) => (m.session_id === s.id || m.course_id === s.course_id) && (m.visibility !== "attended" || r.status === "attended"));
   const tpl = templates.find((t) => t.id === (s.cert_template_id ?? c.cert_template_id)) ?? null;
 
@@ -187,21 +217,33 @@ function RegCard({ r, cfg, status, templates, materials, onChange }: {
       {r.staff_note && <p className="mt-3 rounded-lg bg-navy-50 p-3 text-sm text-navy-800">{r.staff_note}</p>}
       {r.cancel_reason && (r.status === "cancelled" || r.status === "rescheduled") && <p className="mt-2 text-xs text-slate-500">เหตุผล: {r.cancel_reason}</p>}
 
+      {(r.status === "registered" || r.status === "attended") && (
+        <Steps r={r} needsEval={needsEval} />
+      )}
+
       {mats.length > 0 && r.status !== "cancelled" && r.status !== "rescheduled" && (
         <div className="mt-3 text-sm">
-          <p className="font-medium text-slate-700">เอกสารประกอบ</p>
+          <p className="font-medium text-slate-700">เอกสารอบรม</p>
           <ul className="mt-1 list-disc pl-5">
-            {mats.map((m) => <li key={m.id}><a href={m.url} target="_blank" rel="noreferrer" className="text-navy-700 hover:underline">{m.title}</a></li>)}
+            {mats.map((m) => (
+              <li key={m.id}>
+                {m.file_path
+                  ? <button className="text-navy-700 hover:underline" onClick={() => openPrivateFile("training-materials", m.file_path!)}>{m.title} ⬇</button>
+                  : <a href={m.url ?? "#"} target="_blank" rel="noreferrer" className="text-navy-700 hover:underline">{m.title}</a>}
+              </li>
+            ))}
           </ul>
         </div>
       )}
+      {r.status === "registered" && <p className="mt-2 text-xs text-slate-500">เอกสารอบรมจะดาวน์โหลดได้หลังเช็กอินที่สถานที่อบรม</p>}
 
       {info && <div className="mt-3"><Alert tone="green">{info}</Alert></div>}
       {err && <div className="mt-3"><Alert>{err}</Alert></div>}
 
       <div className="mt-4 flex flex-wrap gap-2">
         {checkinOpen && <ButtonLink to={`/app/training/checkin?s=${s.id}`} variant="sun">เช็กอิน</ButtonLink>}
-        {r.status === "attended" && !r.cert_no && (cfg?.cert_requires_evaluation ?? true) && <Button onClick={() => setMode(mode === "eval" ? "" : "eval")}>ทำแบบประเมิน</Button>}
+        {checkoutOpen && <ButtonLink to={`/app/training/checkin?m=out&s=${s.id}`} variant="sun">เช็กเอาต์</ButtonLink>}
+        {r.status === "attended" && r.checked_out_at && !r.cert_no && needsEval && <Button onClick={() => setMode(mode === "eval" ? "" : "eval")}>ทำแบบประเมิน</Button>}
         {r.cert_no && <Button onClick={() => setMode(mode === "cert" ? "" : "cert")}>ใบประกาศ</Button>}
         {canChange && !status?.banned && <Button variant="secondary" onClick={() => setMode(mode === "move" ? "" : "move")}>เลื่อนรอบ</Button>}
         {canChange && <Button variant="ghost" className="text-red-600" onClick={() => setMode(mode === "cancel" ? "" : "cancel")}>ยกเลิก</Button>}
@@ -270,7 +312,9 @@ export default function MyTraining() {
     for (const r of regs.rows) {
       const s = r.course_sessions;
       if (!s) continue;
-      if (r.status === "registered" && (s.ends_on ?? s.starts_on) >= today) up.push(r);
+      const end = s.ends_on ?? s.starts_on;
+      // keep a checked-in booking up front until its certificate is out (check-out / evaluation still to do)
+      if ((r.status === "registered" && end >= today) || (r.status === "attended" && !r.cert_no && end >= today)) up.push(r);
       else hist.push(r);
     }
     up.sort((a, b) => a.course_sessions!.starts_on.localeCompare(b.course_sessions!.starts_on));
