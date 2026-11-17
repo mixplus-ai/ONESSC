@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Alert, Button, ButtonLink, Card, Field, Input, Loading, PageTitle, Select } from "../../../components/ui";
+import { TrainingFileList } from "../../../components/TrainingFiles";
 import { useAuth } from "../../../lib/auth";
 import { errorMessage, supabase } from "../../../lib/supabase";
 import { formatPoints, getPosition, cols,
@@ -67,7 +68,8 @@ export default function CheckIn() {
             <p className="mt-2 text-lg font-semibold text-navy-900">{done.already ? `คุณ${label}ไว้แล้ว` : `${label}สำเร็จ`}</p>
             {mode === "in" ? (
               <>
-                <p className="mt-2 text-sm text-slate-600">ดาวน์โหลดเอกสารอบรมได้ที่ <Link to="/app/training" className="underline">การอบรมของฉัน</Link></p>
+                {reg && <div className="mt-4"><TrainingFileList sessionId={reg.session_id} courseId={reg.course_sessions.course_id} title="ดาวน์โหลดเอกสารอบรม" /></div>}
+                <p className="mt-2 text-sm text-slate-600">ดูเอกสารอีกครั้งได้ที่ <Link to="/app/training" className="underline">การอบรมของฉัน</Link></p>
                 <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">เมื่ออบรมจบ อย่าลืมสแกน QR <b>เช็กเอาต์</b> → ทำแบบประเมิน → รับใบประกาศและแต้ม (ไม่เช็กเอาต์ = ไม่ได้แต้ม)</p>
               </>
             ) : done.cert_no ? (

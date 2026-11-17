@@ -3,11 +3,17 @@ import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, Select, Spinn
 import { useAuth } from "../../../../lib/auth";
 import { useRows } from "../../../../lib/content";
 import { errorMessage, supabase } from "../../../../lib/supabase";
+import { PickFiles } from "../../../../components/TrainingFiles";
 import {
   BILLING_TYPE,
   checkinUrl,
   checkoutUrl,
   getPosition,
+  addMaterialFiles,
+  removeMaterial,
+  MATERIAL_VIS,
+  MAX_MATERIAL_MB,
+  type Material,
   mapLinkCoords,
   formatMoney,
   formatThaiDate,
@@ -44,6 +50,21 @@ function SessionForm({ value, courses, templates, onSaved, onClose }: { value: P
   const set = <K extends keyof Session>(k: K, v: Session[K] | null) => setF((x) => ({ ...x, [k]: v }));
   const numOrNull = (v: string) => (v === "" ? null : Number(v));
   const [pin, setPin] = useState("");
+  const [pending, setPending] = useState<File[]>([]);
+  const [vis, setVis] = useState("attended");
+  const existing = useRows<Material>(
+    () => (f.id ? supabase.from("course_materials").select("*").eq("session_id", f.id).order("sort") : Promise.resolve({ data: [], error: null })),
+    [f.id],
+  );
+  async function dropExisting(m: Material) {
+    if (!confirm(`ลบไฟล์ “${m.title}”?`)) return;
+    try {
+      await removeMaterial(m);
+      existing.reload();
+    } catch (e) {
+      setErr(errorMessage(e));
+    }
+  }
 
   async function pinFromLink(link = f.map_url ?? "") {
     if (!link.trim()) return setPin("กรุณาวางลิงก์แผนที่ก่อน");
@@ -83,10 +104,28 @@ function SessionForm({ value, courses, templates, onSaved, onClose }: { value: P
       lat, lng, capacity: f.capacity, status: f.status, price: f.price, vat: f.vat, wht_allowed: f.wht_allowed,
       note: f.note || null, cert_template_id: f.cert_template_id || null,
     };
-    // never ask for the row back: the check-in code column is not selectable
-    const { error } = f.id ? await supabase.from("course_sessions").update(row).eq("id", f.id) : await supabase.from("course_sessions").insert(row);
+    // never ask for the row back: the check-in code column is not selectable, so a new row gets its id here
+    const id = f.id ?? crypto.randomUUID();
+    const { error } = f.id ? await supabase.from("course_sessions").update(row).eq("id", f.id) : await supabase.from("course_sessions").insert({ ...row, id });
+    if (error) {
+      setBusy(false);
+      return setErr(errorMessage(error));
+    }
+    if (pending.length) {
+      try {
+        let sort = existing.rows.length;
+        for (const file of pending) {
+          await addMaterialFiles({ session_id: id }, [file], vis, sort++);
+          setPending((p) => p.filter((x) => x !== file));
+        }
+      } catch (e) {
+        setBusy(false);
+        if (!f.id) setF((x) => ({ ...x, id }));
+        existing.reload();
+        return setErr(`บันทึกรอบแล้ว แต่อัปโหลดไฟล์ไม่ครบ: ${errorMessage(e)}`);
+      }
+    }
     setBusy(false);
-    if (error) return setErr(errorMessage(error));
     onSaved();
   }
 
@@ -138,6 +177,32 @@ function SessionForm({ value, courses, templates, onSaved, onClose }: { value: P
           <label className="flex items-center gap-2"><input type="checkbox" checked={f.wht_allowed ?? true} onChange={(e) => set("wht_allowed", e.target.checked)} /> นิติบุคคลหัก ณ ที่จ่ายได้</label>
         </div>
         <div className="sm:col-span-4"><Field label="หมายเหตุ"><Textarea rows={2} value={f.note ?? ""} onChange={(e) => set("note", e.target.value)} /></Field></div>
+        <div className="rounded-xl bg-slate-50 p-4 sm:col-span-4">
+          <p className="text-sm font-semibold text-navy-900">เอกสารอบรมสำหรับดาวน์โหลด</p>
+          <p className="text-xs text-slate-500">แนบได้หลายไฟล์ (ไม่เกิน {MAX_MATERIAL_MB} MB ต่อไฟล์) ลูกค้าจะเห็นปุ่มดาวน์โหลดทันทีหลังสแกนเช็กอิน</p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {existing.rows.map((m) => (
+              <li key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-1.5 ring-1 ring-slate-200">
+                <button className="min-w-0 truncate text-left text-navy-700 hover:underline" onClick={() => m.file_path && openPrivateFile("training-materials", m.file_path)}>📄 {m.title}</button>
+                <span className="flex shrink-0 items-center gap-2 text-xs text-slate-500">{MATERIAL_VIS[m.visibility]}<button className="text-red-600" onClick={() => dropExisting(m)}>ลบ</button></span>
+              </li>
+            ))}
+            {pending.map((file, i) => (
+              <li key={`${file.name}-${i}`} className="flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-1.5 ring-1 ring-amber-200">
+                <span className="min-w-0 truncate">⬆ {file.name} <span className="text-xs text-slate-500">({(file.size / 1048576).toFixed(1)} MB · อัปโหลดเมื่อกดบันทึก)</span></span>
+                <button className="shrink-0 text-xs text-red-600" onClick={() => setPending(pending.filter((_, j) => j !== i))}>เอาออก</button>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <PickFiles onPick={(files) => setPending((p) => [...p, ...files])} />
+            {pending.length > 0 && (
+              <Select value={vis} onChange={(e) => setVis(e.target.value)} className="!w-auto !py-1.5">
+                {Object.entries(MATERIAL_VIS).map(([k, v]) => <option key={k} value={k}>ให้ดาวน์โหลด: {v}</option>)}
+              </Select>
+            )}
+          </div>
+        </div>
       </div>
       {err && <div className="mt-3"><Alert>{err}</Alert></div>}
       <div className="mt-4 flex gap-2"><Button onClick={save} loading={busy}>บันทึก</Button><Button variant="ghost" onClick={onClose}>ปิด</Button></div>
