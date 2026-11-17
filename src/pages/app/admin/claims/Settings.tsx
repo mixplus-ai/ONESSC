@@ -4,6 +4,7 @@ import { PRODUCT_TYPES, REQUIRE_FIELD_LABEL, productTypeLabel, type BrandRule, t
 import { useRows } from "../../../../lib/content";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import { useBoard } from "./shared";
+import { useAuth } from "../../../../lib/auth";
 
 function General() {
   const [s, setS] = useState<ClaimSettings | null>(null);
@@ -159,6 +160,51 @@ function Models() {
   );
 }
 
+type WhRole = "main" | "other" | "claim_hold" | "claim_check" | "defect";
+const WH_ROLES: { key: WhRole; label: string }[] = [
+  { key: "main", label: "คลังขาย (นับเป็นสต๊อก)" },
+  { key: "other", label: "ไม่นับเป็นสต๊อกขาย" },
+  { key: "claim_hold", label: "คลังจองเคลม (ขั้น 2)" },
+  { key: "claim_check", label: "คลังรับเคลมรอตรวจ (ขั้น 3)" },
+  { key: "defect", label: "คลังของเสีย (ขั้น 3/5)" },
+];
+
+/** Admin: what each warehouse is for — claim warehouses (one each) and which ones count as sellable stock. */
+function WarehouseRoles() {
+  const { profile } = useAuth();
+  const wh = useRows<{ id: string; code: string; name: string; role: WhRole; is_active: boolean }>(() => supabase.from("warehouses").select("id, code, name, role, is_active").order("sort").order("code"));
+  const [roles, setRoles] = useState<Record<string, WhRole>>({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => { setRoles(Object.fromEntries(wh.rows.map((w) => [w.id, w.role]))); }, [wh.rows]);
+  if (profile?.role !== "admin" || !wh.rows.length) return null;
+  async function save() {
+    setBusy(true);
+    const { error } = await supabase.rpc("set_warehouse_roles", { p_roles: roles });
+    setBusy(false);
+    setMsg(error ? { ok: false, text: errorMessage(error) } : { ok: true, text: "บันทึกแล้ว" });
+    if (!error) wh.reload();
+  }
+  return (
+    <Card>
+      <h3 className="mb-1 font-semibold text-navy-900">คลังที่ใช้กับงานเคลม และคลังที่นับเป็นสต๊อกขาย</h3>
+      <p className="mb-4 text-sm text-slate-500">คลังจองเคลม / คลังรับเคลมรอตรวจ / คลังของเสีย เลือกได้อย่างละ 1 คลัง · คลังที่ไม่ใช่คลังขายจะไม่ถูกนับในสต๊อกหน้าร้าน</p>
+      <ul className="divide-y divide-slate-100">
+        {wh.rows.map((w) => (
+          <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <span className="text-sm"><span className="font-mono text-slate-500">{w.code}</span> · {w.name}{!w.is_active && <span className="text-slate-400"> (ปิดใช้)</span>}</span>
+            <Select className="!w-auto" value={roles[w.id] ?? w.role} onChange={(e) => setRoles((r) => ({ ...r, [w.id]: e.target.value as WhRole }))} aria-label={`หน้าที่ของ ${w.name}`}>
+              {WH_ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+            </Select>
+          </li>
+        ))}
+      </ul>
+      {msg && <div className="mt-3"><Alert tone={msg.ok ? "green" : "red"}>{msg.text}</Alert></div>}
+      <Button className="mt-4" onClick={save} loading={busy}>บันทึก</Button>
+    </Card>
+  );
+}
+
 export default function ClaimSettingsTab() {
-  return <div className="space-y-4"><General /><BrandRules /><Models /></div>;
+  return <div className="space-y-4"><General /><WarehouseRoles /><BrandRules /><Models /></div>;
 }

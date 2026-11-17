@@ -16,6 +16,11 @@ const SCOPES: { key: Scope; label: string }[] = [
   { key: "company", label: "ชื่อบริษัท" },
 ];
 
+/** "26-0123" → 260123 (year then running no.), for range filters; null if not a claim no. */
+const claimNoKey = (s: string) => { const m = /^\s*(\d{2})\s*-+\s*(\d{1,6})\s*$/.exec(s); return m ? Number(m[1]) * 1_000_000 + Number(m[2]) : null; };
+/** the claim's day: voucher date if keyed, else the day it was opened (Bangkok) */
+const claimDay = (c: Claim) => c.voucher_date ?? new Date(c.created_at).toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
+
 export default function Board({ selected, onSelect }: { selected: string | null; onSelect: (id: string | null) => void }) {
   const { claims, unitsBy, statusBy, canEdit, reload, loadedAt, brands } = useBoard();
   const [scope, setScope] = useState<Scope>("all");
@@ -24,6 +29,11 @@ export default function Board({ selected, onSelect }: { selected: string | null;
   const [brand, setBrand] = useState("");
   const [status, setStatus] = useState<BoardStatus | "all">("all");
   const [desc, setDesc] = useState(true);
+  // date range (วันที่ใบสำคัญ, else the day the claim was opened) and claim no. range
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [noFrom, setNoFrom] = useState("");
+  const [noTo, setNoTo] = useState("");
   const [tool, setTool] = useState<"" | "new" | "paste" | "import" | "docs">("");
 
   useEffect(() => {
@@ -59,7 +69,15 @@ export default function Board({ selected, onSelect }: { selected: string | null;
     for (const k of Object.keys(checks) as Exclude<Scope, "all">[]) { const r = checks[k](); if (r !== null) return r; }
     return null;
   };
-  const base = claims.filter((c) => (year === "all" || claimYear(c) === year) && (!brand || c.brand_id === brand));
+  const nFrom = claimNoKey(noFrom), nTo = claimNoKey(noTo);
+  const base = claims.filter((c) => {
+    if (year !== "all" && claimYear(c) !== year) return false;
+    if (brand && c.brand_id !== brand) return false;
+    if (from || to) { const d = claimDay(c); if ((from && d < from) || (to && d > to)) return false; }
+    if (nFrom != null || nTo != null) { const k = claimNoKey(c.claim_no); if (k == null || (nFrom != null && k < nFrom) || (nTo != null && k > nTo)) return false; }
+    return true;
+  });
+  const ranged = Boolean(from || to || noFrom.trim() || noTo.trim());
   const counts = { all: base.length, open: 0, done: 0, problem: 0 } as Record<BoardStatus | "all", number>;
   let unitsTotal = 0;
   for (const c of base) { counts[statusBy.get(c.id) ?? "open"]++; unitsTotal += unitsBy.get(c.id)?.length ?? 0; }
@@ -97,6 +115,20 @@ export default function Board({ selected, onSelect }: { selected: string | null;
           <Button variant="secondary" onClick={() => setTool("import")}>นำเข้าจากชีตเดิม (A–Z)</Button>
         </div>
       )}
+      <div className="mb-3 flex flex-wrap items-end gap-2 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+        <label className="text-xs text-slate-600">ปี
+          <Select className="mt-1 !w-auto !py-1.5 text-sm" value={year} onChange={(e) => setYear(e.target.value === "all" ? "all" : Number(e.target.value))}>
+            <option value="all">ทุกปี</option>{years.map((y) => <option key={y} value={y}>ปี {y} (พ.ศ. {y + 543})</option>)}
+          </Select>
+        </label>
+        <label className="text-xs text-slate-600">ตั้งแต่วันที่<Input type="date" className="mt-1 !w-auto !py-1.5" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label className="text-xs text-slate-600">ถึงวันที่<Input type="date" className="mt-1 !w-auto !py-1.5" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+        <label className="text-xs text-slate-600">เลขเคลมตั้งแต่<Input className="mt-1 !w-28 !py-1.5 font-mono" placeholder="26-0001" value={noFrom} onChange={(e) => setNoFrom(e.target.value)} /></label>
+        <label className="text-xs text-slate-600">ถึงเลขเคลม<Input className="mt-1 !w-28 !py-1.5 font-mono" placeholder="26-0500" value={noTo} onChange={(e) => setNoTo(e.target.value)} /></label>
+        {(ranged || year !== "all") && <Button variant="ghost" className="!py-1.5" onClick={() => { setFrom(""); setTo(""); setNoFrom(""); setNoTo(""); setYear("all"); }}>ล้างตัวกรอง</Button>}
+        {((noFrom.trim() && nFrom == null) || (noTo.trim() && nTo == null)) && <span className="text-xs text-red-600">เลขเคลมใช้รูปแบบ 26-0001</span>}
+        <span className="ml-auto self-center text-xs text-slate-500">วันที่ = วันที่ใบสำคัญ (ถ้าไม่มี ใช้วันที่เปิดเคลม)</span>
+      </div>
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
         {([["all", "เคลมทั้งหมด"], ["open", "กำลังดำเนินการ"], ["done", "ปิดครบ 4 ขั้นตอน"], ["problem", "ต้องตรวจสอบ"]] as [BoardStatus | "all", string][]).map(([k, label]) => (
           <button key={k} onClick={() => setStatus(k)} className={cx("rounded-xl p-3 text-left ring-1", status === k ? "bg-navy-800 text-white ring-navy-800" : "bg-white ring-slate-200 hover:ring-navy-200")}>
@@ -110,9 +142,6 @@ export default function Board({ selected, onSelect }: { selected: string | null;
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span>{list.length.toLocaleString()} เลขเคลม{loadedAt ? ` · ข้อมูล ณ ${loadedAt.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}` : ""}</span>
-            <Select className="!w-auto !py-1 text-xs" value={year} onChange={(e) => setYear(e.target.value === "all" ? "all" : Number(e.target.value))} aria-label="ปี">
-              <option value="all">ทุกปี</option>{years.map((y) => <option key={y} value={y}>ปี {y}</option>)}
-            </Select>
             <Select className="!w-auto !py-1 text-xs" value={brand} onChange={(e) => setBrand(e.target.value)} aria-label="แบรนด์">
               <option value="">ทุกแบรนด์</option>{brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </Select>
