@@ -271,7 +271,7 @@ export default function CourseDetail() {
                     <div key={i} className="flex gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
                       {p.photo_url
                         ? <img src={p.photo_url} alt="" className="h-16 w-16 shrink-0 rounded-full object-cover" />
-                        : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white" style={{ background: color }}>{p.name.trim().charAt(0)}</span>}
+                        : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white" style={{ background: color }}>{p.name.trim().replace(/^(คุณ|ดร\.|อ\.|Mr\.?|Ms\.?|Mrs\.?)\s*/i, "").charAt(0)}</span>}
                       <div className="min-w-0">
                         <p className="font-semibold text-navy-900">{p.name}</p>
                         {p.role && <p className="text-sm text-sun-700">{p.role}</p>}
