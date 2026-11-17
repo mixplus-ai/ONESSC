@@ -7,6 +7,9 @@ import { errorMessage, supabase } from "../../../lib/supabase";
 import { Avatar } from "../../../components/Avatar";
 import { CARE_ROLE_LABEL, CareTeamPicker } from "../../../components/CareTeam";
 import type { Company, Profile, TeamMember } from "../../../lib/types";
+import { RankBadge } from "../../../components/catalog";
+import type { PriceRank } from "../../../lib/catalog";
+import { Select } from "../../../components/ui";
 
 function PendingList({ onChange }: { onChange: () => void }) {
   const pending = useRows<Profile>(() =>
@@ -74,7 +77,13 @@ function CarePerson({ role, m }: { role: "sales" | "support"; m: TeamMember | un
   );
 }
 
-function CompanyRow({ c, members, team, onSaved }: { c: Company; members: Profile[]; team: Map<string, TeamMember>; onSaved: () => void }) {
+function CompanyRow({ c, members, team, ranks, plus, onSaved }: { c: Company; members: Profile[]; team: Map<string, TeamMember>; ranks: PriceRank[]; plus: boolean; onSaved: () => void }) {
+  const rank = ranks.find((r) => r.code === c.price_rank);
+  async function setRank(code: string) {
+    const { error } = await supabase.rpc("set_company_rank", { p_company_id: c.id, p_rank: code });
+    if (error) return setErr(errorMessage(error));
+    onSaved();
+  }
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState(c.name);
   const [phone, setPhone] = useState(c.phone ?? "");
@@ -95,7 +104,7 @@ function CompanyRow({ c, members, team, onSaved }: { c: Company; members: Profil
     <Card className="!p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-semibold text-navy-900">{c.name}</p>
+          <p className="flex flex-wrap items-center gap-2 font-semibold text-navy-900">{c.name}{rank && <RankBadge rank={{ ...rank, plus }} />}</p>
           <p className="text-sm text-slate-500">เลขผู้เสียภาษี {c.tax_id}{c.phone ? ` · ${c.phone}` : ""}</p>
         </div>
         <div className="grid min-w-0 flex-1 gap-2 sm:max-w-md sm:grid-cols-2">
@@ -117,6 +126,14 @@ function CompanyRow({ c, members, team, onSaved }: { c: Company; members: Profil
           <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="ที่อยู่" />
           {err && <div className="sm:col-span-3"><Alert>{err}</Alert></div>}
           <div className="sm:col-span-3"><Button onClick={save} loading={busy}>บันทึก</Button></div>
+          <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-3 sm:col-span-3">
+            <p className="text-sm font-semibold text-navy-900">Rank ราคา</p>
+            <Select value={c.price_rank ?? ""} onChange={(e) => setRank(e.target.value)} className="!w-56">
+              <option value="">ไม่มี Rank (ราคาปกติ)</option>
+              {ranks.filter((r) => r.is_active || r.code === c.price_rank).map((r) => <option key={r.code} value={r.code}>Rank {r.name}</option>)}
+            </Select>
+            <a href={`/app/admin/pricing?company=${c.id}`} className="text-sm font-semibold text-navy-700 hover:underline">ตั้งราคาเฉพาะบริษัท (Rank+)</a>
+          </div>
           <div className="border-t border-slate-200 pt-3 sm:col-span-3">
             <p className="mb-2 text-sm font-semibold text-navy-900">ทีมงานที่ดูแล</p>
             <CareTeamPicker company={c} onSaved={onSaved} />
@@ -134,6 +151,9 @@ export default function Companies() {
   const members = useRows<Profile>(() => supabase.from("profiles").select("*").eq("company_status", "approved"));
   const teamRows = useRows<TeamMember>(() => supabase.from("team_members").select("*"));
   const team = useMemo(() => new Map(teamRows.rows.map((m) => [m.id, m])), [teamRows.rows]);
+  const ranks = useRows<PriceRank>(() => supabase.from("price_ranks").select("*").order("sort"));
+  const own = useRows<{ company_id: string }>(() => supabase.from("company_prices").select("company_id"));
+  const plusSet = useMemo(() => new Set(own.rows.map((r) => r.company_id)), [own.rows]);
   const [q, setQ] = useState("");
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -160,7 +180,7 @@ export default function Companies() {
           ) : shown.length ? (
             <div className="space-y-3">
               {shown.map((c) => (
-                <CompanyRow key={c.id} c={c} members={members.rows.filter((m) => m.company_id === c.id)} team={team} onSaved={companies.reload} />
+                <CompanyRow key={c.id} c={c} members={members.rows.filter((m) => m.company_id === c.id)} team={team} ranks={ranks.rows} plus={plusSet.has(c.id)} onSaved={companies.reload} />
               ))}
             </div>
           ) : (

@@ -17,6 +17,9 @@ import {
   type Reservation,
 } from "../../lib/catalog";
 import { useRows } from "../../lib/content";
+import { useMyRank } from "../../lib/catalog";
+import { preparePrintWindow } from "../../lib/printdoc";
+import { mySalesContact, printShopDoc } from "../../lib/shopdocs";
 import { errorMessage, supabase } from "../../lib/supabase";
 
 export function Tabs<T extends string>({ value, onChange, tabs }: { value: T; onChange: (v: T) => void; tabs: { key: T; label: string; count?: number }[] }) {
@@ -51,7 +54,8 @@ function ReservationSteps({ state }: { state: ReturnType<typeof reservationState
 }
 
 export default function MyRequests() {
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
+  const rank = useMyRank();
   const loc = useLocation();
   const created = loc.state as { created?: string; kind?: "quote" | "reserve" } | null;
   const [tab, setTab] = useState<"quotes" | "reservations">(created?.kind === "reserve" ? "reservations" : "quotes");
@@ -71,6 +75,33 @@ export default function MyRequests() {
     const { error } = await supabase.rpc("cancel_my_request", { p_kind: kind, p_id: id });
     if (error) return setErr(errorMessage(error));
     (kind === "quote" ? quotes : reservations).reload();
+  }
+
+  async function pdf(kind: "quote" | "reservation", r: QuoteRequest | Reservation) {
+    const w = preparePrintWindow();
+    if (!w) return;
+    const sales = await mySalesContact().catch(() => null);
+    const q = kind === "quote" ? (r as QuoteRequest) : null;
+    const res = kind === "reservation" ? (r as Reservation) : null;
+    await printShopDoc(
+      {
+        kind,
+        code: r.code,
+        date: r.created_at,
+        status: q ? QUOTE_STATUS[q.status].label : RESERVATION_STATUS[reservationState(res as Reservation)].label,
+        expires_at: res?.expires_at,
+        lines: q
+          ? (q.quote_request_items ?? []).map((i) => ({ label: i.label, qty: i.qty, unit_price: i.unit_price }))
+          : (res?.reservation_items ?? []).map((i) => ({ sku: i.sku, label: i.label, qty: i.qty, unit_price: i.unit_price ?? null })),
+        customer: { name: q?.contact_name || profile?.full_name, email: profile?.email, phone: q?.contact_phone || profile?.phone, company: profile?.company_name, taxId: profile?.tax_id },
+        billing: r.billing ?? profile?.billing ?? null,
+        rank,
+        note: q ? q.project_note : res?.note,
+        staffNote: r.staff_note,
+        sales,
+      },
+      w,
+    );
   }
 
   async function openFile(path: string) {
@@ -125,9 +156,12 @@ export default function MyRequests() {
                     )}
                   </div>
                 )}
-                {(q.status === "new" || q.status === "in_progress") && (
-                  <div className="mt-3"><Button variant="ghost" className="!px-2 !py-1 text-red-600" onClick={() => cancel("quote", q.id)}>ยกเลิกคำขอ</Button></div>
-                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="secondary" className="!px-3 !py-1.5" onClick={() => pdf("quote", q)}>ส่งออก PDF</Button>
+                  {(q.status === "new" || q.status === "in_progress") && (
+                    <Button variant="ghost" className="!px-2 !py-1 text-red-600" onClick={() => cancel("quote", q.id)}>ยกเลิกคำขอ</Button>
+                  )}
+                </div>
               </Card>
             ))}
           </div>
@@ -159,9 +193,12 @@ export default function MyRequests() {
                   <ReservationSteps state={st} />
                   {r.note && <p className="mt-2 text-sm text-slate-500">หมายเหตุ: {r.note}</p>}
                   {r.staff_note && <p className="mt-2 rounded-lg bg-navy-50 p-3 text-sm text-navy-800">{r.staff_note}</p>}
-                  {(st === "pending" || st === "confirmed") && (
-                    <div className="mt-3"><Button variant="ghost" className="!px-2 !py-1 text-red-600" onClick={() => cancel("reservation", r.id)}>ยกเลิกการจอง</Button></div>
-                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button variant="secondary" className="!px-3 !py-1.5" onClick={() => pdf("reservation", r)}>ส่งออก PDF</Button>
+                    {(st === "pending" || st === "confirmed") && (
+                      <Button variant="ghost" className="!px-2 !py-1 text-red-600" onClick={() => cancel("reservation", r.id)}>ยกเลิกการจอง</Button>
+                    )}
+                  </div>
                 </Card>
               );
             })}

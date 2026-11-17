@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../lib/auth";
-import { formatBaht, formatQty, productImage, STOCK_LABEL, type PriceInfo, type Product, type StockInfo } from "../lib/catalog";
+import { FIT_LABEL, formatBaht, formatDate, formatQty, productImage, rankLabel, STOCK_LABEL, type PriceInfo, type Product, type RankInfo, type StockFit, type StockInfo } from "../lib/catalog";
 import { useCart, type CartLine } from "../lib/cart";
 import { BoxIcon, CartIcon } from "./icons";
 import { Badge, cx } from "./ui";
@@ -16,7 +16,8 @@ export function PriceTag({ info, unit, size = "md" }: { info: PriceInfo; unit?: 
       {unit && <span className="text-xs text-slate-500">/{unit}</span>}
       {showBase && <span className="text-sm text-slate-400 line-through">{formatBaht(info.base)}</span>}
       {info.kind === "promo" && <Badge tone="red">{info.special ? "ราคาพิเศษ" : "โปรโมชั่น"}</Badge>}
-      {info.kind === "company" && <Badge tone="navy">ราคาบริษัทคุณ</Badge>}
+      {info.kind === "company" && <Badge tone="navy">{info.rank ? `ราคา ${info.rank.name}+` : "ราคาบริษัทคุณ"}</Badge>}
+      {info.kind === "rank" && info.rank && <Badge tone="navy">ราคา {info.rank.name}</Badge>}
     </span>
   );
 }
@@ -38,15 +39,59 @@ export function PackagePrice({ price, full, size = "md" }: { price: number | nul
   );
 }
 
-/** Stock state for customers. Zero or negative stock never shows a number: it reads "สั่งจอง / ขอใบเสนอราคา". */
+/** Stock state. Customers get a status only (the number comes back for staff only): "เหลือน้อย" reads "มีสินค้า" for them. */
 export function StockBadge({ info }: { info?: StockInfo }) {
   if (!info) return <Badge>กำลังโหลดสต๊อก</Badge>;
-  const s = STOCK_LABEL[info.status];
+  const s = STOCK_LABEL[info.status === "low" && info.available == null ? "in_stock" : info.status];
   return (
     <Badge tone={s.tone}>
       {s.label}
       {info.available != null && info.available > 0 && info.status !== "unknown" && ` · ${formatQty(info.available)}`}
     </Badge>
+  );
+}
+
+/** Cart line vs stock: มีสินค้า / มีสินค้าบางส่วน / ไม่มีสินค้า, with a small icon. */
+export function FitBadge({ fit }: { fit?: StockFit }) {
+  if (!fit) return <Badge>กำลังตรวจสต๊อก</Badge>;
+  const s = FIT_LABEL[fit];
+  const dot = { full: "bg-emerald-500", partial: "bg-amber-500", none: "bg-red-500", unknown: "bg-slate-400" }[fit];
+  return (
+    <Badge tone={s.tone}>
+      <span className={cx("mr-1 inline-block h-2 w-2 rounded-full align-middle", dot)} aria-hidden />
+      {s.label}
+    </Badge>
+  );
+}
+
+/** "สถานะสินค้าอ้างอิงตามสต๊อกวันที่ …" note under cart / product stock badges. */
+export function StockAsOfNote({ at, className }: { at: string | null; className?: string }) {
+  return (
+    <p className={cx("text-xs text-slate-500", className)}>
+      สถานะสินค้าอ้างอิงตามสต๊อก{at ? ` ณ วันที่ ${formatDate(at)}` : "ล่าสุด"} กรุณาจองหรือติดต่อพนักงานขายเพื่อยืนยัน
+    </p>
+  );
+}
+
+/** Rank badge (Silver / Gold / Platinum / Diamond, "Gold+" when the company has its own prices). */
+export function RankBadge({ rank, size = "sm", className }: { rank: RankInfo | null | undefined; size?: "xs" | "sm" | "md"; className?: string }) {
+  if (!rank) return null;
+  const sz = size === "md" ? "h-7 px-2.5 text-sm" : size === "xs" ? "h-5 px-1.5 text-[10px]" : "h-6 px-2 text-xs";
+  return (
+    <span
+      title={`Rank ราคา ${rankLabel(rank)}`}
+      className={cx("inline-flex shrink-0 items-center gap-1 rounded-full font-bold text-white shadow-sm ring-1 ring-black/10", sz, className)}
+      style={{ background: `linear-gradient(135deg, ${rank.color}, ${rank.color}cc)` }}
+    >
+      {rank.logo_url ? (
+        <img src={rank.logo_url} alt="" className={size === "md" ? "h-5 w-5 object-contain" : "h-4 w-4 object-contain"} />
+      ) : (
+        <svg viewBox="0 0 24 24" className={size === "md" ? "h-4 w-4" : "h-3 w-3"} fill="currentColor" aria-hidden>
+          <path d="M12 2l2.9 6.1 6.6.8-4.9 4.5 1.3 6.6L12 16.8 6.1 20l1.3-6.6L2.5 8.9l6.6-.8z" />
+        </svg>
+      )}
+      {rankLabel(rank)}
+    </span>
   );
 }
 

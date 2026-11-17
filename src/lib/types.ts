@@ -36,6 +36,8 @@ export interface Company {
   created_at: string;
   sales_member_id?: string | null;
   support_member_id?: string | null;
+  /** price rank code (migration 41) */
+  price_rank?: string | null;
 }
 
 export interface PermissionKey {
@@ -72,6 +74,8 @@ export interface TeamMember {
   photo_url: string | null;
   is_published: boolean;
   sort: number;
+  /** staff login of this person: quotes/reservations of the companies they look after go to them (migration 41) */
+  user_id?: string | null;
 }
 
 export interface ContactMessage {

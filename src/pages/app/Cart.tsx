@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { PriceTag, QtyInput, StockBadge, discountPct } from "../../components/catalog";
+import { FitBadge, PriceTag, QtyInput, RankBadge, StockAsOfNote, discountPct } from "../../components/catalog";
 import { BoxIcon, CartIcon, TrashIcon } from "../../components/icons";
 import { Alert, Button, Card, Empty, Field, Input, PageTitle, Textarea } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
-import { formatBaht, usePricing } from "../../lib/catalog";
+import { FIT_LABEL, formatBaht, loadStockFit, stockAsOf, usePricing, useMyRank, type StockFit } from "../../lib/catalog";
+import { mySalesContact, printShopDoc } from "../../lib/shopdocs";
+import { preparePrintWindow } from "../../lib/printdoc";
 import { useCart } from "../../lib/cart";
 import { errorMessage, supabase } from "../../lib/supabase";
 
@@ -24,7 +26,20 @@ export default function Cart() {
   const variants = useMemo(() => variantLines.map((l) => ({ id: l.id, sku: l.sku ?? "" })), [idKey]);
   type PriceRow = { id: string; base_price: number | null; show_price?: boolean; special_price?: number | null; special_ends_at?: string | null };
   const [basePrices, setBasePrices] = useState<Map<string, PriceRow>>(new Map());
-  const { price, stock } = usePricing(variants);
+  const { price } = usePricing(variants);
+  const rank = useMyRank();
+  // quantity-aware stock status per line (มีสินค้า / มีสินค้าบางส่วน / ไม่มีสินค้า); customers never get the number
+  const fitKey = variantLines.map((l) => `${l.sku}:${l.qty}`).join(",");
+  const [fits, setFits] = useState<Map<string, { fit: StockFit; synced_at: string | null }>>(new Map());
+  useEffect(() => {
+    const items = variantLines.filter((l) => l.sku).map((l) => ({ sku: l.sku as string, qty: l.qty }));
+    let alive = true;
+    const t = setTimeout(() => loadStockFit(items).then((m) => alive && setFits(m)), 250);
+    return () => { alive = false; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitKey]);
+  const fitOf = (l: (typeof lines)[number]) => (l.sku ? fits.get(l.sku)?.fit : undefined);
+  const asOf = stockAsOf(fits.values());
 
   // base prices for the price tag (the cart only stores ids)
   useEffect(() => {
@@ -41,10 +56,36 @@ export default function Cart() {
     return p == null ? sum : sum + p * l.qty;
   }, 0);
   const hasPackage = lines.some((l) => l.kind === "package");
-  // no stock (zero/negative or still incoming) → cannot be held from stock, goes through a quote instead
-  const noStock = (l: (typeof lines)[number]) => { const st = l.sku ? stock.get(l.sku)?.status : undefined; return st === "out" || st === "incoming"; };
+  // not enough stock for the asked quantity → cannot be held from stock, goes through a quote instead
+  const noStock = (l: (typeof lines)[number]) => { const f = fitOf(l); return f === "none" || f === "partial" || f === "unknown"; };
   const reservable = variantLines.filter((l) => !noStock(l));
   const waiting = variantLines.length - reservable.length;
+  const partial = variantLines.filter((l) => fitOf(l) === "partial").length;
+
+  async function exportPdf() {
+    const w = preparePrintWindow();
+    if (!w) return;
+    const sales = await mySalesContact().catch(() => null);
+    await printShopDoc(
+      {
+        kind: "cart",
+        lines: lines.map((l) => ({
+          sku: l.sku,
+          label: l.kind === "package" ? `แพ็กเกจ · ${l.label}` : l.label,
+          qty: l.qty,
+          unit_price: l.kind === "variant" ? price(basePrices.get(l.id) ?? { id: l.id, base_price: null }).price : null,
+          status: l.kind === "variant" ? (fitOf(l) ? FIT_LABEL[fitOf(l) as StockFit].label : null) : "ขอใบเสนอราคา",
+        })),
+        customer: { name: contactName || profile?.full_name, email: profile?.email, phone: contactPhone || profile?.phone, company: profile?.company_name, taxId: profile?.tax_id },
+        billing: profile?.billing ?? null,
+        rank,
+        note,
+        stockAsOf: asOf,
+        sales,
+      },
+      w,
+    );
+  }
 
   async function submit(kind: "quote" | "reserve") {
     setBusy(kind);
@@ -103,7 +144,7 @@ export default function Cart() {
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       {info && <PriceTag size="sm" info={info} />}
                       {off > 0 && <span className="rounded-full px-1.5 text-[11px] font-semibold text-red-600 ring-1 ring-red-300">ลด {off}%</span>}
-                      {l.kind === "variant" && l.sku && <StockBadge info={stock.get(l.sku)} />}
+                      {l.kind === "variant" && l.sku && <FitBadge fit={fitOf(l)} />}
                       {l.kind === "package" && <span className="text-xs text-slate-500">แพ็กเกจ (ขอใบเสนอราคาเท่านั้น)</span>}
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2">
@@ -117,11 +158,13 @@ export default function Cart() {
           </div>
 
           <Card className="h-fit space-y-4">
+            {rank && <p className="flex items-center gap-2 text-sm text-slate-600">ราคาตาม Rank บริษัท <RankBadge rank={rank} /></p>}
             <div className="flex items-baseline justify-between">
               <span className="text-sm text-slate-500">ยอดประมาณการ (สินค้ารายตัว)</span>
               <span className="text-xl font-bold text-navy-900">{formatBaht(total)}</span>
             </div>
             <p className="text-xs text-slate-500">ราคายังไม่รวม VAT และค่าขนส่ง ราคาสุดท้ายยืนยันในใบเสนอราคา</p>
+            {variantLines.length > 0 && <StockAsOfNote at={asOf} className="rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200" />}
             <Field label="รายละเอียดโครงการ / หมายเหตุ">
               <Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="เช่น ขนาดระบบ สถานที่ติดตั้ง วันที่ต้องการรับของ" />
             </Field>
@@ -149,9 +192,10 @@ export default function Cart() {
             </p>
             {waiting > 0 && (
               <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
-                {waiting} รายการยังไม่มีของในสต๊อก กด “ขอใบเสนอราคา” เพื่อสั่งจอง เจ้าหน้าที่จะแจ้งราคาและวันที่ของเข้า
+                {waiting} รายการมีสินค้าไม่พอ{partial > 0 ? ` (${partial} รายการมีสินค้าบางส่วน)` : ""} กด “ขอใบเสนอราคา” เพื่อสั่งจอง หรือลดจำนวนให้พอกับสต๊อกแล้วจอง เจ้าหน้าที่จะแจ้งราคาและวันที่ของเข้า
               </p>
             )}
+            <Button variant="secondary" className="w-full" onClick={exportPdf}>ส่งออก PDF (ใบเสนอราคาเบื้องต้น)</Button>
           </Card>
         </div>
       )}
