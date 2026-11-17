@@ -122,6 +122,8 @@ export async function printShopDoc(doc: ShopDoc, prepared?: Window | null) {
       ? "ใบจองนี้อ้างอิงราคาและสถานะสินค้าตามเว็บไซต์ ณ วันที่จอง การจองจะสมบูรณ์เมื่อพนักงานขายยืนยัน เอกสารนี้ไม่ใช่ใบแจ้งหนี้ สามารถติดต่อเซลล์เพื่อขอใบแจ้งหนี้"
       : "ใบเสนอราคานี้อ้างอิงราคาสินค้าตามเว็บไซต์ ณ วันที่ออกเอกสาร ราคายังไม่รวม VAT และค่าขนส่ง เอกสารนี้ไม่ใช่ใบแจ้งหนี้ สามารถติดต่อเซลล์เพื่อขอใบแจ้งหนี้";
   const body = [
+    // compact customer / sales boxes (owner, 17 Nov): smaller text, narrow label column
+    `<style>.panel table { font-size: 8.5pt; line-height: 1.35; } .panel td:first-child { width: 17%; white-space: nowrap; } .panel h4 { font-size: 8pt; }</style>`,
     heading("รายการสินค้า"),
     table(cols, rows, { foot, widths: ["5%", "16%", undefined, ...(showStatus ? ["14%"] : []), "10%", "13%", "14%"] }),
     anyAsk ? `<div class="note muted">รายการที่ขึ้น “สอบถามราคา” พนักงานขายจะแจ้งราคาให้</div>` : "",
