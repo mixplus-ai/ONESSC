@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { productTypeLabel, type ClaimDetails } from "../../../lib/claims";
 
 /** The pieces a customer reported (claim form v2/v3): type, model, S/N, failed panel position, the inverter it belongs to. */
@@ -18,8 +19,8 @@ export function ClaimPieces({ d }: { d: ClaimDetails }) {
           </tr>
         </thead>
         <tbody>
-          {units.map((u, k) => (
-            <tr key={k} className="border-t border-slate-100">
+          {units.map((u, k) => (<Fragment key={k}>
+            <tr className="border-t border-slate-100">
               <td className="py-1 pr-3 text-slate-400">{k + 1}</td>
               {v3 && <td className="py-1 pr-3">{productTypeLabel(u.kind)}</td>}
               <td className="py-1 pr-3">{u.model ?? "-"}</td><td className="py-1 pr-3 font-mono">{u.sn || "-"}</td>
@@ -27,7 +28,14 @@ export function ClaimPieces({ d }: { d: ClaimDetails }) {
               <td className="py-1 pr-3">{u.symptom || "-"}</td>
               {measure && <><td className="py-1 pr-3">{u.volt || "-"}</td><td className="py-1 pr-3">{u.ohm || "-"}</td></>}
             </tr>
-          ))}
+            {(u.case_no || u.manager_sn || u.issue || u.description) && (
+              <tr><td />
+                <td colSpan={20} className="pb-1.5 pr-3 text-slate-600">
+                  {u.manager_sn && <>Manager <span className="font-mono">{u.manager_sn}</span> · </>}Case {u.case_no ?? "-"} · Issue: {u.issue ?? "-"}{u.description ? <> · <span className="whitespace-pre-line">{u.description}</span></> : null}
+                </td>
+              </tr>
+            )}
+          </Fragment>))}
         </tbody>
       </table>
       {refOnly.length > 0 && (

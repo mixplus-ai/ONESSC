@@ -111,9 +111,9 @@ export interface ClaimDetails {
   items?: { model: string; qty: number; bad_sn?: string; ref_inv_sn?: string }[];
   /** claim form v2: one row per S/N with its own symptom (optimizer: measured V and resistance).
    *  v3 (migration 40): kind, failed panel position 0.0.0.0 and the inverter (string) it belongs to */
-  units?: { kind?: ProductType; model?: string; sn?: string; symptom?: string; volt?: string; ohm?: string; pos?: string; inv_sn?: string }[];
+  units?: { kind?: ProductType; model?: string; sn?: string; symptom?: string; volt?: string; ohm?: string; pos?: string; inv_sn?: string; manager_sn?: string; case_no?: string; issue?: string; description?: string }[];
   /** v3: every inverter on the job, claimed or only referenced by other items */
-  inverters?: { sn: string; model?: string; pos?: string; claimed?: boolean }[];
+  inverters?: { sn: string; model?: string; pos?: string; claimed?: boolean; manager_sn?: string; case_no?: string; issue?: string; description?: string }[];
   po_no?: string;
 }
 
@@ -129,13 +129,13 @@ export interface ClaimUnit {
   rma_no: string | null; rma_date: string | null; rma_note: string | null;
   ok_pcode: string | null; ok_doc: string | null; ok_date: string | null; ok_sn: string | null;
   /** migration 40: what the customer reported for this piece */
-  item_type?: ProductType | null; reported_sn?: string | null; ref_inv_sn?: string | null; position?: string | null; symptom?: string | null;
+  item_type?: ProductType | null; reported_sn?: string | null; case_no?: string | null; manager_sn?: string | null; ref_inv_sn?: string | null; position?: string | null; symptom?: string | null;
   /** step 3 inspection: good → main stock, bad → defect warehouse */
   ret_result?: "good" | "bad" | null;
   updated_at: string;
   updated_by: string | null;
 }
-export type UnitField = Exclude<keyof ClaimUnit, "id" | "claim_id" | "seq" | "updated_at" | "updated_by" | "item_type" | "reported_sn" | "ref_inv_sn" | "position" | "symptom" | "ret_result">;
+export type UnitField = Exclude<keyof ClaimUnit, "id" | "claim_id" | "seq" | "updated_at" | "updated_by" | "item_type" | "reported_sn" | "case_no" | "manager_sn" | "ref_inv_sn" | "position" | "symptom" | "ret_result">;
 
 export interface ClaimFile {
   id: string;
