@@ -704,7 +704,7 @@ export const isImage = (f: { file_name?: string | null; content_type?: string | 
   (f.content_type ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic)$/i.test(f.file_name ?? f.path);
 
 // ---------------------------------------------------------------------------
-// SN correction requests (customer asks, staff approve) · migration 20
+// SN correction requests (customer or staff asks, the claim handler approves) · migrations 20, 43
 // ---------------------------------------------------------------------------
 export type SnChangeReason = "typo" | "wrong_unit" | "wrong_product" | "other";
 export const SN_REASON: Record<SnChangeReason, string> = {
@@ -726,6 +726,8 @@ export interface SnChange {
   decided_by: string | null;
   decided_at: string | null;
   created_at: string;
+  /** staff asked (migration 43): another handler or Admin confirms */
+  by_staff?: boolean;
 }
 export const SN_CHANGE_STATUS: Record<SnChange["status"], { label: string; tone: Tone }> = {
   pending: { label: "รออนุมัติ", tone: "amber" },
