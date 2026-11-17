@@ -5,6 +5,8 @@ import { useAuth } from "../../lib/auth";
 import { errorMessage, supabase } from "../../lib/supabase";
 import { BILLING_TYPE, type Billing } from "../../lib/training";
 import { MyCareTeam } from "../../components/CareTeam";
+import { RankBadge } from "../../components/catalog";
+import { useMyRank } from "../../lib/catalog";
 import { COMPANY_STATUS_LABEL, DEPARTMENT_LABEL, ROLE_LABEL } from "../../lib/types";
 
 /** Thai tax ID checksum (13 digits, mod 11). */
@@ -115,6 +117,7 @@ export default function Profile() {
 
 function AvatarCard() {
   const { profile, refresh } = useAuth();
+  const rank = useMyRank();
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -159,7 +162,7 @@ function AvatarCard() {
           {busy && <span className="absolute inset-0 grid place-items-center rounded-full bg-white/70"><Spinner className="h-6 w-6" /></span>}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-navy-900">{profile.full_name || profile.email}</p>
+          <p className="flex flex-wrap items-center gap-2 font-semibold text-navy-900">{profile.full_name || profile.email}<RankBadge rank={rank} /></p>
           <p className="text-sm text-slate-500">{profile.company_name || "ยังไม่ได้ระบุบริษัท"}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button variant="secondary" type="button" onClick={() => ref.current?.click()} disabled={busy}>{profile.avatar_url ? "เปลี่ยนรูป" : "อัปโหลดรูปโปรไฟล์"}</Button>

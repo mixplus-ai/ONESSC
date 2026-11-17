@@ -17,10 +17,14 @@ const blank: Omit<TeamMember, "id"> = {
   photo_url: "",
   is_published: true,
   sort: 0,
+  user_id: null,
 };
 
 function Editor({ initial, onClose }: { initial: Partial<TeamMember>; onClose: (saved: boolean) => void }) {
   const [m, setM] = useState({ ...blank, ...initial });
+  const staff = useRows<{ id: string; full_name: string | null; email: string }>(() =>
+    supabase.from("profiles").select("id, full_name, email").in("role", ["staff", "admin"]).order("full_name"),
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = <K extends keyof typeof m>(k: K, v: (typeof m)[K]) => setM((x) => ({ ...x, [k]: v }));
@@ -39,6 +43,7 @@ function Editor({ initial, onClose }: { initial: Partial<TeamMember>; onClose: (
       photo_url: m.photo_url || null,
       is_published: m.is_published,
       sort: m.sort,
+      user_id: m.user_id || null,
     };
     const { error } = m.id ? await supabase.from("team_members").update(row).eq("id", m.id) : await supabase.from("team_members").insert(row);
     setBusy(false);
@@ -66,6 +71,12 @@ function Editor({ initial, onClose }: { initial: Partial<TeamMember>; onClose: (
         <Field label="เบอร์โทร"><Input type="tel" value={m.phone ?? ""} onChange={(e) => set("phone", e.target.value)} /></Field>
         <Field label="LINE ID"><Input value={m.line_id ?? ""} onChange={(e) => set("line_id", e.target.value)} /></Field>
         <Field label="อีเมล"><Input type="email" value={m.email ?? ""} onChange={(e) => set("email", e.target.value)} /></Field>
+        <Field label="บัญชีผู้ใช้ในระบบ (Staff)" hint="เซลล์จะเห็นและอนุมัติใบเสนอราคา/ใบจองของบริษัทที่ตัวเองดูแล">
+          <Select value={m.user_id ?? ""} onChange={(e) => set("user_id", e.target.value || null)}>
+            <option value="">ไม่ผูกบัญชี</option>
+            {staff.rows.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.email} · {u.email}</option>)}
+          </Select>
+        </Field>
         <div className="sm:col-span-2"><Field label="รูป"><ImageUpload folder="team" size={IMAGE_SIZES.person} value={m.photo_url ?? ""} onChange={(v) => set("photo_url", v)} /></Field></div>
         <div className="space-y-3">
           <Field label="ลำดับการแสดง"><Input type="number" value={m.sort} onChange={(e) => set("sort", Number(e.target.value) || 0)} /></Field>
@@ -104,6 +115,7 @@ export default function TeamAdmin() {
                 <p className="truncate text-sm text-slate-500">{[m.position, DEPARTMENT_LABEL[m.department]].filter(Boolean).join(" · ")}</p>
                 <div className="mt-1 flex items-center gap-2">
                   {!m.is_published && <Badge>ซ่อน</Badge>}
+                  {m.user_id ? <Badge tone="green">ผูกบัญชีแล้ว</Badge> : m.department === "sales" && <Badge tone="amber">ยังไม่ผูกบัญชี</Badge>}
                   <button onClick={() => setEditing(m)} className="text-sm font-semibold text-navy-700 hover:underline">แก้ไข</button>
                 </div>
               </div>
