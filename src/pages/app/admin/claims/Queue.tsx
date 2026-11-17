@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ClaimPieces } from "../../claims/ClaimPieces";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Select, Spinner, Textarea, cx } from "../../../../components/ui";
 import { useAuth } from "../../../../lib/auth";
 import {
@@ -56,7 +57,7 @@ function Details({ c }: { c: Claim }) {
       <div><dt className="inline text-slate-500">ผู้ติดต่อ: </dt><dd className="inline">{c.contact_name} · {c.contact_phone}{c.contact_email ? ` · ${c.contact_email}` : ""}</dd></div>
       <div><dt className="inline text-slate-500">บริษัท: </dt><dd className="inline">{c.company_name ?? "-"}{c.company_id ? "" : " (ยังไม่ผูกบริษัท)"}</dd></div>
       {c.installer_name && <div><dt className="inline text-slate-500">ผู้ติดตั้ง (EPC): </dt><dd className="inline">{c.installer_name}</dd></div>}
-      {c.site_name && <div><dt className="inline text-slate-500">ไซต์งาน: </dt><dd className="inline">{c.site_name}</dd></div>}
+      {c.site_name && <div><dt className="inline text-slate-500">ชื่อโครงการ: </dt><dd className="inline">{c.site_name}</dd></div>}
       {d.manager_sn && <div><dt className="inline text-slate-500">S/N Manager: </dt><dd className="inline font-mono">{d.manager_sn}</dd></div>}
       {d.case_no && <div><dt className="inline text-slate-500">Case (Engineer): </dt><dd className="inline">{d.case_no}</dd></div>}
       {d.issue && <div className="sm:col-span-2"><dt className="inline text-slate-500">Issue: </dt><dd className="inline font-medium">{d.issue}</dd></div>}
@@ -69,20 +70,8 @@ function Details({ c }: { c: Claim }) {
       {(d.po_no || c.site_id) && <div><dt className="inline text-slate-500">PO / PI: </dt><dd className="inline">{d.po_no || "-"}</dd>{c.site_id && <> · <dt className="inline text-slate-500">Site ID: </dt><dd className="inline font-mono">{c.site_id}</dd></>}</div>}
       {d.units && d.units.length > 0 && (
         <div className="sm:col-span-2">
-          <dt className="text-slate-500">S/N และอาการรายตัว</dt>
-          <dd className="mt-1 overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead><tr className="text-left text-slate-500"><th className="py-1 pr-3">#</th><th className="py-1 pr-3">รุ่น</th><th className="py-1 pr-3">S/N</th><th className="py-1 pr-3">อาการ</th>{d.units.some((u) => u.volt || u.ohm) && <><th className="py-1 pr-3">V</th><th className="py-1 pr-3">Ω</th></>}</tr></thead>
-              <tbody>
-                {d.units.map((u, k) => (
-                  <tr key={k} className="border-t border-slate-100">
-                    <td className="py-1 pr-3 text-slate-400">{k + 1}</td><td className="py-1 pr-3">{u.model ?? "-"}</td><td className="py-1 pr-3 font-mono">{u.sn || "-"}</td><td className="py-1 pr-3">{u.symptom || "-"}</td>
-                    {d.units!.some((x) => x.volt || x.ohm) && <><td className="py-1 pr-3">{u.volt || "-"}</td><td className="py-1 pr-3">{u.ohm || "-"}</td></>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </dd>
+          <dt className="text-slate-500">สินค้าที่เคลมรายชิ้น</dt>
+          <dd className="mt-1"><ClaimPieces d={d} /></dd>
         </div>
       )}
       {c.symptom && <div className="sm:col-span-2"><dt className="inline text-slate-500">อาการ: </dt><dd className="inline whitespace-pre-line">{c.symptom}</dd></div>}
