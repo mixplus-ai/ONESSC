@@ -109,8 +109,11 @@ export interface ClaimDetails {
   qty?: number;
   sn?: string;
   items?: { model: string; qty: number; bad_sn?: string; ref_inv_sn?: string }[];
-  /** claim form v2: one row per S/N with its own symptom (optimizer: measured V and resistance) */
-  units?: { model?: string; sn?: string; symptom?: string; volt?: string; ohm?: string }[];
+  /** claim form v2: one row per S/N with its own symptom (optimizer: measured V and resistance).
+   *  v3 (migration 40): kind, failed panel position 0.0.0.0 and the inverter (string) it belongs to */
+  units?: { kind?: ProductType; model?: string; sn?: string; symptom?: string; volt?: string; ohm?: string; pos?: string; inv_sn?: string }[];
+  /** v3: every inverter on the job, claimed or only referenced by other items */
+  inverters?: { sn: string; model?: string; pos?: string; claimed?: boolean }[];
   po_no?: string;
 }
 
@@ -125,10 +128,14 @@ export interface ClaimUnit {
   /** step 4: RMA from the manufacturer (keyed by staff) */
   rma_no: string | null; rma_date: string | null; rma_note: string | null;
   ok_pcode: string | null; ok_doc: string | null; ok_date: string | null; ok_sn: string | null;
+  /** migration 40: what the customer reported for this piece */
+  item_type?: ProductType | null; reported_sn?: string | null; ref_inv_sn?: string | null; position?: string | null; symptom?: string | null;
+  /** step 3 inspection: good → main stock, bad → defect warehouse */
+  ret_result?: "good" | "bad" | null;
   updated_at: string;
   updated_by: string | null;
 }
-export type UnitField = Exclude<keyof ClaimUnit, "id" | "claim_id" | "seq" | "updated_at" | "updated_by">;
+export type UnitField = Exclude<keyof ClaimUnit, "id" | "claim_id" | "seq" | "updated_at" | "updated_by" | "item_type" | "reported_sn" | "ref_inv_sn" | "position" | "symptom" | "ret_result">;
 
 export interface ClaimFile {
   id: string;
@@ -212,7 +219,7 @@ export interface ClaimSettings {
 export interface RmaHeader { customer_name?: string; country?: string; ship_address?: string; bill_company?: string; bill_address?: string }
 export const REQUIRE_FIELD_LABEL: Record<string, string> = {
   installer_name: "ผู้ติดตั้ง (EPC)",
-  site_name: "ชื่อไซต์งาน",
+  site_name: "ชื่อโครงการ (Project Name)",
   case_no: "หมายเลข Case (Inverter)",
   manager_sn: "S/N Manager (Inverter)",
   ref_inv_sn: "อ้างอิง S/N Inverter",

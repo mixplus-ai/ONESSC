@@ -9,22 +9,31 @@ import { errorMessage, supabase } from "../../../lib/supabase";
 
 interface BrandOpt { id: string; name: string; warranty_text: string | null; terms: string | null; required_docs: string | null; require_fields: string[] }
 interface Unit { key: string; sn: string; symptom: string; volt: string; ohm: string }
-interface OptItem { key: string; model: string; ref_inv_sn: string; units: Unit[] }
+type ItemKind = "optimizer" | "accessory" | "panel";
+/** one piece in an inverter's string (optimizer / accessory / panel) */
+interface StringItem { key: string; kind: ItemKind; model: string; sn: string; pos: string; symptom: string; volt: string; ohm: string }
+/** one inverter on the job: claimed itself, or only the reference for the items in its string */
+interface InvGroup { key: string; claimed: boolean; model: string; sn: string; pos: string; symptom: string; items: StringItem[] }
 interface StockModel { sku: string; description: string | null }
 interface CareMember { role: "sales" | "support"; full_name: string; job_title: string | null; phone: string | null; line_id: string | null; email: string | null }
 const uid = () => Math.random().toString(36).slice(2);
 const emptyUnit = (): Unit => ({ key: uid(), sn: "", symptom: "", volt: "", ohm: "" });
-const emptyItem = (): OptItem => ({ key: uid(), model: "", ref_inv_sn: "", units: [emptyUnit()] });
+const POS0 = "0.0.0.0";
+const emptyItem = (kind: ItemKind): StringItem => ({ key: uid(), kind, model: "", sn: "", pos: POS0, symptom: "", volt: "", ohm: "" });
+const emptyGroup = (claimed: boolean, kind?: ItemKind): InvGroup => ({ key: uid(), claimed, model: "", sn: "", pos: POS0, symptom: "", items: kind ? [emptyItem(kind)] : [] });
+const ITEM_KINDS: { key: ItemKind; label: string }[] = [{ key: "optimizer", label: "Optimizer" }, { key: "accessory", label: "Accessories" }, { key: "panel", label: "Solar Panel" }];
+const GROUPED = new Set<ProductType>(["inverter", "optimizer", "accessory", "panel"]);
 const lineHref = (id: string) => (/^https?:\/\//.test(id) ? id : id.startsWith("@") ? `https://line.me/R/ti/p/${id}` : `https://line.me/ti/p/~${id}`);
 const tel = (ph: string) => `tel:${ph.split(/[,\n/]/)[0].replace(/[^\d+]/g, "")}`;
 
 /** รุ่น / รหัสสินค้า: type to search the stock sheet of the chosen brand (code + name) or the claim model list. */
-function ModelPicker({ label, value, onChange, options, required = true }: { label: string; value: string; onChange: (v: string) => void; options: { code: string; name: string }[]; required?: boolean }) {
+function ModelPicker({ label, value, onChange, options, required = true, strict, brand }: { label: string; value: string; onChange: (v: string) => void; options: { code: string; name: string }[]; required?: boolean; strict?: boolean; brand?: string }) {
   const id = useMemo(() => `m-${uid()}`, []);
   const hit = options.find((o) => o.code.toUpperCase() === value.trim().toUpperCase());
+  const wrong = strict && options.length > 0 && value.trim() !== "" && !hit;
   return (
-    <Field label={label} required={required} hint={hit?.name ? <span className="text-navy-800">{hit.name}</span> : options.length ? `พิมพ์ค้นหารหัสหรือชื่อ (${options.length} รายการจากสต๊อก) หรือพิมพ์รุ่นเองได้` : "พิมพ์รุ่นสินค้า"}>
-      <Input list={id} value={value} onChange={(e) => onChange(e.target.value)} required={required} placeholder="รหัส / รุ่นสินค้า" />
+    <Field label={label} required={required} hint={wrong ? <span className="text-red-600">เลือกได้เฉพาะสินค้า {brand} จากรายการ</span> : hit?.name ? <span className="text-navy-800">{hit.name}</span> : options.length ? (strict ? `พิมพ์ค้นหาแล้วเลือกจากรายการสินค้า ${brand} (${options.length} รายการ)` : `พิมพ์ค้นหารหัสหรือชื่อ (${options.length} รายการจากสต๊อก) หรือพิมพ์รุ่นเองได้`) : "พิมพ์รุ่นสินค้า"}>
+      <Input list={id} value={value} onChange={(e) => onChange(e.target.value)} required={required} placeholder="รหัส / รุ่นสินค้า" className={wrong ? "!ring-red-400" : ""} />
       <datalist id={id}>{options.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</datalist>
     </Field>
   );
@@ -70,6 +79,107 @@ function SnRows({ units, onChange, measure, single, snLabel = "S/N" }: { units: 
   );
 }
 
+/** Failed panel position 0.0.0.0: four numbers, each up to 3 digits. */
+export function PosInput({ value, onChange, label = "ตำแหน่งที่เสีย" }: { value: string; onChange: (v: string) => void; label?: string }) {
+  const parts = (value || POS0).split(".").concat(["0", "0", "0", "0"]).slice(0, 4);
+  const set = (i: number, v: string) => onChange(parts.map((p, j) => (j === i ? v.replace(/\D/g, "").slice(0, 3) : p)).join("."));
+  return (
+    <div className="flex items-center gap-0.5" role="group" aria-label={label}>
+      {parts.map((p, i) => (
+        <span key={i} className="flex items-center gap-0.5">
+          {i > 0 && <span className="font-bold text-slate-400">.</span>}
+          <input inputMode="numeric" maxLength={3} value={p} onFocus={(e) => e.target.select()} onChange={(e) => set(i, e.target.value)}
+            onBlur={() => { if (parts[i] === "") set(i, "0"); }} aria-label={`${label} ช่องที่ ${i + 1}`}
+            className="w-11 rounded-lg border border-slate-300 px-1 py-2 text-center font-mono text-sm focus:border-navy-500 focus:outline-none" />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Inverters on the job; each one's string holds the optimizers / accessories / panels that failed there. */
+function InverterGroups({ groups, onChange, optionsFor, strict, brand, defaultKind, needSn }: {
+  groups: InvGroup[]; onChange: (g: InvGroup[]) => void; optionsFor: (k: ProductType) => { code: string; name: string }[];
+  strict: boolean; brand: string; defaultKind: ItemKind; needSn: boolean;
+}) {
+  const upd = (k: string, patch: Partial<InvGroup>) => onChange(groups.map((g) => (g.key === k ? { ...g, ...patch } : g)));
+  const updItem = (g: InvGroup, k: string, patch: Partial<StringItem>) => upd(g.key, { items: g.items.map((x) => (x.key === k ? { ...x, ...patch } : x)) });
+  const pieces = groups.reduce((n, g) => n + (g.claimed ? 1 : 0) + g.items.length, 0);
+  return (
+    <div className="space-y-4">
+      {groups.map((g, gi) => (
+        <div key={g.key} className={cx("rounded-xl p-4 ring-1", g.claimed ? "bg-sun-500/5 ring-sun-500/40" : "bg-slate-50/60 ring-slate-200")}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-navy-900">Inverter ตัวที่ {gi + 1}{g.sn.trim() ? <span className="ml-1 font-mono font-normal text-slate-500">{g.sn.trim().toUpperCase()}</span> : null}</p>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={g.claimed} onChange={(e) => upd(g.key, { claimed: e.target.checked })} />เคลม Inverter ตัวนี้</label>
+              {groups.length > 1 && <button type="button" className="text-sm text-red-600 hover:underline" onClick={() => onChange(groups.filter((x) => x.key !== g.key))}>ลบ</button>}
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <ModelPicker label="รุ่น / รหัส Inverter" value={g.model} onChange={(v) => upd(g.key, { model: v })} options={optionsFor("inverter")} required={g.claimed} strict={strict} brand={brand} />
+            <Field label="S/N Inverter" required>
+              <div className="flex gap-1">
+                <Input className="font-mono" value={g.sn} onChange={(e) => upd(g.key, { sn: e.target.value })} placeholder="S/N" />
+                <ScanButton onScan={(sn) => upd(g.key, { sn })} />
+              </div>
+            </Field>
+            {g.claimed && <Field label="ตำแหน่งที่เสีย (แผง)" hint="0.0.0.0 แก้ได้ช่องละ 3 หลัก"><PosInput value={g.pos} onChange={(v) => upd(g.key, { pos: v })} /></Field>}
+          </div>
+          {g.claimed && <div className="mt-3"><Field label="อาการเสียของ Inverter ตัวนี้"><Input value={g.symptom} onChange={(e) => upd(g.key, { symptom: e.target.value })} placeholder="เช่น ไม่มีไฟออก, Error 18xA" /></Field></div>}
+
+          <div className="mt-4">
+            <p className="mb-1.5 text-sm font-medium text-slate-700">สินค้าที่เสียในสตริงของ Inverter นี้ <span className="font-normal text-slate-500">(1 แถว = 1 ชิ้น · {g.items.length} ชิ้น)</span></p>
+            {g.items.length > 0 && (
+              <ul className="space-y-2">
+                {g.items.map((it, i) => (
+                  <li key={it.key} className="rounded-lg bg-white p-3 ring-1 ring-slate-200">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-slate-500">{i + 1}.</span>
+                      <button type="button" className="text-slate-400 hover:text-red-600" onClick={() => upd(g.key, { items: g.items.filter((x) => x.key !== it.key) })} aria-label={`ลบชิ้นที่ ${i + 1}`}>✕</button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                      <Field label="ประเภท">
+                        <Select value={it.kind} onChange={(e) => updItem(g, it.key, { kind: e.target.value as ItemKind, model: "" })}>
+                          {ITEM_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+                        </Select>
+                      </Field>
+                      <ModelPicker label="รุ่น / รหัส" value={it.model} onChange={(v) => updItem(g, it.key, { model: v })} options={optionsFor(it.kind)} strict={strict} brand={brand} />
+                      <Field label="S/N" required={needSn}>
+                        <div className="flex gap-1">
+                          <Input className="font-mono" value={it.sn} onChange={(e) => updItem(g, it.key, { sn: e.target.value })} placeholder="S/N" />
+                          <ScanButton onScan={(sn) => updItem(g, it.key, { sn })} />
+                        </div>
+                      </Field>
+                      <Field label="ตำแหน่งที่เสีย"><PosInput value={it.pos} onChange={(v) => updItem(g, it.key, { pos: v })} /></Field>
+                    </div>
+                    <div className={cx("mt-2 grid gap-2", it.kind === "optimizer" ? "sm:grid-cols-[minmax(0,1fr)_6rem_6rem]" : "")}>
+                      <Input value={it.symptom} onChange={(e) => updItem(g, it.key, { symptom: e.target.value })} placeholder="อาการเสียของชิ้นนี้" aria-label={`อาการเสีย ชิ้นที่ ${i + 1}`} />
+                      {it.kind === "optimizer" && <>
+                        <Input inputMode="decimal" value={it.volt} onChange={(e) => updItem(g, it.key, { volt: e.target.value })} placeholder="V" aria-label={`แรงดัน ชิ้นที่ ${i + 1}`} />
+                        <Input inputMode="decimal" value={it.ohm} onChange={(e) => updItem(g, it.key, { ohm: e.target.value })} placeholder="Ω" aria-label={`ความต้านทาน ชิ้นที่ ${i + 1}`} />
+                      </>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button type="button" variant="secondary" className="!py-1.5" onClick={() => upd(g.key, { items: [...g.items, emptyItem(g.items[g.items.length - 1]?.kind ?? defaultKind)] })}>+ เพิ่มสินค้าในสตริงนี้</Button>
+              <ScanButton multi onScan={(sn) => upd(g.key, { items: [...g.items, { ...emptyItem(g.items[g.items.length - 1]?.kind ?? defaultKind), sn, model: g.items[g.items.length - 1]?.model ?? "" }] })} />
+              <span className="text-xs text-slate-500">สแกนต่อเนื่องได้ ระบบเพิ่มแถวให้</span>
+            </div>
+          </div>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" variant="secondary" onClick={() => onChange([...groups, emptyGroup(groups[0]?.claimed ?? true)])}>+ เพิ่ม Inverter</Button>
+        <span className="text-sm text-slate-600">รวม {pieces} ชิ้นที่เคลม</span>
+      </div>
+    </div>
+  );
+}
+
 /** Case no. comes from the Engineer: show who to contact (the company's support person, else LINE OA). */
 function SupportContact() {
   const { profile } = useAuth();
@@ -103,7 +213,7 @@ function SupportContact() {
   );
 }
 
-interface Draft { at: string; type: ProductType | ""; brandId: string; f: Record<string, string>; units: Unit[]; items: OptItem[] }
+interface Draft { at: string; type: ProductType | ""; brandId: string; f: Record<string, string>; units: Unit[]; groups?: InvGroup[] }
 const draftKey = (id: string | undefined) => `claimDraft:${id ?? "anon"}`;
 function readDraft(id: string | undefined): Draft | null {
   try { return JSON.parse(localStorage.getItem(draftKey(id)) ?? "null"); } catch { return null; }
@@ -124,7 +234,7 @@ export default function NewClaim() {
     delivery_type: "pickup" as "pickup" | "shipping", delivery_address: "",
   });
   const [units, setUnits] = useState<Unit[]>([emptyUnit()]);
-  const [items, setItems] = useState<OptItem[]>([emptyItem()]);
+  const [groups, setGroups] = useState<InvGroup[]>([emptyGroup(true)]);
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -141,7 +251,7 @@ export default function NewClaim() {
     setType(d.type); setBrandId(d.brandId);
     setF((x) => ({ ...x, ...d.f }));
     if (d.units?.length) setUnits(d.units);
-    if (d.items?.length) setItems(d.items);
+    if (d.groups?.length) setGroups(d.groups);
     setRestored(d.at);
   }, [me]);
   useEffect(() => {
@@ -149,15 +259,15 @@ export default function NewClaim() {
     const t = window.setTimeout(() => {
       const touched = type || units.some((u) => u.sn || u.symptom) || f.site_id || f.symptom || f.model;
       try {
-        if (touched) localStorage.setItem(draftKey(me), JSON.stringify({ at: new Date().toISOString(), type, brandId, f, units, items } satisfies Draft));
+        if (touched) localStorage.setItem(draftKey(me), JSON.stringify({ at: new Date().toISOString(), type, brandId, f, units, groups } satisfies Draft));
       } catch { /* storage full or private mode */ }
     }, 600);
     return () => window.clearTimeout(t);
-  }, [me, type, brandId, f, units, items]);
+  }, [me, type, brandId, f, units, groups]);
   function clearDraft() {
     try { localStorage.removeItem(draftKey(me)); } catch { /* ignore */ }
     setRestored(null);
-    setType(""); setBrandId(""); setUnits([emptyUnit()]); setItems([emptyItem()]);
+    setType(""); setBrandId(""); setUnits([emptyUnit()]); setGroups([emptyGroup(true)]);
     setF((x) => ({ ...x, po_no: "", installer_name: "", site_name: "", site_id: "", model: "", manager_sn: "", case_no: "", issue: "", description: "", ref_inv_sn: "", symptom: "", delivery_type: "pickup", delivery_address: "" }));
   }
 
@@ -177,17 +287,30 @@ export default function NewClaim() {
 
   const brand = brands.find((b) => b.id === brandId);
   const req = new Set(brand?.require_fields ?? []);
+  // SolarEdge: only SolarEdge items, one piece per row with its own S/N
+  const isSE = /solar\s*edge/i.test(brand?.name ?? "");
+  const grouped = Boolean(type && GROUPED.has(type));
+  const claimedInv = grouped && groups.some((g) => g.claimed);
   // Case no. / Issue / Description: required for SolarEdge inverters only; staff fill them in for other claims
-  const seInv = type === "inverter" && /solar\s*edge/i.test(brand?.name ?? "");
-  // model options: the claim model list for this type + brand, then the brand's codes from the stock sheet
-  const options = useMemo(() => {
-    const out = new Map<string, string>();
-    for (const m of models) if (m.product_type === type && (!m.brand_id || m.brand_id === brandId)) out.set(m.model, m.note ?? "");
-    for (const st of stock) if (!out.has(st.sku)) out.set(st.sku, st.description ?? "");
-    return [...out].map(([code, name]) => ({ code, name }));
-  }, [models, stock, type, brandId]);
+  const seInv = isSE && (type === "inverter" || claimedInv);
+  // model options per product type: the claim model list for the type + brand, then the brand's codes from the stock sheet
+  // (SolarEdge: brand-specific models only, no generic ones)
+  const optionsFor = useMemo(() => {
+    const cache = new Map<string, { code: string; name: string }[]>();
+    return (t: ProductType) => {
+      if (!cache.has(t)) {
+        const out = new Map<string, string>();
+        for (const m of models) if (m.product_type === t && (isSE ? m.brand_id === brandId : !m.brand_id || m.brand_id === brandId)) out.set(m.model, m.note ?? "");
+        for (const st of stock) if (!out.has(st.sku)) out.set(st.sku, st.description ?? "");
+        cache.set(t, [...out].map(([code, name]) => ({ code, name })));
+      }
+      return cache.get(t)!;
+    };
+  }, [models, stock, brandId, isSE]);
+  const options = type ? optionsFor(type) : [];
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
-  const resetProduct = () => { set("model", ""); setUnits([emptyUnit()]); setItems([emptyItem()]); };
+  const startGroups = (t: ProductType | "") => [emptyGroup(t === "inverter" || !t, t && t !== "inverter" && GROUPED.has(t) ? (t as ItemKind) : undefined)];
+  const resetProduct = (t: ProductType | "" = type) => { set("model", ""); setUnits([emptyUnit()]); setGroups(startGroups(t)); };
 
   function pickFiles(list: FileList | null) {
     if (!list) return;
@@ -208,38 +331,52 @@ export default function NewClaim() {
     if (seInv && !f.description.trim()) return setErr("กรุณากรอก Description");
     if (req.has("attachment") && files.length === 0) return setErr("แบรนด์นี้ต้องแนบรูปหรือไฟล์ประกอบ");
     const clean = (l: Unit[]) => l.filter((u) => u.sn.trim() || u.symptom.trim() || u.volt.trim() || u.ohm.trim());
-    const asJson = (u: Unit, model: string) => ({ model, sn: u.sn.trim(), symptom: u.symptom.trim(), ...(type === "optimizer" ? { volt: u.volt.trim(), ohm: u.ohm.trim() } : {}) });
-    const sns = (l: Unit[]) => l.map((u) => u.sn.trim()).filter(Boolean).join("\n");
-    const model = f.model.trim();
+    const inList = (t: ProductType, v: string) => { const o = optionsFor(t); return !isSE || !o.length || o.some((x) => x.code.toUpperCase() === v.trim().toUpperCase()); };
     const details: Record<string, unknown> = { po_no: f.po_no.trim() || undefined };
-    let rows: { model: string; sn: string; symptom: string }[] = [];
-    if (type === "optimizer") {
-      if (items.some((i) => !i.model.trim())) return setErr("กรุณาเลือกรุ่น Optimizer ให้ครบ");
-      if (req.has("ref_inv_sn") && items.some((i) => !i.ref_inv_sn.trim())) return setErr("กรุณากรอกอ้างอิง S/N Inverter");
-      details.items = items.map((i) => ({ model: i.model.trim(), qty: Math.max(1, i.units.length), bad_sn: sns(i.units), ref_inv_sn: i.ref_inv_sn.trim() }));
-      details.units = items.flatMap((i) => clean(i.units).map((u) => asJson(u, i.model.trim())));
-    } else {
-      if (!model) return setErr("กรุณาเลือกหรือพิมพ์รุ่นสินค้า");
-      const list = clean(units);
-      if (type === "inverter") {
-        if (!units[0].sn.trim()) return setErr("กรุณากรอก S/N ตัวที่เสีย");
-        Object.assign(details, { bad_sn: units[0].sn.trim(), manager_sn: f.manager_sn.trim(), ...(seInv ? { case_no: f.case_no.trim(), issue: f.issue.trim(), description: f.description.trim() } : {}) });
-      } else if (type === "accessory") {
-        if (req.has("ref_inv_sn") && !f.ref_inv_sn.trim()) return setErr("กรุณากรอกอ้างอิง S/N Inverter");
-        Object.assign(details, { ref_inv_sn: f.ref_inv_sn.trim(), bad_sn: sns(units) });
-      } else {
-        Object.assign(details, { qty: Math.max(1, units.length), sn: sns(units) });
+    type Row = { kind: ProductType; model: string; sn: string; symptom: string; pos?: string; inv_sn?: string; volt?: string; ohm?: string };
+    let rows: Row[] = [];
+    if (grouped) {
+      for (const [gi, g] of groups.entries()) {
+        const n = `Inverter ตัวที่ ${gi + 1}`;
+        if (!g.sn.trim()) return setErr(`กรุณากรอก S/N ของ ${n}`);
+        if (g.claimed && !g.model.trim()) return setErr(`กรุณาเลือกรุ่นของ ${n}`);
+        if (g.model.trim() && !inList("inverter", g.model)) return setErr(`${n}: เลือกได้เฉพาะสินค้า ${brand?.name} จากรายการ`);
+        for (const [i, it] of g.items.entries()) {
+          if (!it.model.trim()) return setErr(`กรุณาเลือกรุ่นของชิ้นที่ ${i + 1} ใน${n}`);
+          if (!inList(it.kind, it.model)) return setErr(`ชิ้นที่ ${i + 1} ใน${n}: เลือกได้เฉพาะสินค้า ${brand?.name} จากรายการ`);
+          if (isSE && !it.sn.trim()) return setErr(`SolarEdge เคลมเป็นรายชิ้น กรุณากรอก S/N ชิ้นที่ ${i + 1} ใน${n}`);
+        }
       }
-      details.units = list.map((u) => asJson(u, model));
+      if (type === "inverter" && !claimedInv) return setErr("ติ๊ก \"เคลม Inverter ตัวนี้\" อย่างน้อย 1 ตัว");
+      details.inverters = groups.map((g) => ({ sn: g.sn.trim().toUpperCase(), model: g.model.trim() || undefined, pos: g.claimed ? g.pos : undefined, claimed: g.claimed }));
+      rows = groups.flatMap((g): Row[] => [
+        ...(g.claimed ? [{ kind: "inverter" as const, model: g.model.trim(), sn: g.sn.trim(), symptom: g.symptom.trim(), pos: g.pos }] : []),
+        ...g.items.map((it) => ({ kind: it.kind, model: it.model.trim(), sn: it.sn.trim(), symptom: it.symptom.trim(), pos: it.pos, inv_sn: g.sn.trim().toUpperCase(),
+          ...(it.kind === "optimizer" ? { volt: it.volt.trim(), ohm: it.ohm.trim() } : {}) })),
+      ]);
+      if (!rows.length) return setErr("กรุณาเพิ่มสินค้าที่เคลมอย่างน้อย 1 ชิ้น");
+      if (seInv) Object.assign(details, { case_no: f.case_no.trim(), issue: f.issue.trim(), description: f.description.trim() });
+      if (claimedInv) details.manager_sn = f.manager_sn.trim() || undefined;
+    } else {
+      const model = f.model.trim();
+      if (!model) return setErr("กรุณาเลือกหรือพิมพ์รุ่นสินค้า");
+      if (!inList(type, model)) return setErr(`เลือกได้เฉพาะสินค้า ${brand?.name} จากรายการ`);
+      const list = clean(units);
+      if (isSE && (!list.length || list.some((u) => !u.sn.trim()))) return setErr("SolarEdge เคลมเป็นรายชิ้น กรุณากรอก S/N ทุกชิ้น");
+      rows = (list.length ? list : [emptyUnit()]).map((u) => ({ kind: type, model, sn: u.sn.trim(), symptom: u.symptom.trim() }));
     }
-    rows = (details.units as typeof rows).filter((u) => u.symptom);
+    details.units = rows;
+    const keys = rows.map((r) => r.sn.toUpperCase().replace(/[\s\-_./]/g, "")).filter(Boolean);
+    const dup = keys.find((k, i) => keys.indexOf(k) !== i);
+    if (dup) return setErr(`S/N ซ้ำในใบเคลม: ${dup}`);
+    const withSymptom = rows.filter((u) => u.symptom);
     // staff also see each unit's symptom in the claim's symptom text
     const caseText = seInv ? [`Issue: ${f.issue.trim()}`, `Description: ${f.description.trim()}`] : [];
-    const symptom = [...caseText, f.symptom.trim(), ...rows.map((u) => `${u.sn || u.model}: ${u.symptom}`)].filter(Boolean).join("\n");
+    const symptom = [...caseText, f.symptom.trim(), ...withSymptom.map((u) => `${u.sn || u.model}${u.pos && u.pos !== POS0 ? ` @${u.pos}` : ""}: ${u.symptom}`)].filter(Boolean).join("\n");
     setBusy(true);
     const { data, error } = await supabase.rpc("submit_claim", {
       p: {
-        brand_id: brandId, product_type: type, model: type === "optimizer" ? null : model,
+        brand_id: brandId, product_type: type, model: null,
         contact_name: f.contact_name, contact_phone: f.contact_phone, company_name: f.company_name,
         installer_name: f.installer_name, site_name: f.site_name, site_id: f.site_id.trim(), symptom,
         delivery_type: f.delivery_type, delivery_address: f.delivery_address, details,
@@ -291,7 +428,7 @@ export default function NewClaim() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="เลขที่ PO หรือ PI ที่เคยสั่งซื้อ" hint="ถ้ามี ช่วยให้ตรวจสอบประกันได้เร็วขึ้น"><Input value={f.po_no} onChange={(e) => set("po_no", e.target.value)} placeholder="เช่น PI-SSC2026091001" /></Field>
             <Field label="ชื่อ EPC / ผู้ติดตั้ง" required={req.has("installer_name")}><Input value={f.installer_name} onChange={(e) => set("installer_name", e.target.value)} required={req.has("installer_name")} /></Field>
-            <Field label="ชื่อไซต์งาน (Site Name)" required={req.has("site_name")}><Input value={f.site_name} onChange={(e) => set("site_name", e.target.value)} required={req.has("site_name")} /></Field>
+            <Field label="ชื่อโครงการ (Project Name)" required={req.has("site_name")}><Input value={f.site_name} onChange={(e) => set("site_name", e.target.value)} required={req.has("site_name")} /></Field>
             <Field label="เลขที่ Site ID" required><Input value={f.site_id} onChange={(e) => set("site_id", e.target.value)} required placeholder="Site ID ในระบบมอนิเตอร์" /></Field>
           </div>
         </Card>
@@ -303,7 +440,7 @@ export default function NewClaim() {
           <p className="mb-2 text-sm font-medium text-slate-700"><span className="mr-1.5 inline-grid h-5 w-5 place-items-center rounded-full bg-navy-800 text-xs text-white">1</span>ประเภทการเคลมสินค้า <span className="text-red-500">*</span></p>
           <div className="flex flex-wrap gap-2">
             {PRODUCT_TYPES.map((t) => (
-              <button key={t.key} type="button" onClick={() => { setType(t.key); resetProduct(); }}
+              <button key={t.key} type="button" onClick={() => { setType(t.key); resetProduct(t.key); }}
                 className={cx("rounded-xl px-4 py-2 text-sm font-semibold ring-1", type === t.key ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-700 ring-slate-200 hover:ring-navy-300")}>
                 {t.label}
               </button>
@@ -331,60 +468,37 @@ export default function NewClaim() {
             <div className="mt-5">
               <p className="mb-3 text-sm font-medium text-slate-700"><span className="mr-1.5 inline-grid h-5 w-5 place-items-center rounded-full bg-navy-800 text-xs text-white">3</span>รายละเอียดสินค้า</p>
 
-              {type === "inverter" && (
+              {isSE && <div className="mb-4"><Alert tone="navy">SolarEdge เคลมเป็นรายชิ้น: 1 แถว = 1 ชิ้น พร้อม S/N ของชิ้นนั้น และเลือกได้เฉพาะสินค้า SolarEdge</Alert></div>}
+
+              {grouped && (
                 <div className="space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <ModelPicker label="รุ่น / รหัส Inverter" value={f.model} onChange={(v) => set("model", v)} options={options} />
-                    <Field label="อ้างอิง S/N Manager Inverter" required={req.has("manager_sn")}><Input className="font-mono" value={f.manager_sn} onChange={(e) => set("manager_sn", e.target.value)} required={req.has("manager_sn")} /></Field>
-                  </div>
+                  <p className="text-sm text-slate-600">
+                    {type === "inverter"
+                      ? "เพิ่ม Inverter ได้หลายตัว ใส่ S/N และตำแหน่งที่เสีย ถ้ามี Optimizer / อุปกรณ์ / แผงเสียในสตริงเดียวกัน เพิ่มไว้ใต้ Inverter ตัวนั้น"
+                      : "ระบุ Inverter ที่สินค้าแต่ละชิ้นต่ออยู่ (ไม่ต้องติ๊กเคลม ถ้า Inverter ไม่เสีย) แล้วเพิ่มชิ้นที่เสียไว้ใต้ Inverter ตัวนั้น"}
+                  </p>
+                  {claimedInv && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field label="อ้างอิง S/N Manager Inverter" required={req.has("manager_sn")}><Input className="font-mono" value={f.manager_sn} onChange={(e) => set("manager_sn", e.target.value)} required={req.has("manager_sn")} /></Field>
+                    </div>
+                  )}
                   {seInv && (<>
-                  <div className="grid items-start gap-4 sm:grid-cols-2">
-                    <Field label="หมายเลข Case (จาก Engineer)" required><Input value={f.case_no} onChange={(e) => set("case_no", e.target.value)} required /></Field>
-                    <SupportContact />
-                  </div>
-                  <Field label="Issue" required hint="หัวข้อปัญหาตาม Case เช่น Isolation fault, Error 3x9A"><Input value={f.issue} onChange={(e) => set("issue", e.target.value)} required maxLength={200} /></Field>
-                  <Field label="Description" required hint="รายละเอียดปัญหาและสิ่งที่ตรวจสอบแล้ว"><Textarea rows={3} value={f.description} onChange={(e) => set("description", e.target.value)} required maxLength={2000} /></Field>
+                    <div className="grid items-start gap-4 sm:grid-cols-2">
+                      <Field label="หมายเลข Case (จาก Engineer)" required><Input value={f.case_no} onChange={(e) => set("case_no", e.target.value)} required /></Field>
+                      <SupportContact />
+                    </div>
+                    <Field label="Issue" required hint="หัวข้อปัญหาตาม Case เช่น Isolation fault, Error 3x9A"><Input value={f.issue} onChange={(e) => set("issue", e.target.value)} required maxLength={200} /></Field>
+                    <Field label="Description" required hint="รายละเอียดปัญหาและสิ่งที่ตรวจสอบแล้ว"><Textarea rows={3} value={f.description} onChange={(e) => set("description", e.target.value)} required maxLength={2000} /></Field>
                   </>)}
-                  <div><p className="mb-1.5 text-sm font-medium text-slate-700">S/N ตัวที่เสีย และอาการ <span className="text-red-500">*</span></p><SnRows single units={units} onChange={setUnits} /></div>
+                  <InverterGroups groups={groups} onChange={setGroups} optionsFor={optionsFor} strict={isSE} brand={brand?.name ?? ""}
+                    defaultKind={type !== "inverter" && GROUPED.has(type as ProductType) ? (type as ItemKind) : "optimizer"} needSn={isSE} />
                 </div>
               )}
 
-              {type === "optimizer" && (
+              {(type === "battery" || type === "other") && (
                 <div className="space-y-4">
-                  {items.map((it, i) => {
-                    const upd = (patch: Partial<OptItem>) => setItems((l) => l.map((x) => (x.key === it.key ? { ...x, ...patch } : x)));
-                    return (
-                      <div key={it.key} className="rounded-xl bg-slate-50/60 p-4 ring-1 ring-slate-200">
-                        <div className="mb-3 flex items-center justify-between">
-                          <p className="text-sm font-semibold text-navy-900">Optimizer รุ่นที่ {i + 1} · {it.units.length} ตัว</p>
-                          {items.length > 1 && <button type="button" className="text-sm text-red-600 hover:underline" onClick={() => setItems((l) => l.filter((x) => x.key !== it.key))}>ลบรุ่นนี้</button>}
-                        </div>
-                        <div className="mb-3 grid gap-3 sm:grid-cols-2">
-                          <ModelPicker label="รุ่น / รหัส" value={it.model} onChange={(v) => upd({ model: v })} options={options} />
-                          <Field label="อ้างอิง S/N Inverter" required={req.has("ref_inv_sn")}><Input className="font-mono" value={it.ref_inv_sn} onChange={(e) => upd({ ref_inv_sn: e.target.value })} /></Field>
-                        </div>
-                        <SnRows measure units={it.units} onChange={(u) => upd({ units: u })} snLabel="S/N ตัวเสีย" />
-                      </div>
-                    );
-                  })}
-                  <Button type="button" variant="secondary" onClick={() => setItems((l) => [...l, emptyItem()])}>+ เพิ่มรุ่น Optimizer</Button>
-                </div>
-              )}
-
-              {type === "accessory" && (
-                <div className="space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <ModelPicker label="รุ่น / รหัสอุปกรณ์" value={f.model} onChange={(v) => set("model", v)} options={options} />
-                    <Field label="อ้างอิง S/N Inverter" required={req.has("ref_inv_sn")}><Input className="font-mono" value={f.ref_inv_sn} onChange={(e) => set("ref_inv_sn", e.target.value)} required={req.has("ref_inv_sn")} /></Field>
-                  </div>
-                  <div><p className="mb-1.5 text-sm font-medium text-slate-700">S/N อุปกรณ์ (ถ้ามี) และอาการ</p><SnRows units={units} onChange={setUnits} /></div>
-                </div>
-              )}
-
-              {(type === "panel" || type === "battery" || type === "other") && (
-                <div className="space-y-4">
-                  <div className="max-w-md"><ModelPicker label="รุ่น / รหัสสินค้า" value={f.model} onChange={(v) => set("model", v)} options={options} /></div>
-                  <div><p className="mb-1.5 text-sm font-medium text-slate-700">{type === "panel" ? "S/N แผง" : "S/N"} และอาการ <span className="font-normal text-slate-500">(1 บรรทัด = 1 ชิ้น · จำนวน {units.length} ชิ้น)</span></p><SnRows units={units} onChange={setUnits} /></div>
+                  <div className="max-w-md"><ModelPicker label="รุ่น / รหัสสินค้า" value={f.model} onChange={(v) => set("model", v)} options={options} strict={isSE} brand={brand?.name} /></div>
+                  <div><p className="mb-1.5 text-sm font-medium text-slate-700">S/N และอาการ <span className="font-normal text-slate-500">(1 บรรทัด = 1 ชิ้น · จำนวน {units.length} ชิ้น)</span></p><SnRows units={units} onChange={setUnits} /></div>
                 </div>
               )}
 

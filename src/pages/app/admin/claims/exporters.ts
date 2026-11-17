@@ -54,7 +54,7 @@ export function printClaim(c: Claim, units: ClaimUnit[], brands: BrandOpt[]) {
     extra: [["Case ID", c.case_id]],
     landscape: true,
     panels: [
-      { heading: "ลูกค้า", rows: [["บริษัท", c.company_name ?? "-"], ["SiteID", c.site_id], ["รหัสเซลล์", c.sales_code]] },
+      { heading: "ลูกค้า", rows: [["บริษัท", c.company_name ?? "-"], ["ชื่อโครงการ", c.site_name], ["SiteID", c.site_id], ["รหัสเซลล์", c.sales_code]] },
       { heading: "สินค้า", rows: [["แบรนด์ / ประเภท", [brands.find((b) => b.id === c.brand_id)?.name, c.product_type && productTypeLabel(c.product_type)].filter(Boolean).join(" · ") || "-"], ["จำนวน", `${c.qty} ชิ้น`]] },
       { heading: "เอกสาร", rows: [["เลขใบสำคัญ", c.voucher_no], ["วันที่ใบสำคัญ", fmtDmy(c.voucher_date)], ["วันนัดรับ", c.pickup_on]] },
     ],
