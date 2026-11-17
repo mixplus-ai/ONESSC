@@ -13,7 +13,9 @@ type ItemKind = "optimizer" | "accessory" | "panel";
 /** one piece in an inverter's string (optimizer / accessory / panel) */
 interface StringItem { key: string; kind: ItemKind; model: string; sn: string; pos: string; symptom: string; volt: string; ohm: string }
 /** one inverter on the job: claimed itself, or only the reference for the items in its string */
-interface InvGroup { key: string; claimed: boolean; model: string; sn: string; pos: string; symptom: string; items: StringItem[] }
+interface InvGroup { key: string; claimed: boolean; model: string; sn: string; pos: string; symptom: string; items: StringItem[];
+  /** per inverter (owner 2026-11-17): S/N Manager, Case no. from the Engineer, Issue, Description */
+  manager_sn?: string; case_no?: string; issue?: string; description?: string }
 interface StockModel { sku: string; description: string | null }
 interface CareMember { role: "sales" | "support"; full_name: string; job_title: string | null; phone: string | null; line_id: string | null; email: string | null }
 const uid = () => Math.random().toString(36).slice(2);
@@ -98,9 +100,9 @@ export function PosInput({ value, onChange, label = "ตำแหน่งที
 }
 
 /** Inverters on the job; each one's string holds the optimizers / accessories / panels that failed there. */
-function InverterGroups({ groups, onChange, optionsFor, strict, brand, defaultKind, needSn }: {
+function InverterGroups({ groups, onChange, optionsFor, strict, brand, defaultKind, needSn, needCase, needManager }: {
   groups: InvGroup[]; onChange: (g: InvGroup[]) => void; optionsFor: (k: ProductType) => { code: string; name: string }[];
-  strict: boolean; brand: string; defaultKind: ItemKind; needSn: boolean;
+  strict: boolean; brand: string; defaultKind: ItemKind; needSn: boolean; needCase: boolean; needManager: boolean;
 }) {
   const upd = (k: string, patch: Partial<InvGroup>) => onChange(groups.map((g) => (g.key === k ? { ...g, ...patch } : g)));
   const updItem = (g: InvGroup, k: string, patch: Partial<StringItem>) => upd(g.key, { items: g.items.map((x) => (x.key === k ? { ...x, ...patch } : x)) });
@@ -116,6 +118,11 @@ function InverterGroups({ groups, onChange, optionsFor, strict, brand, defaultKi
               {groups.length > 1 && <button type="button" className="text-sm text-red-600 hover:underline" onClick={() => onChange(groups.filter((x) => x.key !== g.key))}>ลบ</button>}
             </div>
           </div>
+          {(
+            <div className="mb-3 max-w-md">
+              <Field label="อ้างอิง S/N Manager Inverter" required={needManager}><Input className="font-mono" value={g.manager_sn ?? ""} onChange={(e) => upd(g.key, { manager_sn: e.target.value })} /></Field>
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <ModelPicker label="รุ่น / รหัส Inverter" value={g.model} onChange={(v) => upd(g.key, { model: v })} options={optionsFor("inverter")} required={g.claimed} strict={strict} brand={brand} />
             <Field label="S/N Inverter" required>
@@ -126,6 +133,13 @@ function InverterGroups({ groups, onChange, optionsFor, strict, brand, defaultKi
             </Field>
             {g.claimed && <Field label="ตำแหน่งที่เสีย (แผง)" hint="0.0.0.0 แก้ได้ช่องละ 3 หลัก"><PosInput value={g.pos} onChange={(v) => upd(g.key, { pos: v })} /></Field>}
           </div>
+          {(
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field label="หมายเลข Case (จาก Engineer)" required={needCase}><Input value={g.case_no ?? ""} onChange={(e) => upd(g.key, { case_no: e.target.value })} maxLength={100} /></Field>
+              <Field label="Issue" required={needCase} hint="หัวข้อปัญหาตาม Case เช่น Isolation fault, Error 3x9A"><Input value={g.issue ?? ""} onChange={(e) => upd(g.key, { issue: e.target.value })} maxLength={200} /></Field>
+              <div className="sm:col-span-2"><Field label="Description" required={needCase} hint="รายละเอียดปัญหาและสิ่งที่ตรวจสอบแล้ว"><Textarea rows={2} value={g.description ?? ""} onChange={(e) => upd(g.key, { description: e.target.value })} maxLength={2000} /></Field></div>
+            </div>
+          )}
           {g.claimed && <div className="mt-3"><Field label="อาการเสียของ Inverter ตัวนี้"><Input value={g.symptom} onChange={(e) => upd(g.key, { symptom: e.target.value })} placeholder="เช่น ไม่มีไฟออก, Error 18xA" /></Field></div>}
 
           <div className="mt-4">
@@ -326,20 +340,24 @@ export default function NewClaim() {
     if (!type) return setErr("กรุณาเลือกประเภทการเคลม");
     if (!brandId) return setErr("กรุณาเลือกแบรนด์");
     if (!f.site_id.trim()) return setErr("กรุณากรอก Site ID");
-    if (seInv && !f.case_no.trim()) return setErr("กรุณากรอกหมายเลข Case จาก Engineer (ยังไม่มีเลข กดติดต่อ Support)");
-    if (seInv && !f.issue.trim()) return setErr("กรุณากรอก Issue");
-    if (seInv && !f.description.trim()) return setErr("กรุณากรอก Description");
+    if (seInv && !grouped && !f.case_no.trim()) return setErr("กรุณากรอกหมายเลข Case จาก Engineer (ยังไม่มีเลข กดติดต่อ Support)");
+    if (seInv && !grouped && !f.issue.trim()) return setErr("กรุณากรอก Issue");
+    if (seInv && !grouped && !f.description.trim()) return setErr("กรุณากรอก Description");
     if (req.has("attachment") && files.length === 0) return setErr("แบรนด์นี้ต้องแนบรูปหรือไฟล์ประกอบ");
     const clean = (l: Unit[]) => l.filter((u) => u.sn.trim() || u.symptom.trim() || u.volt.trim() || u.ohm.trim());
     const inList = (t: ProductType, v: string) => { const o = optionsFor(t); return !isSE || !o.length || o.some((x) => x.code.toUpperCase() === v.trim().toUpperCase()); };
     const details: Record<string, unknown> = { po_no: f.po_no.trim() || undefined };
-    type Row = { kind: ProductType; model: string; sn: string; symptom: string; pos?: string; inv_sn?: string; volt?: string; ohm?: string };
+    type Row = { kind: ProductType; model: string; sn: string; symptom: string; pos?: string; inv_sn?: string; volt?: string; ohm?: string; manager_sn?: string; case_no?: string; issue?: string; description?: string };
     let rows: Row[] = [];
     if (grouped) {
       for (const [gi, g] of groups.entries()) {
         const n = `Inverter ตัวที่ ${gi + 1}`;
         if (!g.sn.trim()) return setErr(`กรุณากรอก S/N ของ ${n}`);
         if (g.claimed && !g.model.trim()) return setErr(`กรุณาเลือกรุ่นของ ${n}`);
+        if (!g.manager_sn?.trim()) return setErr(`กรุณากรอก S/N Manager ของ ${n}`);
+        if (!g.case_no?.trim()) return setErr(`กรุณากรอกหมายเลข Case จาก Engineer ของ ${n} (ยังไม่มีเลข กดติดต่อ Support)`);
+        if (!g.issue?.trim()) return setErr(`กรุณากรอก Issue ของ ${n}`);
+        if (!g.description?.trim()) return setErr(`กรุณากรอก Description ของ ${n}`);
         if (g.model.trim() && !inList("inverter", g.model)) return setErr(`${n}: เลือกได้เฉพาะสินค้า ${brand?.name} จากรายการ`);
         for (const [i, it] of g.items.entries()) {
           if (!it.model.trim()) return setErr(`กรุณาเลือกรุ่นของชิ้นที่ ${i + 1} ใน${n}`);
@@ -348,15 +366,18 @@ export default function NewClaim() {
         }
       }
       if (type === "inverter" && !claimedInv) return setErr("ติ๊ก \"เคลม Inverter ตัวนี้\" อย่างน้อย 1 ตัว");
-      details.inverters = groups.map((g) => ({ sn: g.sn.trim().toUpperCase(), model: g.model.trim() || undefined, pos: g.claimed ? g.pos : undefined, claimed: g.claimed }));
+      details.inverters = groups.map((g) => ({ sn: g.sn.trim().toUpperCase(), model: g.model.trim() || undefined, pos: g.claimed ? g.pos : undefined, claimed: g.claimed,
+        manager_sn: g.manager_sn?.trim(), case_no: g.case_no?.trim(), issue: g.issue?.trim(), description: g.description?.trim() }));
       rows = groups.flatMap((g): Row[] => [
-        ...(g.claimed ? [{ kind: "inverter" as const, model: g.model.trim(), sn: g.sn.trim(), symptom: g.symptom.trim(), pos: g.pos }] : []),
+        ...(g.claimed ? [{ kind: "inverter" as const, model: g.model.trim(), sn: g.sn.trim(), symptom: g.symptom.trim(), pos: g.pos,
+          manager_sn: g.manager_sn?.trim() || undefined, case_no: g.case_no?.trim() || undefined, issue: g.issue?.trim() || undefined, description: g.description?.trim() || undefined }] : []),
         ...g.items.map((it) => ({ kind: it.kind, model: it.model.trim(), sn: it.sn.trim(), symptom: it.symptom.trim(), pos: it.pos, inv_sn: g.sn.trim().toUpperCase(),
           ...(it.kind === "optimizer" ? { volt: it.volt.trim(), ohm: it.ohm.trim() } : {}) })),
       ]);
       if (!rows.length) return setErr("กรุณาเพิ่มสินค้าที่เคลมอย่างน้อย 1 ชิ้น");
-      if (seInv) Object.assign(details, { case_no: f.case_no.trim(), issue: f.issue.trim(), description: f.description.trim() });
-      if (claimedInv) details.manager_sn = f.manager_sn.trim() || undefined;
+      // first claimed inverter's case also kept at the top level (older screens read these)
+      const first = groups.find((g) => g.claimed);
+      if (first) Object.assign(details, { case_no: first.case_no?.trim() || undefined, issue: first.issue?.trim() || undefined, description: first.description?.trim() || undefined, manager_sn: first.manager_sn?.trim() || undefined });
     } else {
       const model = f.model.trim();
       if (!model) return setErr("กรุณาเลือกหรือพิมพ์รุ่นสินค้า");
@@ -371,7 +392,9 @@ export default function NewClaim() {
     if (dup) return setErr(`S/N ซ้ำในใบเคลม: ${dup}`);
     const withSymptom = rows.filter((u) => u.symptom);
     // staff also see each unit's symptom in the claim's symptom text
-    const caseText = seInv ? [`Issue: ${f.issue.trim()}`, `Description: ${f.description.trim()}`] : [];
+    const caseText = grouped
+      ? rows.filter((r) => r.kind === "inverter" && (r.case_no || r.issue || r.description)).map((r) => `${r.sn} · Case ${r.case_no ?? "-"} · Issue: ${r.issue ?? "-"} · Description: ${r.description ?? "-"}`)
+      : seInv ? [`Issue: ${f.issue.trim()}`, `Description: ${f.description.trim()}`] : [];
     const symptom = [...caseText, f.symptom.trim(), ...withSymptom.map((u) => `${u.sn || u.model}${u.pos && u.pos !== POS0 ? ` @${u.pos}` : ""}: ${u.symptom}`)].filter(Boolean).join("\n");
     setBusy(true);
     const { data, error } = await supabase.rpc("submit_claim", {
@@ -477,21 +500,9 @@ export default function NewClaim() {
                       ? "เพิ่ม Inverter ได้หลายตัว ใส่ S/N และตำแหน่งที่เสีย ถ้ามี Optimizer / อุปกรณ์ / แผงเสียในสตริงเดียวกัน เพิ่มไว้ใต้ Inverter ตัวนั้น"
                       : "ระบุ Inverter ที่สินค้าแต่ละชิ้นต่ออยู่ (ไม่ต้องติ๊กเคลม ถ้า Inverter ไม่เสีย) แล้วเพิ่มชิ้นที่เสียไว้ใต้ Inverter ตัวนั้น"}
                   </p>
-                  {claimedInv && (
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label="อ้างอิง S/N Manager Inverter" required={req.has("manager_sn")}><Input className="font-mono" value={f.manager_sn} onChange={(e) => set("manager_sn", e.target.value)} required={req.has("manager_sn")} /></Field>
-                    </div>
-                  )}
-                  {seInv && (<>
-                    <div className="grid items-start gap-4 sm:grid-cols-2">
-                      <Field label="หมายเลข Case (จาก Engineer)" required><Input value={f.case_no} onChange={(e) => set("case_no", e.target.value)} required /></Field>
-                      <SupportContact />
-                    </div>
-                    <Field label="Issue" required hint="หัวข้อปัญหาตาม Case เช่น Isolation fault, Error 3x9A"><Input value={f.issue} onChange={(e) => set("issue", e.target.value)} required maxLength={200} /></Field>
-                    <Field label="Description" required hint="รายละเอียดปัญหาและสิ่งที่ตรวจสอบแล้ว"><Textarea rows={3} value={f.description} onChange={(e) => set("description", e.target.value)} required maxLength={2000} /></Field>
-                  </>)}
+                  <div className="max-w-md"><SupportContact /></div>
                   <InverterGroups groups={groups} onChange={setGroups} optionsFor={optionsFor} strict={isSE} brand={brand?.name ?? ""}
-                    defaultKind={type !== "inverter" && GROUPED.has(type as ProductType) ? (type as ItemKind) : "optimizer"} needSn={isSE} />
+                    defaultKind={type !== "inverter" && GROUPED.has(type as ProductType) ? (type as ItemKind) : "optimizer"} needSn={isSE} needCase needManager />
                 </div>
               )}
 

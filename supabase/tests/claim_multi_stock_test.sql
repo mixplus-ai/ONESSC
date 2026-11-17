@@ -28,7 +28,7 @@ declare se uuid := (select id from public.brands where slug = 'solaredge');
   base jsonb; det jsonb; u jsonb;
 begin
   base := jsonb_build_object('product_type', 'inverter', 'contact_name', 'A', 'contact_phone', '081', 'site_id', 'S1', 'site_name', 'Project X', 'brand_id', se);
-  det := jsonb_build_object('case_no', 'C1', 'issue', 'Isolation', 'description', 'trip',
+  det := jsonb_build_object('case_no', 'C1', 'issue', 'Isolation', 'description', 'trip', 'manager_sn', 'MGR-1',
     'inverters', jsonb_build_array(jsonb_build_object('sn', 'INV-1', 'model', 'SE10K'), jsonb_build_object('sn', 'INV-2', 'model', 'SE10K')));
   u := jsonb_build_array(
     jsonb_build_object('kind', 'inverter', 'model', 'se10k', 'sn', 'INV-1', 'pos', '1.0.0.0', 'symptom', 'no output'),
@@ -54,9 +54,17 @@ begin
   begin perform public.submit_claim(base || jsonb_build_object('details', det || jsonb_build_object('units',
       u || jsonb_build_array(jsonb_build_object('kind', 'optimizer', 'model', 'P500', 'sn', 'opt 1', 'inv_sn', 'INV-1')))));
     assert false, 'dup sn'; exception when raise_exception then null; end;
-  -- inverter claims still need the case for SolarEdge
+  -- inverter claims still need the case
   begin perform public.submit_claim(base || jsonb_build_object('details', (det - 'case_no') || jsonb_build_object('units', u)));
     assert false, 'case'; exception when raise_exception then null; end;
+  -- migration 42: every inverter (any brand) needs its own manager S/N, case, issue, description
+  begin perform public.submit_claim(base || jsonb_build_object('brand_id', (select id from public.brands where slug <> 'solaredge' limit 1),
+      'details', jsonb_build_object('units', jsonb_build_array(jsonb_build_object('kind', 'inverter', 'model', 'X1', 'sn', 'H-1', 'case_no', 'C9', 'issue', 'i', 'description', 'd')))));
+    assert false, 'manager sn per inverter'; exception when raise_exception then null; end;
+  insert into t40 values ('c42', (select s.id from public.submit_claim(base || jsonb_build_object('brand_id', (select id from public.brands where slug <> 'solaredge' limit 1),
+      'details', jsonb_build_object('units', jsonb_build_array(
+        jsonb_build_object('kind', 'inverter', 'model', 'X1', 'sn', 'H-1', 'manager_sn', 'm1', 'case_no', 'C9', 'issue', 'i', 'description', 'd'),
+        jsonb_build_object('kind', 'inverter', 'model', 'X1', 'sn', 'H-2', 'manager_sn', 'm2', 'case_no', 'C10', 'issue', 'i', 'description', 'd'))))) s));
 
   insert into t40 values ('c', (select s.id from public.submit_claim(base || jsonb_build_object('details', det || jsonb_build_object('units', u))) s));
 end $$;
@@ -71,6 +79,8 @@ begin
          = 'SE10K|inverter|1.0.0.0|INV-1|INV-1', 'inverter unit';
   assert (select item_type || '|' || position || '|' || ref_inv_sn from public.claim_units where claim_id = c.id and seq = 3)
          = 'optimizer|1.1.12.0|INV-1', 'optimizer linked to inverter';
+  assert (select case_id from public.claims where id = (select id from t40 where k = 'c42')) = 'C10, C9', 'case per inverter on claim';
+  assert (select case_no || manager_sn from public.claim_units where claim_id = (select id from t40 where k = 'c42') and seq = 2) = 'C10M2', 'case on unit';
 end $$;
 
 -- admin: stock in, then fill step 2 with replacement SNs
