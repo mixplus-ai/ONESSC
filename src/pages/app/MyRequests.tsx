@@ -91,8 +91,8 @@ export default function MyRequests() {
         status: q ? QUOTE_STATUS[q.status].label : RESERVATION_STATUS[reservationState(res as Reservation)].label,
         expires_at: res?.expires_at,
         lines: q
-          ? (q.quote_request_items ?? []).map((i) => ({ label: i.label, qty: i.qty, unit_price: i.unit_price }))
-          : (res?.reservation_items ?? []).map((i) => ({ sku: i.sku, label: i.label, qty: i.qty, unit_price: i.unit_price ?? null })),
+          ? (q.quote_request_items ?? []).map((i) => ({ variant_id: i.variant_id, label: i.label, qty: i.qty, unit_price: i.unit_price }))
+          : (res?.reservation_items ?? []).map((i) => ({ variant_id: i.variant_id, sku: i.sku, label: i.label, qty: i.qty, unit_price: i.unit_price ?? null })),
         customer: { name: q?.contact_name || profile?.full_name, email: profile?.email, phone: q?.contact_phone || profile?.phone, company: profile?.company_name, taxId: profile?.tax_id },
         billing: r.billing ?? profile?.billing ?? null,
         rank,

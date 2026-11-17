@@ -70,6 +70,7 @@ export default function Cart() {
       {
         kind: "cart",
         lines: lines.map((l) => ({
+          variant_id: l.kind === "variant" ? l.id : null,
           sku: l.sku,
           label: l.kind === "package" ? `แพ็กเกจ · ${l.label}` : l.label,
           qty: l.qty,

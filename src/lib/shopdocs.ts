@@ -3,9 +3,11 @@
 import { formatDate, rankLabel, type RankInfo } from "./catalog";
 import { esc, heading, openPrintDoc, preparePrintWindow, table, type Panel } from "./printdoc";
 import { supabase } from "./supabase";
-import { BILLING_TYPE, type Billing } from "./training";
+import { BILLING_TYPE, qrDataUrl, type Billing } from "./training";
 
 export interface ShopDocLine {
+  /** product code id: used to add the product's datasheet QR at the bottom */
+  variant_id?: string | null;
   sku?: string | null;
   label: string;
   qty: number;
@@ -42,6 +44,38 @@ export async function mySalesContact(): Promise<ShopDoc["sales"]> {
 
 export function shopDocTitle(kind: ShopDoc["kind"]) {
   return kind === "reservation" ? { title: "ใบจองสินค้า", en: "RESERVATION" } : { title: "ใบเสนอราคา", en: "QUOTATION" };
+}
+
+/** QR codes of the datasheets of the products on the document (one per product, same file once). */
+async function datasheetBlock(lines: ShopDocLine[]): Promise<string> {
+  const ids = [...new Set(lines.map((l) => l.variant_id).filter(Boolean))] as string[];
+  if (!ids.length) return "";
+  const { data } = await supabase.from("product_variants").select("id, sku, products(name, datasheet_url)").in("id", ids);
+  const seen = new Map<string, { name: string; skus: string[] }>();
+  for (const id of ids) {
+    const v = ((data ?? []) as unknown as { id: string; sku: string; products: { name: string; datasheet_url: string | null } | null }[]).find((x) => x.id === id);
+    const url = v?.products?.datasheet_url?.trim();
+    if (!v || !url) continue;
+    const cur = seen.get(url);
+    if (cur) cur.skus.push(v.sku);
+    else seen.set(url, { name: v.products?.name ?? v.sku, skus: [v.sku] });
+  }
+  if (!seen.size) return "";
+  const cards = await Promise.all(
+    [...seen].map(async ([url, p]) => {
+      const qr = await qrDataUrl(url, 200, "#0f2a4a").catch(() => "");
+      return `<div class="ds"><img src="${qr}" alt=""><div><b>${esc(p.name)}</b><span>${esc(p.skus.join(", "))}</span></div></div>`;
+    }),
+  );
+  return `<div class="dsw"><style>
+.dsw { margin-top: 14px; border-top: 1.5px solid #0f2a4a; padding-top: 8px; break-inside: avoid; }
+.dsw h4 { margin: 0 0 6px; font-size: 9.5pt; color: #0f2a4a; }
+.dsg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ds { display: flex; gap: 6px; align-items: center; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px; break-inside: avoid; }
+.ds img { width: 22mm; height: 22mm; }
+.ds b { display: block; font-size: 8pt; line-height: 1.25; color: #0f2a4a; }
+.ds span { display: block; font-size: 7pt; color: #64748b; font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+</style><h4>Datasheet สินค้า · สแกน QR เพื่อเปิดเอกสาร</h4><div class="dsg">${cards.join("")}</div></div>`;
 }
 
 /** Opens the print window ("บันทึกเป็น PDF"). Call inside the click; pass a prepared window when data loads first. */
@@ -95,6 +129,7 @@ export async function printShopDoc(doc: ShopDoc, prepared?: Window | null) {
     doc.note ? `<div class="note"><b>หมายเหตุลูกค้า:</b> ${esc(doc.note)}</div>` : "",
     doc.staffNote ? `<div class="note"><b>ข้อความจากพนักงานขาย:</b> ${esc(doc.staffNote)}</div>` : "",
     `<div class="note"><b>หมายเหตุ:</b> ${esc(refNote)}${doc.stockAsOf ? ` · สถานะสินค้าอ้างอิงตามสต๊อก ณ วันที่ ${esc(formatDate(doc.stockAsOf))} กรุณาจองหรือติดต่อพนักงานขาย` : ""}</div>`,
+    await datasheetBlock(doc.lines).catch(() => ""),
   ].join("");
 
   await openPrintDoc(
