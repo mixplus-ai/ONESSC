@@ -4,6 +4,7 @@ import { Alert, Button, Field, Input } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, supabase } from "../../lib/supabase";
 import AuthShell from "./AuthShell";
+import { DEMO, DEMO_ACCOUNTS, DEMO_PASSWORD, demoEmail } from "../../lib/demo";
 
 export default function Login() {
   const { session } = useAuth();
@@ -15,18 +16,19 @@ export default function Login() {
 
   if (session) return <Navigate to={from} replace />;
 
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
+  async function signIn(email: string, password: string) {
     setBusy(true);
     setErr("");
-    const { error } = await supabase.auth.signInWithPassword({
-      email: String(f.get("email")).trim().toLowerCase(),
-      password: String(f.get("password")),
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
     setBusy(false);
     if (error) return setErr(errorMessage(error));
     nav(from, { replace: true });
+  }
+
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    void signIn(String(f.get("email")), String(f.get("password")));
   }
 
   return (
@@ -44,6 +46,28 @@ export default function Login() {
         {err && <Alert>{err}</Alert>}
         <Button type="submit" loading={busy} className="w-full">เข้าสู่ระบบ</Button>
       </form>
+      {DEMO && (
+        <div className="mt-8 border-t border-slate-200 pt-6">
+          <p className="text-sm font-semibold text-slate-800">บัญชีทดลอง (ระบบสาธิต)</p>
+          <p className="mt-1 text-xs text-slate-500">กดชื่อเพื่อเข้าสู่ระบบทันที · รหัสผ่านทุกบัญชี {DEMO_PASSWORD}</p>
+          {DEMO_ACCOUNTS.map((g) => (
+            <div key={g.group} className="mt-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{g.group}</p>
+              <div className="mt-2 grid gap-2">
+                {g.items.map((a) => (
+                  <button key={a.login} type="button" disabled={busy}
+                    onClick={() => void signIn(demoEmail(a.login), DEMO_PASSWORD)}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-left hover:border-navy-200 hover:bg-navy-50 disabled:opacity-50">
+                    <span className="text-sm font-semibold text-slate-800">{a.name}</span>
+                    <span className="ml-2 text-xs text-navy-700">{a.role}</span>
+                    <span className="block text-xs text-slate-500">{a.shows}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </AuthShell>
   );
 }
