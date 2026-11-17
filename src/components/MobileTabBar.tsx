@@ -5,7 +5,7 @@ import { BoxIcon, CartIcon, FileIcon, HomeIcon, UserIcon } from "./icons";
 import { cx } from "./ui";
 
 /** Pages with their own sticky action bar at the bottom: the tab bar steps aside there. */
-const OWN_BAR = [/^\/products\/[^/]+$/, /^\/app\/cart$/];
+const OWN_BAR = [/^\/products\/[^/]+$/, /^\/training\/course\/[^/]+$/, /^\/app\/cart$/];
 export const hidesTabBar = (path: string) => OWN_BAR.some((r) => r.test(path));
 
 /** App-style bottom navigation for phones (hidden from lg up). */

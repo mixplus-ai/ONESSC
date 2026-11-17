@@ -41,7 +41,35 @@ export interface Course {
   cert_template_id: string | null;
   is_active: boolean;
   sort: number;
+  /** Rich content for the course page (migration 33). Missing on older databases. */
+  details?: CourseDetails | null;
 }
+
+export interface CourseTopic {
+  title: string;
+  detail?: string;
+  /** free text: "09:00–10:30", "ช่วงเช้า", "วันที่ 1" */
+  time?: string;
+}
+export interface CourseInstructor {
+  name: string;
+  role?: string;
+  bio?: string;
+  photo_url?: string;
+}
+export interface CourseDetails {
+  objectives?: string[];
+  audience?: string[];
+  prerequisites?: string[];
+  topics?: CourseTopic[];
+  instructors?: CourseInstructor[];
+  includes?: string[];
+  bring?: string[];
+  faqs?: { q: string; a: string }[];
+  gallery?: string[];
+}
+export const courseDetails = (c: Pick<Course, "details">): CourseDetails => (c.details && typeof c.details === "object" ? c.details : {});
+export const coursePath = (c: Pick<Course, "code">) => `/training/course/${encodeURIComponent(c.code)}`;
 
 export interface Session {
   id: string;

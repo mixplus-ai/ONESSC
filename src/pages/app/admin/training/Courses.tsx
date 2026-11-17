@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ImageUpload } from "../../../../components/ImageUpload";
+import { IMAGE_SIZES, ImageUpload } from "../../../../components/ImageUpload";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, Select, Textarea } from "../../../../components/ui";
 import { useAuth } from "../../../../lib/auth";
 import { useRows } from "../../../../lib/content";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import { PickFiles } from "../../../../components/TrainingFiles";
-import { addMaterialFiles, formatMoney, MATERIAL_VIS, openPrivateFile, removeMaterial, uploadTrainingMedia, type CertTemplate, type Course, type Material } from "../../../../lib/training";
+import { CourseDetailsEditor, cleanDetails } from "./CourseDetailsEditor";
+import { addMaterialFiles, coursePath, formatMoney, MATERIAL_VIS, openPrivateFile, removeMaterial, uploadTrainingMedia, type CertTemplate, type Course, type Material } from "../../../../lib/training";
 
 function Materials({ course }: { course: Course }) {
   const rows = useRows<Material>(() => supabase.from("course_materials").select("*").eq("course_id", course.id).order("sort"), [course.id]);
@@ -77,6 +78,7 @@ function CourseForm({ value, templates, onSaved, onClose }: { value: Partial<Cou
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = <K extends keyof Course>(k: K, v: Course[K] | null) => setF((x) => ({ ...x, [k]: v }));
+  const hasDetails = !value.id || "details" in value;
   async function save() {
     if (!/^[A-Za-z0-9_-]{1,20}$/.test(f.code ?? "")) return setErr("รหัสหลักสูตรใช้ A-Z 0-9 - _ ไม่เกิน 20 ตัว (ใช้ในเลขใบประกาศ)");
     if (!f.title?.trim()) return setErr("กรุณากรอกชื่อหลักสูตร");
@@ -84,6 +86,8 @@ function CourseForm({ value, templates, onSaved, onClose }: { value: Partial<Cou
     const row = {
       code: f.code, title: f.title, subtitle: f.subtitle || null, description: f.description || null, hours: f.hours ?? null, price: f.price ?? null,
       color: f.color || null, cover_url: f.cover_url || null, cert_template_id: f.cert_template_id || null, is_active: f.is_active ?? true, sort: f.sort ?? 0,
+      // details needs migration 33; an edited course from an older database has no such key
+      ...(hasDetails ? { details: cleanDetails(f.details ?? {}) } : {}),
     };
     const { error } = f.id ? await supabase.from("courses").update(row).eq("id", f.id) : await supabase.from("courses").insert(row);
     setBusy(false);
@@ -112,7 +116,14 @@ function CourseForm({ value, templates, onSaved, onClose }: { value: Partial<Cou
           </Field>
         </div>
         <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" checked={f.is_active ?? true} onChange={(e) => set("is_active", e.target.checked)} /> เปิดแสดง</label>
-        <div className="sm:col-span-4"><p className="mb-1.5 text-sm font-medium text-slate-700">รูปปก</p><ImageUpload value={f.cover_url ?? ""} onChange={(u) => set("cover_url", u)} folder="courses" upload={uploadTrainingMedia} /></div>
+        <div className="sm:col-span-4"><p className="mb-1.5 text-sm font-medium text-slate-700">รูปปก</p><ImageUpload value={f.cover_url ?? ""} onChange={(u) => set("cover_url", u)} folder="courses" upload={uploadTrainingMedia} size={IMAGE_SIZES.packageCover} /></div>
+      </div>
+      <div className="mt-6">
+        <p className="mb-1 text-sm font-semibold text-navy-900">รายละเอียดหน้าหลักสูตร</p>
+        <p className="mb-3 text-xs text-slate-500">แสดงในหน้า “ดูรายละเอียด” ของหลักสูตร{f.code ? ` (${coursePath({ code: f.code })})` : ""} · ช่องที่เว้นว่างจะไม่แสดง</p>
+        {hasDetails
+          ? <CourseDetailsEditor value={f.details ?? {}} onChange={(d) => set("details", d)} />
+          : <Alert tone="amber">ต้องรัน SQL 20261117000033_course_details.sql ก่อน จึงจะแก้รายละเอียดหน้าหลักสูตรได้</Alert>}
       </div>
       {err && <div className="mt-3"><Alert>{err}</Alert></div>}
       <div className="mt-4 flex gap-2"><Button onClick={save} loading={busy}>บันทึก</Button><Button variant="ghost" onClick={onClose}>ปิด</Button></div>
@@ -146,6 +157,7 @@ export default function CoursesTab() {
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   {!c.is_active && <Badge>ซ่อน</Badge>}
+                  <a href={coursePath(c)} target="_blank" rel="noreferrer" className="font-semibold text-navy-700 hover:underline">ดูหน้าหลักสูตร</a>
                   {edit && <button className="font-semibold text-navy-700 hover:underline" onClick={() => setForm(c)}>แก้ไข</button>}
                   {edit && <button className="font-semibold text-navy-700 hover:underline" onClick={() => setOpen(open === c.id ? null : c.id)}>เอกสาร</button>}
                 </div>
