@@ -263,6 +263,24 @@ function Settings({ warehouses, reload }: { warehouses: Warehouse[]; reload: () 
     if (error) return setErr(errorMessage(error));
     setEditWh(null); reload();
   }
+  const SYSTEM_ROLES = ["claim_hold", "claim_check", "defect"];
+  async function deleteWh(w: Warehouse) {
+    setErr("");
+    if (w.role && SYSTEM_ROLES.includes(w.role)) return setErr(`${w.name} ใช้กับงานเคลมอยู่ ลบไม่ได้ ถ้าจะเปลี่ยน ให้เลือกคลังอื่นแทนในหน้าตั้งค่างานเคลมก่อน`);
+    // a warehouse that any document, SN or stock count points to stays (its history must keep the name)
+    const [d1, d2, s, c] = await Promise.all([
+      supabase.from("stock_docs").select("id", { count: "exact", head: true }).eq("warehouse_id", w.id),
+      supabase.from("stock_docs").select("id", { count: "exact", head: true }).eq("to_warehouse_id", w.id),
+      supabase.from("serials").select("sn_key", { count: "exact", head: true }).eq("warehouse_id", w.id),
+      supabase.from("stock_counts").select("id", { count: "exact", head: true }).eq("warehouse_id", w.id),
+    ]);
+    const used = (d1.count ?? 0) + (d2.count ?? 0) + (s.count ?? 0) + (c.count ?? 0);
+    if (used > 0) return setErr(`${w.name} มีเอกสาร / SN / รอบตรวจนับอ้างอิงอยู่ ลบไม่ได้ ใช้ "ปิดใช้" แทน`);
+    if (!confirm(`ลบคลัง ${w.code} · ${w.name} ถาวร?`)) return;
+    const { error } = await supabase.from("warehouses").delete().eq("id", w.id);
+    if (error) return setErr(error.code === "23503" ? `${w.name} มีข้อมูลอ้างอิงอยู่ ลบไม่ได้ ใช้ "ปิดใช้" แทน` : errorMessage(error));
+    reload();
+  }
   async function toggleWh(w: Warehouse) {
     const { error } = await supabase.from("warehouses").update({ is_active: !w.is_active }).eq("id", w.id);
     if (error) return setErr(errorMessage(error));
@@ -304,11 +322,12 @@ function Settings({ warehouses, reload }: { warehouses: Warehouse[]; reload: () 
               <span className="flex gap-3">
                 <button onClick={() => setEditWh({ id: w.id, code: w.code, name: w.name })} className="text-xs text-navy-700 hover:underline">แก้ชื่อ</button>
                 <button onClick={() => toggleWh(w)} className="text-xs text-navy-700 hover:underline">{w.is_active ? "ปิดใช้" : "เปิดใช้"}</button>
+                {!(w.role && SYSTEM_ROLES.includes(w.role)) && <button onClick={() => deleteWh(w)} className="text-xs text-red-600 hover:underline">ลบ</button>}
               </span>
             </li>
           ))}
         </ul>
-        <p className="mt-1 text-xs text-slate-500">ใบรับสินค้าต่างประเทศ / ในประเทศ รับเข้าคลังหลักก่อนเสมอ (เลือกคลังอื่นได้ในใบ) เอกสารเดิมอ้างอิงคลังตามรหัสภายใน จึงแก้ชื่อได้โดยไม่กระทบประวัติ</p>
+        <p className="mt-1 text-xs text-slate-500">ใบรับสินค้าต่างประเทศ / ในประเทศ รับเข้าคลังหลักก่อนเสมอ (เลือกคลังอื่นได้ในใบ) เอกสารเดิมอ้างอิงคลังตามรหัสภายใน จึงแก้ชื่อได้โดยไม่กระทบประวัติ · ลบได้เฉพาะคลังที่ยังไม่มีเอกสารหรือ SN (ที่มีแล้วให้กดปิดใช้)</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Input className="max-w-[8rem]" placeholder="รหัส" value={code} onChange={(e) => setCode(e.target.value)} />
           <Input className="max-w-xs" placeholder="ชื่อคลัง" value={name} onChange={(e) => setName(e.target.value)} />
