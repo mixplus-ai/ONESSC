@@ -69,7 +69,7 @@ export default function LegacyLink() {
       {userId && (
         <Card className="space-y-3">
           <div className="flex flex-wrap items-end gap-2">
-            <Field label="ค้นหาเคลมเก่าเพิ่มเติม" hint="เว้นว่าง = จับคู่จากชื่อบริษัทของลูกค้า"><Input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") search(); }} placeholder="ชื่อบริษัท เลขเคลม หรือไซต์" /></Field>
+            <Field label="ค้นหาเคลมเก่าเพิ่มเติม" hint="เว้นว่าง = จับคู่จากชื่อบริษัทของลูกค้า"><Input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") search(); }} placeholder="ชื่อบริษัท เลขเคลม หรือชื่อโครงการ" /></Field>
             <Button variant="secondary" onClick={() => search()}>ค้นหา</Button>
           </div>
           {err && <Alert>{err}</Alert>}
