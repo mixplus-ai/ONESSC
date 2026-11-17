@@ -3,7 +3,7 @@
 import { formatDate, rankLabel, type RankInfo } from "./catalog";
 import { esc, heading, openPrintDoc, preparePrintWindow, table, type Panel } from "./printdoc";
 import { supabase } from "./supabase";
-import { BILLING_TYPE, qrDataUrl, type Billing } from "./training";
+import { qrDataUrl, type Billing } from "./training";
 
 export interface ShopDocLine {
   /** product code id: used to add the product's datasheet QR at the bottom */
@@ -103,14 +103,10 @@ export async function printShopDoc(doc: ShopDoc, prepared?: Window | null) {
     {
       heading: "ลูกค้า / Customer",
       rows: [
-        ["ออกเอกสารในนาม", b?.name || doc.customer.company || doc.customer.name],
-        ["ประเภท", b?.type ? BILLING_TYPE[b.type] ?? b.type : null],
-        ["เลขผู้เสียภาษี", b?.tax_id || doc.customer.taxId],
-        ["สาขา", b?.branch],
+        ["ลูกค้า", [b?.name || doc.customer.company || doc.customer.name, (b?.tax_id || doc.customer.taxId) && `(${b?.tax_id || doc.customer.taxId}${b?.branch ? ` ${b.branch}` : ""})`].filter(Boolean).join(" ")],
         ["ที่อยู่", b?.address],
-        ["ผู้ติดต่อ", doc.customer.name],
-        ["โทร / อีเมล", [doc.customer.phone || b?.phone, doc.customer.email || b?.email].filter(Boolean).join(" · ")],
-        ["Rank ราคา", doc.rank ? rankLabel(doc.rank) : null],
+        ["ติดต่อ", [doc.customer.name, doc.customer.phone || b?.phone, doc.customer.email || b?.email].filter(Boolean).join(" · ")],
+        ["Rank", doc.rank ? rankLabel(doc.rank) : null],
       ],
     },
     {
