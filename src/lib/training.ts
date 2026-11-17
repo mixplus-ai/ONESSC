@@ -380,9 +380,18 @@ export async function uploadTrainingMedia(file: File, folder: string): Promise<s
   return supabase.storage.from("training-media").getPublicUrl(path).data.publicUrl;
 }
 export async function openPrivateFile(bucket: "training-files" | "point-files" | "training-materials", path: string) {
+  // open the tab inside the click (phones block window.open after an await), then point it at the file
+  const w = window.open("", "_blank");
   const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 600);
-  if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
-  return Boolean(data?.signedUrl);
+  if (!data?.signedUrl) {
+    w?.close();
+    return false;
+  }
+  if (w) {
+    w.opener = null;
+    w.location.href = data.signedUrl;
+  } else window.location.href = data.signedUrl;
+  return true;
 }
 
 export const qrDataUrl = (text: string, size = 240, color = "#111111") =>
@@ -399,7 +408,44 @@ export async function mapLinkCoords(link: string): Promise<{ lat: number; lng: n
   return { lat: Number(body.lat.toFixed(6)), lng: Number(body.lng.toFixed(6)) };
 }
 
-/** Course file (staff upload) → private bucket training-materials/<course_id>/… */
+export interface Material {
+  id: string;
+  course_id: string | null;
+  session_id: string | null;
+  kind: string;
+  title: string;
+  url: string | null;
+  file_path: string | null;
+  visibility: string;
+  sort: number;
+}
+export const MATERIAL_VIS: Record<string, string> = { attended: "หลังเช็กอิน", registered: "ผู้ลงทะเบียน", public: "ทุกคน" };
+export const MAX_MATERIAL_MB = 50;
+
+/** Uploads several files and records them as course_materials of a course or a session. */
+export async function addMaterialFiles(target: { course_id?: string | null; session_id?: string | null }, files: File[], visibility = "attended", startSort = 0) {
+  const folder = target.session_id ? `s-${target.session_id}` : target.course_id!;
+  let i = 0;
+  for (const file of files) {
+    if (file.size > MAX_MATERIAL_MB * 1024 * 1024) throw new Error(`ไฟล์ ${file.name} ใหญ่เกิน ${MAX_MATERIAL_MB} MB`);
+    const file_path = await uploadCourseMaterial(folder, file);
+    const { error } = await supabase.from("course_materials").insert({
+      course_id: target.session_id ? null : target.course_id, session_id: target.session_id ?? null,
+      kind: "file", title: file.name.replace(/\.[^.]+$/, ""), url: null, file_path, visibility, sort: startSort + i++,
+    });
+    if (error) {
+      await supabase.storage.from("training-materials").remove([file_path]);
+      throw error;
+    }
+  }
+}
+export async function removeMaterial(m: Pick<Material, "id" | "file_path">) {
+  const { error } = await supabase.from("course_materials").delete().eq("id", m.id);
+  if (error) throw error;
+  if (m.file_path) await supabase.storage.from("training-materials").remove([m.file_path]);
+}
+
+/** Course file (staff upload) → private bucket training-materials/<folder>/… */
 export async function uploadCourseMaterial(courseId: string, file: File): Promise<string> {
   const ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
   const path = `${courseId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
