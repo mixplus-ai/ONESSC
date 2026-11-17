@@ -48,7 +48,7 @@ export function ClaimSnStock({ c }: { c: Claim }) {
                         {formatDate(r.sold_at)} · {r.sold_to}{r.ref_no ? ` · ${r.ref_no}` : ""}
                         <div className="text-slate-500">{r.sold_doc_no}</div>
                         {other && <Badge tone="amber">ขายให้บริษัทอื่น</Badge>}
-                      </> : <span className="text-slate-500">ไม่พบใบขาย</span>}
+                      </> : <span className="text-slate-500">ไม่พบใบส่งของ</span>}
                     </td>
                     <td className="py-1 pr-3">{r.sold_at ? age(r.sold_at) : "-"}</td>
                     <td className="py-1 pr-3">{r.status || r.sold_at ? <><WarrantyBadge end={r.warranty_end ?? null} months={r.warranty_months ?? null} />{r.warranty_end && <div className="mt-0.5 text-slate-500">ถึง {formatDate(r.warranty_end)}{r.perf_end ? ` · ประสิทธิภาพถึง ${formatDate(r.perf_end)}` : ""}</div>}</> : "-"}</td>

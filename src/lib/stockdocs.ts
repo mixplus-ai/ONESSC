@@ -4,7 +4,7 @@ export type DocStatus = "draft" | "posted" | "cancelled";
 export type SerialStatus = "in_stock" | "reserved" | "borrowed" | "withdrawn" | "sold" | "written_off";
 export type Condition = "good" | "defective";
 
-export interface Warehouse { id: string; code: string; name: string; is_active: boolean; sort: number }
+export interface Warehouse { id: string; code: string; name: string; is_active: boolean; sort: number; role?: string | null }
 
 export interface StockDoc {
   id: string;
@@ -35,6 +35,9 @@ export interface StockDoc {
   cancel_reason: string | null;
   checked_by?: string | null;
   checked_at?: string | null;
+  vehicle_plate?: string | null;
+  driver_name?: string | null;
+  driver_phone?: string | null;
 }
 
 /** Stock count (ตรวจนับ, migration 24). */
@@ -57,6 +60,17 @@ export const SCAN_RESULT: Record<ScanResult, { label: string; tone: "green" | "a
   other_sku: { label: "รหัสอื่น (ไม่อยู่ในรอบนับนี้)", tone: "navy" },
   unknown: { label: "ไม่มีในระบบ", tone: "red" },
 };
+
+/** Documents that travel on a truck: vehicle / driver fields, photo kinds, and a 2-sheet print (detail + SN). */
+export const TRUCK_TYPES: DocType[] = ["GR", "GN", "SO", "BR"];
+export type FileKind = "plate" | "vehicle_doc" | "driver_doc" | "goods" | "other";
+export const FILE_KINDS: { kind: FileKind; label: string }[] = [
+  { kind: "plate", label: "รูปทะเบียนรถ" },
+  { kind: "vehicle_doc", label: "เอกสารรถ" },
+  { kind: "driver_doc", label: "เอกสารคนขับ" },
+  { kind: "goods", label: "รูปสินค้าบนรถ" },
+  { kind: "other", label: "รูป / ไฟล์อื่น" },
+];
 
 export interface DocItem { id?: string; sku: string; description: string | null; sn: string; condition: Condition; note?: string | null; warranty_months?: number | null }
 
@@ -81,12 +95,12 @@ export const DIR: Record<DocType, "in" | "out" | "move"> = {
 };
 
 export const DOC_TYPES: { type: DocType; label: string; hint: string }[] = [
-  { type: "GR", label: "ใบรับสินค้าจาก PO", hint: "รับของจากผู้ขาย/โรงงานตามใบสั่งซื้อ" },
-  { type: "GN", label: "ใบรับตามใบส่งของผู้ขาย", hint: "รับของที่มาพร้อมใบส่งสินค้าของผู้ขาย" },
+  { type: "GR", label: "ใบรับสินค้าต่างประเทศ", hint: "รับของนำเข้าเข้าคลังหลัก ตาม PI / Invoice พร้อม SN" },
+  { type: "GN", label: "ใบรับสินค้าในประเทศ", hint: "รับของจากผู้ขายในประเทศเข้าคลังหลัก ตามใบส่งของผู้ขาย พร้อม SN" },
   { type: "RT", label: "ใบรับคืน", hint: "รับคืนจากใบยืม ใบเบิก ลูกค้าคืน หรือของเคลมกลับ" },
-  { type: "SO", label: "ใบขาย / ส่งสินค้า", hint: "ตัดออกเมื่อขายหรือส่งให้ลูกค้า" },
-  { type: "BR", label: "ใบยืม", hint: "ให้ยืมพร้อมวันกำหนดคืน" },
-  { type: "WD", label: "ใบเบิกชั่วคราว", hint: "เบิกใช้ภายใน ทดสอบ ตัวโชว์" },
+  { type: "SO", label: "ใบส่งของ", hint: "ตัดออกเมื่อขายหรือส่งให้ลูกค้า พร้อมข้อมูลรถและคนขับ" },
+  { type: "BR", label: "ใบเคลมสินค้า", hint: "จ่ายของเคลม/ของเปลี่ยนให้ลูกค้า อ้างอิงเลขเคลม" },
+  { type: "WD", label: "ใบเบิกชั่วคราว / ยืม", hint: "เบิกใช้ภายใน ทดสอบ ตัวโชว์ หรือให้ยืมพร้อมวันกำหนดคืน" },
   { type: "WO", label: "ใบจำหน่ายออก", hint: "ตัดออกถาวร เช่น เสียหาย สูญหาย ส่งคืนผู้ขาย" },
   { type: "TR", label: "ใบโอนคลัง", hint: "ย้ายสินค้าระหว่างคลัง" },
   { type: "RV", label: "ใบจองสินค้า", hint: "กัน SN ไว้ให้ลูกค้า ยังไม่ตัดสต๊อก" },
@@ -98,7 +112,7 @@ export const DOC_STATUS_LABEL: Record<DocStatus, string> = { draft: "ร่า�
 export const DOC_STATUS_TONE = { draft: "amber", posted: "green", cancelled: "red" } as const;
 
 export const SERIAL_STATUS_LABEL: Record<SerialStatus, string> = {
-  in_stock: "ในคลัง", reserved: "จอง", borrowed: "ถูกยืม", withdrawn: "เบิกชั่วคราว", sold: "ขายแล้ว", written_off: "จำหน่ายออก",
+  in_stock: "ในคลัง", reserved: "จอง", borrowed: "ส่งเคลม", withdrawn: "เบิก / ยืม", sold: "ขายแล้ว", written_off: "จำหน่ายออก",
 };
 export const SERIAL_STATUS_TONE = {
   in_stock: "green", reserved: "navy", borrowed: "amber", withdrawn: "amber", sold: "slate", written_off: "red",
@@ -106,11 +120,11 @@ export const SERIAL_STATUS_TONE = {
 export const CONDITION_LABEL: Record<Condition, string> = { good: "ดี", defective: "เสีย" };
 
 export const REF_LABEL: Partial<Record<DocType, string>> = {
-  GR: "เลขที่ PO", GN: "เลขที่ใบส่งของผู้ขาย", SO: "เลขที่ PI / ใบกำกับ", RT: "เลขที่อ้างอิง", BR: "เลขที่อ้างอิง", WD: "เลขที่อ้างอิง",
+  GR: "เลขที่ PI / Invoice", GN: "เลขที่ใบส่งของผู้ขาย", SO: "เลขที่ PI / ใบกำกับ", RT: "เลขที่อ้างอิง", BR: "เลขที่เคลม", WD: "เลขที่อ้างอิง",
   WO: "เลขที่อ้างอิง", RV: "เลขที่ใบเสนอราคา / PI", TR: "เลขที่อ้างอิง", OB: "เลขที่อ้างอิง",
 };
 export const PARTNER_LABEL: Partial<Record<DocType, string>> = {
-  GR: "ผู้ขาย / โรงงาน", GN: "ผู้ขาย", RT: "รับคืนจาก", SO: "ลูกค้า", BR: "ผู้ยืม", WD: "ผู้เบิก", RV: "ลูกค้าที่จอง", WO: "ส่งให้ (ถ้ามี)",
+  GR: "ผู้ขาย / โรงงาน", GN: "ผู้ขาย", RT: "รับคืนจาก", SO: "ลูกค้า", BR: "ลูกค้า (เคลม)", WD: "ผู้เบิก / ผู้ยืม", RV: "ลูกค้าที่จอง", WO: "ส่งให้ (ถ้ามี)",
 };
 
 /** Split a pasted / scanned block into SNs: new lines, commas, tabs, semicolons. */

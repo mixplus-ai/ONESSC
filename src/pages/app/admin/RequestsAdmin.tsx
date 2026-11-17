@@ -226,7 +226,7 @@ function ReservationCard({ r, onSaved }: { r: Reservation; onSaved: () => void }
             <Button variant="ghost" onClick={extend} disabled={busy}>ต่ออายุ 7 วัน</Button>
             {(can("stock.docs") || can("stock.post")) && <>
               <ButtonLink variant="secondary" to={`/app/admin/stock-docs?tab=docs&new=RV&reservation=${r.id}`}>จอง SN ในคลัง</ButtonLink>
-              <ButtonLink variant="secondary" to={`/app/admin/stock-docs?tab=docs&new=SO&reservation=${r.id}`}>ออกใบขาย / ตัดสต๊อก</ButtonLink>
+              <ButtonLink variant="secondary" to={`/app/admin/stock-docs?tab=docs&new=SO&reservation=${r.id}`}>ออกใบส่งของ / ตัดสต๊อก</ButtonLink>
             </>}
             <Button variant="ghost" className="text-red-600" onClick={() => confirm("ยกเลิกการจองนี้?") && set("cancelled")} disabled={busy}>ยกเลิก</Button>
           </div>
