@@ -158,7 +158,7 @@ function Balance({ warehouses, open }: { warehouses: Warehouse[]; open: (id: str
   }, [serials.rows, q]);
   const cols: { k: string; label: string }[] = [
     { k: "in_stock", label: "พร้อมขาย" }, { k: "reserved", label: "จอง" }, { k: "defective", label: "เสียในคลัง" },
-    { k: "borrowed", label: "ยืม" }, { k: "withdrawn", label: "เบิก" }, { k: "sold", label: "ขายแล้ว" }, { k: "written_off", label: "จำหน่าย" },
+    { k: "borrowed", label: "ส่งเคลม" }, { k: "withdrawn", label: "เบิก/ยืม" }, { k: "sold", label: "ขายแล้ว" }, { k: "written_off", label: "จำหน่าย" },
   ];
   if (serials.loading) return <Loading />;
   return (
@@ -197,7 +197,7 @@ function OutList({ open }: { open: (id: string) => void }) {
     supabase.from("serials").select("*, stock_docs!serials_last_doc_id_fkey(doc_no, doc_type)").in("status", ["borrowed", "withdrawn", "reserved"]).order("due_date", { nullsFirst: false }));
   const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
   if (list.loading) return <Loading />;
-  if (!list.rows.length) return <Empty>ไม่มีของยืม เบิก หรือจองค้างอยู่</Empty>;
+  if (!list.rows.length) return <Empty>ไม่มีของส่งเคลม เบิก ยืม หรือจองค้างอยู่</Empty>;
   return (
     <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
       <table className="min-w-full bg-white text-sm">
@@ -256,6 +256,13 @@ function Settings({ warehouses, reload }: { warehouses: Warehouse[]; reload: () 
     if (error) return setErr(errorMessage(error));
     setCode(""); setName(""); reload();
   }
+  const [editWh, setEditWh] = useState<{ id: string; code: string; name: string } | null>(null);
+  async function saveWh() {
+    if (!editWh || !editWh.code.trim() || !editWh.name.trim()) return;
+    const { error } = await supabase.from("warehouses").update({ code: editWh.code.trim().toUpperCase(), name: editWh.name.trim() }).eq("id", editWh.id);
+    if (error) return setErr(errorMessage(error));
+    setEditWh(null); reload();
+  }
   async function toggleWh(w: Warehouse) {
     const { error } = await supabase.from("warehouses").update({ is_active: !w.is_active }).eq("id", w.id);
     if (error) return setErr(errorMessage(error));
@@ -283,13 +290,25 @@ function Settings({ warehouses, reload }: { warehouses: Warehouse[]; reload: () 
       <Card>
         <h3 className="font-semibold text-navy-900">คลังสินค้า</h3>
         <ul className="mt-2 divide-y divide-slate-100">
-          {warehouses.map((w) => (
-            <li key={w.id} className="flex items-center justify-between py-2 text-sm">
-              <span><span className="font-mono font-semibold">{w.code}</span> · {w.name} {!w.is_active && <Badge>ปิดใช้</Badge>}</span>
-              <button onClick={() => toggleWh(w)} className="text-xs text-navy-700 hover:underline">{w.is_active ? "ปิดใช้" : "เปิดใช้"}</button>
+          {warehouses.map((w, i) => editWh?.id === w.id ? (
+            <li key={w.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+              <Input className="max-w-[8rem]" value={editWh.code} onChange={(e) => setEditWh({ ...editWh, code: e.target.value })} aria-label="รหัสคลัง" />
+              <Input className="max-w-xs" value={editWh.name} onChange={(e) => setEditWh({ ...editWh, name: e.target.value })} aria-label="ชื่อคลัง"
+                onKeyDown={(e) => { if (e.key === "Enter") saveWh(); }} />
+              <Button className="!py-1.5 text-xs" onClick={saveWh}>บันทึก</Button>
+              <button onClick={() => setEditWh(null)} className="text-xs text-slate-500 hover:underline">ยกเลิก</button>
+            </li>
+          ) : (
+            <li key={w.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+              <span><span className="font-mono font-semibold">{w.code}</span> · {w.name} {(w.role === "main" || (!warehouses.some((x) => x.role === "main") && i === 0)) && <Badge tone="green">คลังหลัก</Badge>} {!w.is_active && <Badge>ปิดใช้</Badge>}</span>
+              <span className="flex gap-3">
+                <button onClick={() => setEditWh({ id: w.id, code: w.code, name: w.name })} className="text-xs text-navy-700 hover:underline">แก้ชื่อ</button>
+                <button onClick={() => toggleWh(w)} className="text-xs text-navy-700 hover:underline">{w.is_active ? "ปิดใช้" : "เปิดใช้"}</button>
+              </span>
             </li>
           ))}
         </ul>
+        <p className="mt-1 text-xs text-slate-500">ใบรับสินค้าต่างประเทศ / ในประเทศ รับเข้าคลังหลักก่อนเสมอ (เลือกคลังอื่นได้ในใบ) เอกสารเดิมอ้างอิงคลังตามรหัสภายใน จึงแก้ชื่อได้โดยไม่กระทบประวัติ</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Input className="max-w-[8rem]" placeholder="รหัส" value={code} onChange={(e) => setCode(e.target.value)} />
           <Input className="max-w-xs" placeholder="ชื่อคลัง" value={name} onChange={(e) => setName(e.target.value)} />
@@ -357,7 +376,7 @@ export default function StockDocs() {
             { key: "search", label: "ค้นหา SN" },
             { key: "docs", label: "เอกสาร" },
             { key: "balance", label: "คงเหลือตาม SN" },
-            { key: "out", label: "ยืม / เบิก / จอง ค้าง" },
+            { key: "out", label: "เคลม / เบิก-ยืม / จอง ค้าง" },
             ...(canCount ? [{ key: "count" as Tab, label: "ตรวจนับ" }] : []),
             ...(isAdmin ? [{ key: "settings" as Tab, label: "ตั้งค่า" }] : []),
           ]} />

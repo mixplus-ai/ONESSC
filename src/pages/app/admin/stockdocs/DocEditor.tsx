@@ -6,12 +6,12 @@ import { useRows } from "../../../../lib/content";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import {
   CONDITION_LABEL, DIR, DOC_LABEL, DOC_STATUS_LABEL, DOC_STATUS_TONE, DOC_TYPES, PARTNER_LABEL, REF_LABEL, SERIAL_STATUS_LABEL,
-  snKey, splitSns, type Condition, type DocItem, type DocType, type Serial, type StockDoc, type Warehouse,
+  TRUCK_TYPES, snKey, splitSns, type Condition, type DocItem, type DocType, type Serial, type StockDoc, type Warehouse,
 } from "../../../../lib/stockdocs";
-import { DocFiles, uploadDocFiles } from "./DocFiles";
+import { DocFiles, uploadDocFiles, type PendingFile } from "./DocFiles";
 import { CameraScan } from "./CameraScan";
 import { PhotoScan } from "./PhotoScan";
-import { printStockDoc } from "./print";
+import { printDeliveryDetail, printDeliverySns, printStockDoc } from "./print";
 
 interface StockRow { sku: string; description: string | null }
 interface CompanyOpt { id: string; name: string; tax_id: string }
@@ -39,7 +39,8 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
   const canSave = can("stock.docs") || can("stock.post");
   const canCheck = can("stock.check") || can("stock.post");
   const cfg = useRows<{ check_types: DocType[] }>(() => supabase.from("stock_config").select("check_types").eq("id", 1));
-  const [head, setHead] = useState<Head>({ doc_type: type, doc_date: today(), warehouse_id: warehouses[0]?.id });
+  // receipts go into the main warehouse first (role "main" when the claims update has set it, else the first in order)
+  const [head, setHead] = useState<Head>({ doc_type: type, doc_date: today(), warehouse_id: (warehouses.find((w) => w.role === "main") ?? warehouses[0])?.id });
   const [items, setItems] = useState<DocItem[]>([]);
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState("");
@@ -50,7 +51,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
   const [scan, setScan] = useState("");
   const [warn, setWarn] = useState<string[]>([]);
   const scanRef = useRef<HTMLTextAreaElement>(null);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [fileTick, setFileTick] = useState(0);
 
   const t = head.doc_type;
@@ -293,6 +294,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
   const postBlocked = needCheck && (!head.checked_at || head.checked_by === profile?.id);
   const wh = (wid: string | null | undefined) => warehouses.find((w) => w.id === wid)?.name ?? "-";
   const showCond = t === "RT" || dir === "in";
+  const truck = TRUCK_TYPES.includes(t);
 
   return (
     <div className="space-y-4">
@@ -301,7 +303,12 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         <h2 className="text-lg font-bold text-navy-900">{DOC_LABEL[t]} {head.doc_no && <span className="font-mono">{head.doc_no}</span>}</h2>
         {head.status && <Badge tone={DOC_STATUS_TONE[head.status]}>{DOC_STATUS_LABEL[head.status]}</Badge>}
         <div className="ml-auto flex gap-2">
-          {head.id && <Button variant="secondary" onClick={() => printStockDoc(head as StockDoc, items, warehouses)}>พิมพ์ / PDF</Button>}
+          {head.id && (truck ? (
+            <>
+              <Button variant="secondary" onClick={() => printDeliveryDetail(head as StockDoc, items, warehouses)}>ใบรายละเอียด (PDF)</Button>
+              <Button variant="secondary" onClick={() => printDeliverySns(head as StockDoc, items, warehouses)}>ใบรายการ SN + ลายเซ็น (PDF)</Button>
+            </>
+          ) : <Button variant="secondary" onClick={() => printStockDoc(head as StockDoc, items, warehouses)}>พิมพ์ / PDF</Button>)}
         </div>
       </div>
 
@@ -360,12 +367,12 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
             </Field>
           )}
           {["SO", "BR", "WD"].includes(t) && (
-            <Field label="ไซต์ / สถานที่ใช้งาน">
+            <Field label="ชื่อโครงการ / สถานที่ใช้งาน">
               <Input disabled={locked} value={head.site_name ?? ""} onChange={(e) => set("site_name", e.target.value)} />
             </Field>
           )}
-          {["BR", "WD", "RV"].includes(t) && (
-            <Field label={t === "RV" ? "จองถึงวันที่" : "กำหนดคืน"} required={t === "BR"}>
+          {["WD", "RV"].includes(t) && (
+            <Field label={t === "RV" ? "จองถึงวันที่" : "กำหนดคืน"}>
               <Input type="date" disabled={locked} value={head.due_date ?? ""} onChange={(e) => set("due_date", e.target.value)} />
             </Field>
           )}
@@ -388,6 +395,21 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
               <Input disabled={locked} value={head.reason ?? ""} onChange={(e) => set("reason", e.target.value)}
                 placeholder={t === "WO" ? "เช่น เสียหายซ่อมไม่ได้ / ส่งคืนผู้ขาย" : ""} />
             </Field>
+          )}
+          {truck && (
+            <div className="grid gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:col-span-3 sm:grid-cols-3">
+              <p className="text-sm font-semibold text-navy-900 sm:col-span-3">{dir === "in" ? "รถที่มาส่งสินค้า" : "รถที่ไปส่งสินค้า"}</p>
+              <Field label="ทะเบียนรถ">
+                <Input disabled={locked} value={head.vehicle_plate ?? ""} onChange={(e) => set("vehicle_plate", e.target.value)} placeholder="เช่น 1กข 1234 กรุงเทพฯ" />
+              </Field>
+              <Field label="ชื่อคนขับ">
+                <Input disabled={locked} value={head.driver_name ?? ""} onChange={(e) => set("driver_name", e.target.value)} />
+              </Field>
+              <Field label="เบอร์โทรคนขับ">
+                <Input disabled={locked} type="tel" inputMode="tel" value={head.driver_phone ?? ""} onChange={(e) => set("driver_phone", e.target.value)} />
+              </Field>
+              <p className="text-xs text-slate-500 sm:col-span-3">แนบรูปทะเบียนรถ เอกสารรถ เอกสารคนขับ และรูปสินค้าบนรถได้ในกล่องรูปด้านล่าง</p>
+            </div>
           )}
           <div className="sm:col-span-3">
             <Field label="หมายเหตุ">
@@ -456,7 +478,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button variant="secondary" onClick={() => addSns(scan)}>+ เพิ่ม SN</Button>
                 <CameraScan onScan={(sns) => addSns(sns.join("\n"))} last={items.length ? { text: `${items.length} SN · ล่าสุด ${items[items.length - 1].sn}`, tone: "green" } : null} />
-                <PhotoScan knownSkus={new Set(stock.rows.map((r) => r.sku))} existing={new Set(items.map((i) => snKey(i.sn)))} onAdd={(sns, photos) => { addSns(sns.join("\n")); if (photos.length) setPendingFiles((p) => [...p, ...photos]); }} />
+                <PhotoScan knownSkus={new Set(stock.rows.map((r) => r.sku))} existing={new Set(items.map((i) => snKey(i.sn)))} onAdd={(sns, photos) => { addSns(sns.join("\n")); if (photos.length) setPendingFiles((p) => [...p, ...photos.map((file) => ({ file, kind: "other" as const }))]); }} />
                 <span className="text-xs text-slate-500">แยกด้วยบรรทัดใหม่ เครื่องหมาย , หรือแท็บ</span>
               </div>
             </div>
@@ -515,7 +537,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       </Card>
 
       <Card>
-        <DocFiles docId={head.id ?? null} draft={!locked} pending={pendingFiles} setPending={setPendingFiles} tick={fileTick} />
+        <DocFiles docId={head.id ?? null} draft={!locked} pending={pendingFiles} setPending={setPendingFiles} tick={fileTick} kinds={truck} />
         {head.id && pendingFiles.length > 0 && <p className="mt-2 text-xs text-amber-700">มีรูปรออัปโหลด {pendingFiles.length} ไฟล์ กดบันทึกร่างหรือยืนยันเพื่ออัปโหลด</p>}
       </Card>
 

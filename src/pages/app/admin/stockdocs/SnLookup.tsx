@@ -34,12 +34,12 @@ function docLine(d: HistDoc) {
   const who = d.company || d.partner_name;
   switch (d.doc_type) {
     case "OB": return `ยอดยกมา เข้าคลัง ${d.warehouse ?? ""}`;
-    case "GR": return `รับเข้าจาก ${who ?? "ผู้ขาย"}${d.ref_no ? ` · PO ${d.ref_no}` : ""} · ${d.warehouse ?? ""}`;
-    case "GN": return `รับเข้าตามใบส่งของ ${d.ref_no ?? ""}${who ? ` จาก ${who}` : ""} · ${d.warehouse ?? ""}`;
+    case "GR": return `รับสินค้าต่างประเทศจาก ${who ?? "ผู้ขาย"}${d.ref_no ? ` · PI ${d.ref_no}` : ""} · ${d.warehouse ?? ""}`;
+    case "GN": return `รับสินค้าในประเทศ ใบส่งของ ${d.ref_no ?? ""}${who ? ` จาก ${who}` : ""} · ${d.warehouse ?? ""}`;
     case "RT": return `รับคืนจาก ${who ?? "-"} · สภาพ${CONDITION_LABEL[d.condition]}${d.reason ? ` · ${d.reason}` : ""}`;
-    case "SO": return `ขายให้ ${who ?? "-"}${d.ref_no ? ` · ${d.ref_no}` : ""}${d.customer_po ? ` · PO ลูกค้า ${d.customer_po}` : ""}${d.site_name ? ` · ไซต์ ${d.site_name}` : ""}`;
-    case "BR": return `ให้ ${who ?? "-"} ยืม${d.due_date ? ` · กำหนดคืน ${formatDate(d.due_date)}` : ""}${d.site_name ? ` · ${d.site_name}` : ""}`;
-    case "WD": return `เบิกชั่วคราวโดย ${who ?? "-"}${d.due_date ? ` · กำหนดคืน ${formatDate(d.due_date)}` : ""}`;
+    case "SO": return `ส่งของให้ ${who ?? "-"}${d.ref_no ? ` · ${d.ref_no}` : ""}${d.customer_po ? ` · PO ลูกค้า ${d.customer_po}` : ""}${d.site_name ? ` · ไซต์ ${d.site_name}` : ""}`;
+    case "BR": return `ใบเคลมสินค้า ส่งให้ ${who ?? "-"}${d.ref_no ? ` · ${d.ref_no}` : ""}${d.site_name ? ` · ${d.site_name}` : ""}`;
+    case "WD": return `เบิก / ยืมโดย ${who ?? "-"}${d.due_date ? ` · กำหนดคืน ${formatDate(d.due_date)}` : ""}`;
     case "WO": return `จำหน่ายออก · ${d.reason ?? ""}`;
     case "TR": return `โอนจาก ${d.warehouse ?? ""} ไป ${d.to_warehouse ?? ""}`;
     case "RV": return `จองให้ ${who ?? "-"}${d.ref_no ? ` · ${d.ref_no}` : ""}`;

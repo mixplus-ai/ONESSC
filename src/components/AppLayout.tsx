@@ -9,6 +9,8 @@ import { Logo } from "./PublicLayout";
 import { Alert, Loading, cx } from "./ui";
 import { Avatar } from "./Avatar";
 import { MobileTabBar } from "./MobileTabBar";
+import { RankBadge } from "./catalog";
+import { useMyRank } from "../lib/catalog";
 
 interface Item {
   to: string;
@@ -100,11 +102,11 @@ export default function AppLayout() {
     {
       title: "สินค้าและการขาย",
       items: [
-        { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: can("requests") },
+        { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: can("requests") || can("requests.all") },
         { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: ChartIcon, show: can("stock.view") },
         { to: "/app/admin/stock-docs", label: stockAlert ? `เอกสารคลังและ SN (${stockAlert})` : "เอกสารคลังและ SN", icon: FileIcon, show: can("stock.view") || can("stock.docs") || can("stock.post") || can("stock.check") || can("stock.count") },
         { to: "/app/admin/deliveries", label: "ตารางส่งสินค้า", icon: TruckIcon, show: can("deliveries.view") || can("deliveries.manage") },
-        { to: "/app/admin/pricing", label: "ราคาเฉพาะบริษัท", icon: TagIcon, show: can("pricing") },
+        { to: "/app/admin/pricing", label: "ราคาตาม Rank / บริษัท", icon: TagIcon, show: can("pricing") },
         { to: "/app/admin/products", label: "สินค้า", icon: BoxIcon, show: can("products") },
         { to: "/app/admin/products-grid", label: "แก้สินค้าแบบตาราง", icon: BoxIcon, show: can("products") || can("products.bulk") || can("products.bulk_price") },
         { to: "/app/admin/promotions", label: "โปรโมชั่นและแพ็กเกจ", icon: TagIcon, show: can("products") },
@@ -177,12 +179,13 @@ export default function AppLayout() {
     </nav>
   );
 
+  const rank = useMyRank();
   const userBox = (
     <div className="border-t border-white/10 p-4">
       <Link to="/app/profile" className="flex items-center gap-3">
         <Avatar url={profile?.avatar_url} name={profile?.full_name || profile?.email} className="h-10 w-10 text-sm" />
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-white">{profile?.full_name || profile?.email}</span>
+          <span className="flex min-w-0 items-center gap-1.5"><span className="truncate text-sm font-semibold text-white">{profile?.full_name || profile?.email}</span><RankBadge rank={rank} size="xs" /></span>
           <span className="block truncate text-xs text-navy-200">{profile && (profile.role === "user" ? (profile.company_name || "ลูกค้า") : ROLE_LABEL[profile.role])} · {profile?.email}</span>
         </span>
       </Link>

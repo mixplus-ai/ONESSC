@@ -127,7 +127,7 @@ export default function ProductDetail() {
           </div>
 
           {!session && (
-            <div className="mt-5"><Alert tone="navy">ราคาที่แสดงเป็นราคาปกติ <Link to="/login" state={{ from: `/products/${p.slug}` }} className="font-semibold underline">เข้าสู่ระบบ</Link> เพื่อดูราคาเฉพาะบริษัทและจำนวนคงเหลือ</Alert></div>
+            <div className="mt-5"><Alert tone="navy">ราคาที่แสดงเป็นราคาปกติ <Link to="/login" state={{ from: `/products/${p.slug}` }} className="font-semibold underline">เข้าสู่ระบบ</Link> เพื่อดูราคาเฉพาะบริษัท (ตาม Rank)</Alert></div>
           )}
           {session && profile && profile.role === "user" && profile.company_status !== "approved" && (
             <div className="mt-5"><Alert tone="amber">ผูกบัญชีกับบริษัท (เลขผู้เสียภาษี) ใน <Link to="/app/profile" className="font-semibold underline">ข้อมูลส่วนตัว</Link> เพื่อดูราคาเฉพาะบริษัท</Alert></div>
@@ -153,7 +153,7 @@ export default function ProductDetail() {
                 </div>
               </div>
             ))}
-            {synced && <p className="text-xs text-slate-400">สต๊อกอัปเดตล่าสุด {formatDateTime(synced)}</p>}
+            {variants.length > 0 && <p className="text-xs text-slate-500">สถานะสินค้าอ้างอิงตามสต๊อก{synced ? ` ณ วันที่ ${formatDateTime(synced)}` : "ล่าสุด"} กรุณาจองหรือติดต่อพนักงานขายเพื่อยืนยัน</p>}
           </div>
 
           {(p.datasheet_url || p.manual_url || p.video_url) && (

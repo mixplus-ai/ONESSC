@@ -78,7 +78,7 @@ begin
   assert (select status from public.serials where sn_key = public.sn_key('SN-0001')) = 'sold', 'sold';
 
   d := public.save_stock_doc(null, jsonb_build_object('doc_type', 'BR', 'warehouse_id', wh, 'partner_name', 'Borrower'), '[{"sku":"INV-10K","sn":"SN-0002"}]');
-  begin perform public.post_stock_doc(d.id); assert false, 'BR needs due date'; exception when raise_exception then null; end;
+  -- BR is now ใบเคลมสินค้า (migration 33): no return date needed
   perform public.save_stock_doc(d.id, jsonb_build_object('doc_type', 'BR', 'warehouse_id', wh, 'partner_name', 'Borrower', 'due_date', '2026-12-01'), '[{"sku":"INV-10K","sn":"SN-0002"}]');
   perform public.post_stock_doc(d.id);
   insert into t_ids values ('br', d.id);

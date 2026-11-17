@@ -285,7 +285,7 @@ export default function DeliveriesAdmin() {
           edit && (
             <>
               {isAdmin && edit.id && <Button variant="ghost" className="mr-auto !text-red-600" onClick={() => remove(edit)}>ลบ</Button>}
-              {edit.id && (can("stock.docs") || can("stock.post")) && <ButtonLink variant="secondary" to={`/app/admin/stock-docs?tab=docs&new=SO&delivery=${edit.id}`}>สร้างใบขาย / สแกน SN ตัดสต๊อก</ButtonLink>}
+              {edit.id && (can("stock.docs") || can("stock.post")) && <ButtonLink variant="secondary" to={`/app/admin/stock-docs?tab=docs&new=SO&delivery=${edit.id}`}>สร้างใบส่งของ / สแกน SN ตัดสต๊อก</ButtonLink>}
               {edit.file_path && <Button variant="secondary" onClick={() => openDeliveryFile(edit.file_path!).catch((x) => setErr(errorMessage(x)))}>เปิดไฟล์เอกสาร</Button>}
               {canManage && <label className="inline-flex cursor-pointer items-center rounded-lg px-3 py-2 text-sm text-navy-700 hover:bg-slate-100">
                 {edit.file ? `แนบ: ${edit.file.name}` : edit.file_path ? "เปลี่ยนไฟล์" : "แนบไฟล์"}

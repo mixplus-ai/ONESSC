@@ -1,13 +1,15 @@
 import { formatDate } from "../../../../lib/catalog";
-import { esc, heading, note, openPrintDoc, table, type PrintDoc } from "../../../../lib/printdoc";
+import { esc, heading, note, openPrintDoc, preparePrintWindow, table, type Panel, type PrintDoc } from "../../../../lib/printdoc";
 import {
-  CONDITION_LABEL, DIR, DOC_LABEL, DOC_STATUS_LABEL, PARTNER_LABEL, REF_LABEL,
+  CONDITION_LABEL, DIR, DOC_LABEL, DOC_STATUS_LABEL, FILE_KINDS, PARTNER_LABEL, REF_LABEL,
   type CountReport, type DocItem, type DocType, type StockCount, type StockDoc, type Warehouse,
 } from "../../../../lib/stockdocs";
 
+import { isImage, loadDocFiles } from "./DocFiles";
+
 export const DOC_TITLE_EN: Record<DocType, string> = {
-  OB: "OPENING BALANCE", GR: "GOODS RECEIPT (PO)", GN: "GOODS RECEIPT (DELIVERY NOTE)", RT: "GOODS RETURN", SO: "DELIVERY / SALES ISSUE",
-  BR: "LOAN NOTE", WD: "STOCK WITHDRAWAL", WO: "STOCK WRITE-OFF", TR: "STOCK TRANSFER", RV: "STOCK RESERVATION",
+  OB: "OPENING BALANCE", GR: "GOODS RECEIPT (IMPORT)", GN: "GOODS RECEIPT (DOMESTIC)", RT: "GOODS RETURN", SO: "DELIVERY NOTE",
+  BR: "CLAIM ISSUE", WD: "STOCK WITHDRAWAL / LOAN", WO: "STOCK WRITE-OFF", TR: "STOCK TRANSFER", RV: "STOCK RESERVATION",
 };
 
 /** SN list: four "no. | serial" pairs per row so a long list stays on few pages. */
@@ -53,7 +55,7 @@ export function printStockDoc(d: StockDoc, items: DocItem[], warehouses: Warehou
     extra: [["สถานะ", DOC_STATUS_LABEL[d.status]], [REF_LABEL[d.doc_type] ?? "อ้างอิง", d.ref_no]],
     watermark: d.status === "cancelled" ? "ยกเลิก" : d.status === "draft" ? "ร่าง" : null,
     panels: [
-      { heading: partner, rows: [["ชื่อ", d.partner_name], ["เลขผู้เสียภาษี", d.partner_tax_id], ["PO ลูกค้า", d.customer_po], ["สถานที่ / ไซต์", d.site_name], ["กำหนดคืน", d.due_date ? formatDate(d.due_date) : null]] },
+      { heading: partner, rows: [["ชื่อ", d.partner_name], ["เลขผู้เสียภาษี", d.partner_tax_id], ["PO ลูกค้า", d.customer_po], ["ชื่อโครงการ", d.site_name], ["กำหนดคืน", d.due_date ? formatDate(d.due_date) : null]] },
       { heading: "คลังสินค้า", rows: [[d.doc_type === "TR" ? "จากคลัง" : "คลัง", wh(d.warehouse_id)], ["ไปคลัง", d.doc_type === "TR" ? wh(d.to_warehouse_id) : null],
         ["ทิศทาง", dir === "in" ? "รับเข้าคลัง" : dir === "out" ? "จ่ายออกจากคลัง" : d.doc_type === "TR" ? "โอนระหว่างคลัง" : "จอง (ยังไม่ตัดสต๊อก)"],
         ["ยืนยันเมื่อ", d.posted_at ? formatDate(d.posted_at) : null]] },
@@ -96,5 +98,93 @@ export function printStockCount(c: StockCount, r: CountReport, warehouse: string
     ],
     body,
     signatures: ["ผู้ตรวจนับ", "ผู้ตรวจสอบ", "ผู้อนุมัติ"],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Receipts and delivery notes (GR, GN, SO, BR) print as two separate PDFs:
+//   1. the detail sheet: parties, totals per code, vehicle and driver, photos
+//   2. the SN sheet: every serial, with the checker / receiver / approver signatures, referring to sheet 1's number
+// ---------------------------------------------------------------------------
+function groupItems(items: DocItem[]) {
+  const groups = new Map<string, { description: string | null; sns: DocItem[] }>();
+  items.forEach((i) => {
+    const g = groups.get(i.sku) ?? { description: i.description, sns: [] };
+    g.sns.push(i);
+    groups.set(i.sku, g);
+  });
+  return [...groups.entries()];
+}
+const watermarkOf = (d: StockDoc) => (d.status === "cancelled" ? "ยกเลิก" : d.status === "draft" ? "ร่าง" : null);
+const vehiclePanel = (d: StockDoc): Panel => ({
+  heading: DIR[d.doc_type] === "in" ? "รถที่มาส่ง" : "รถขนส่ง",
+  rows: [["ทะเบียนรถ", d.vehicle_plate], ["คนขับ", d.driver_name], ["เบอร์โทร", d.driver_phone]],
+});
+const partnerPanel = (d: StockDoc): Panel => ({
+  heading: PARTNER_LABEL[d.doc_type] ?? "ผู้ติดต่อ",
+  rows: [["ชื่อ", d.partner_name], ["เลขผู้เสียภาษี", d.partner_tax_id], ["PO ลูกค้า", d.customer_po], ["ชื่อโครงการ", d.site_name]],
+});
+
+export async function printDeliveryDetail(d: StockDoc, items: DocItem[], warehouses: Warehouse[]) {
+  const w = preparePrintWindow();
+  if (!w) return;
+  const wh = warehouses.find((x) => x.id === d.warehouse_id)?.name ?? "";
+  const groups = groupItems(items);
+  const { list, urls } = await loadDocFiles(d.id, 7 * 24 * 3600);
+  const photos = FILE_KINDS.map((k) => ({ ...k, files: list.filter((f) => (f.kind ?? "other") === k.kind && isImage(f.name) && urls[f.path]) }))
+    .filter((k) => k.files.length);
+  // one page: four fixed slots (plate, vehicle papers, driver papers, goods) + up to four extra photos in a smaller row
+  const box = (label: string, url: string | undefined, h: number) =>
+    `<figure style="margin:0;border:1px solid #cbd5e1;border-radius:6px;padding:3px;text-align:center;break-inside:avoid">${url
+      ? `<img src="${esc(url)}" alt="" style="width:100%;height:${h}px;object-fit:contain;display:block">`
+      : `<div style="height:${h}px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:8.5pt;border:1px dashed #cbd5e1;border-radius:4px">ไม่มีรูป</div>`}<figcaption style="font-size:8pt;color:#0f2a4a;font-weight:600;margin-top:2px">${esc(label)}</figcaption></figure>`;
+  const byKind = (k: string) => photos.find((x) => x.kind === k)?.files ?? [];
+  const main = FILE_KINDS.filter((k) => k.kind !== "other").map((k) => ({ label: k.label, url: byKind(k.kind)[0] ? urls[byKind(k.kind)[0].path] : undefined }));
+  const extras = FILE_KINDS.flatMap((k) => (k.kind === "other" ? byKind(k.kind) : byKind(k.kind).slice(1)).map((f) => ({ label: k.label, url: urls[f.path] })));
+  const shown = extras.slice(0, 4);
+  const photoHtml = photos.length ? `<div style="break-inside:avoid">${heading("รูปประกอบ")}
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${main.map((c) => box(c.label, c.url, 88)).join("")}</div>
+${shown.length ? `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px">${shown.map((c) => box(c.label, c.url, 62)).join("")}</div>` : ""}
+${extras.length > shown.length ? `<p class="muted" style="font-size:8pt;margin:4px 0 0">มีรูปเพิ่มอีก ${extras.length - shown.length} รูป ดูได้ในระบบ</p>` : ""}</div>` : "";
+
+  const body = [
+    heading("รายการสินค้า"),
+    table([["ลำดับ", "c"], ["รหัสสินค้า"], ["รายละเอียด"], ["จำนวน (ชิ้น)", "r"]],
+      groups.map(([sku, g], i) => [i + 1, sku, g.description, g.sns.length]),
+      { foot: ["", "", "รวมทั้งสิ้น", items.length], widths: ["44px", "26%", undefined, "90px"] }),
+    note("รายการ Serial Number", `${items.length} รายการ แยกอยู่ในใบรายการ SN เลขที่ ${d.doc_no ?? "-"}-SN`),
+    note("เหตุผล", d.reason),
+    note("หมายเหตุ", d.note),
+    d.status === "cancelled" ? note("ยกเลิกเอกสาร", `${d.cancel_reason ?? ""}${d.cancelled_at ? ` (${formatDate(d.cancelled_at)})` : ""}`) : "",
+    photoHtml,
+  ].join("");
+
+  return openPrintDoc({
+    title: DOC_LABEL[d.doc_type], titleEn: DOC_TITLE_EN[d.doc_type], docNo: d.doc_no, date: formatDate(d.doc_date),
+    extra: [["สถานะ", DOC_STATUS_LABEL[d.status]], [REF_LABEL[d.doc_type] ?? "อ้างอิง", d.ref_no]],
+    watermark: watermarkOf(d),
+    panels: [partnerPanel(d), { heading: "คลังสินค้า", rows: [["คลัง", wh], ["ทิศทาง", DIR[d.doc_type] === "in" ? "รับเข้าคลัง" : "จ่ายออกจากคลัง"], ["ยืนยันเมื่อ", d.posted_at ? formatDate(d.posted_at) : null]] }, vehiclePanel(d)],
+    body,
+    signatures: DIR[d.doc_type] === "in" ? ["ผู้ส่งสินค้า", "ผู้รับสินค้า", "ผู้อนุมัติ"] : ["ผู้เบิก", "ผู้รับ", "ผู้อนุมัติ"],
+    fileName: `${DOC_LABEL[d.doc_type]} ${d.doc_no ?? ""}`,
+  }, w);
+}
+
+export function printDeliverySns(d: StockDoc, items: DocItem[], warehouses: Warehouse[]) {
+  const wh = warehouses.find((x) => x.id === d.warehouse_id)?.name ?? "";
+  const showCond = DIR[d.doc_type] === "in";
+  const body = [
+    heading(`รายการ Serial Number (${items.length} รายการ)`),
+    ...groupItems(items).map(([sku, g]) => `<p style="margin:8px 0 4px;font-weight:700">${esc(sku)} <span class="muted" style="font-weight:400">${esc(g.description ?? "")} · ${g.sns.length} ชิ้น</span></p>${snGrid(g.sns, showCond)}`),
+    note("อ้างอิง", `ใบนี้เป็นใบแนบของ${DOC_LABEL[d.doc_type]} เลขที่ ${d.doc_no ?? "-"}`),
+  ].join("");
+  return openPrintDoc({
+    title: "ใบรายการ Serial Number", titleEn: `SERIAL LIST · ${DOC_TITLE_EN[d.doc_type]}`, docNo: d.doc_no ? `${d.doc_no}-SN` : null, date: formatDate(d.doc_date),
+    extra: [["อ้างอิงใบรายละเอียด", d.doc_no], ["สถานะ", DOC_STATUS_LABEL[d.status]]],
+    watermark: watermarkOf(d),
+    panels: [{ heading: PARTNER_LABEL[d.doc_type] ?? "ผู้ติดต่อ", rows: [["ชื่อ", d.partner_name], ["ชื่อโครงการ", d.site_name], ["คลัง", wh]] }, vehiclePanel(d)],
+    body,
+    signatures: ["ผู้ตรวจ", DIR[d.doc_type] === "in" ? "ผู้รับสินค้าเข้าคลัง" : "ผู้รับสินค้า", "ผู้อนุมัติ"],
+    fileName: `${d.doc_no ?? ""}-SN ใบรายการ Serial Number`,
   });
 }

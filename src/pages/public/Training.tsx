@@ -6,7 +6,7 @@ import { useAuth } from "../../lib/auth";
 import { useRows, useSiteSettings } from "../../lib/content";
 import { AdSlot } from "../../components/banners";
 import { supabase } from "../../lib/supabase";
-import { formatMoney, loadSeats, cols,
+import { coursePath, formatMoney, loadSeats, cols,
   SESSION_COLS, sessionDateText, sessionPrice, todayBkk, type Course, type Session } from "../../lib/training";
 
 /** Upcoming sessions grouped by course — public calendar (ปฏิทินอบรม). */
@@ -43,7 +43,7 @@ export function SessionCard({ s, booked }: { s: Session & { courses: Course }; b
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-xs font-semibold tracking-wide text-sun-600">{s.courses.code}</p>
-        <h3 className="font-semibold text-navy-900">{s.courses.title}</h3>
+        <h3 className="font-semibold text-navy-900"><Link to={coursePath(s.courses)} className="hover:underline">{s.courses.title}</Link></h3>
         {s.title && <p className="text-sm text-slate-600">{s.title}</p>}
         <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500"><ClockIcon className="h-4 w-4 shrink-0" />{sessionDateText(s)}</p>
         {s.location && (
@@ -58,11 +58,14 @@ export function SessionCard({ s, booked }: { s: Session & { courses: Course }; b
           <p className="font-semibold text-navy-900">{price > 0 ? formatMoney(price) : "ฟรี"}</p>
           <p className="text-xs text-slate-500">{price > 0 && s.vat ? "+VAT · " : ""}เหลือ {left}/{s.capacity} ที่</p>
         </div>
-        {open ? (
-          <ButtonLink to={`/app/training/book/${s.id}`} variant="sun">จองรอบนี้</ButtonLink>
-        ) : (
-          <Badge tone={left === 0 ? "red" : "amber"}>{left === 0 ? "เต็มแล้ว" : "ปิดรับสมัคร"}</Badge>
-        )}
+        <div className="flex items-center gap-2">
+          <ButtonLink to={coursePath(s.courses)} variant="ghost">รายละเอียด</ButtonLink>
+          {open ? (
+            <ButtonLink to={`/app/training/book/${s.id}`} variant="sun">จองรอบนี้</ButtonLink>
+          ) : (
+            <Badge tone={left === 0 ? "red" : "amber"}>{left === 0 ? "เต็มแล้ว" : "ปิดรับสมัคร"}</Badge>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -261,15 +264,16 @@ export default function Training() {
             <h2 className="text-xl font-bold text-navy-900">หลักสูตรทั้งหมด</h2>
             <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {courses.rows.map((c) => (
-                <div key={c.id} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+                <Link key={c.id} to={coursePath(c)} className="group flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:shadow-md hover:ring-navy-200">
                   {c.cover_url ? <img src={c.cover_url} alt="" className="h-36 w-full object-cover" /> : <div className="h-2" style={{ background: c.color || "#16235a" }} />}
                   <div className="p-5">
                     <p className="text-xs font-semibold text-sun-600">{c.code}{c.hours ? ` · ${c.hours} ชั่วโมง` : ""}</p>
                     <h3 className="mt-1 font-semibold text-navy-900">{c.title}</h3>
                     {c.subtitle && <p className="mt-1 text-sm text-slate-600">{c.subtitle}</p>}
                     {c.description && <p className="mt-2 line-clamp-3 text-sm text-slate-500">{c.description}</p>}
+                    <p className="mt-3 text-sm font-semibold text-navy-700 group-hover:underline">ดูรายละเอียดและหัวข้ออบรม →</p>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </div>

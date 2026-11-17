@@ -132,7 +132,7 @@ function SyncPanel({ onDone }: { onDone: () => void }) {
           <Field label="ถือว่า “เหลือน้อย” เมื่อ ≤"><Input type="number" min="0" value={cfg.low_threshold} onChange={(e) => setCfg({ ...cfg, low_threshold: Number(e.target.value) || 0 })} /></Field>
           <Field label="กันสินค้าที่จองไว้ (วัน)"><Input type="number" min="1" max="90" value={cfg.reservation_days} onChange={(e) => setCfg({ ...cfg, reservation_days: Number(e.target.value) || 7 })} /></Field>
         </div>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cfg.show_qty_to_users} onChange={(e) => setCfg({ ...cfg, show_qty_to_users: e.target.checked })} /> ลูกค้าที่ล็อกอินเห็นจำนวนคงเหลือ (บุคคลทั่วไปเห็นแค่สถานะ มี/เหลือน้อย/หมด)</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cfg.show_qty_to_users} onChange={(e) => setCfg({ ...cfg, show_qty_to_users: e.target.checked })} /> ลูกค้าที่ล็อกอินเห็นจำนวนคงเหลือ (ปิด = ลูกค้าเห็นแค่สถานะ มีสินค้า / มีสินค้าบางส่วน / ไม่มีสินค้า)</label>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={saveCfg} loading={busy === "save"}>บันทึกการตั้งค่า</Button>
           <Button onClick={syncUrl} loading={busy === "url"} disabled={!!busy || !cfg.source_url}>ซิงก์จาก Google Sheet ตอนนี้</Button>

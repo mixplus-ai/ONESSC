@@ -100,9 +100,11 @@ export function PosInput({ value, onChange, label = "ตำแหน่งที
 }
 
 /** Inverters on the job; each one's string holds the optimizers / accessories / panels that failed there. */
-function InverterGroups({ groups, onChange, optionsFor, strict, brand, defaultKind, needSn, needCase, needManager }: {
+function InverterGroups({ groups, onChange, optionsFor, strict, brand, defaultKind, needSn, needCase, needManager, showPos }: {
   groups: InvGroup[]; onChange: (g: InvGroup[]) => void; optionsFor: (k: ProductType) => { code: string; name: string }[];
   strict: boolean; brand: string; defaultKind: ItemKind; needSn: boolean; needCase: boolean; needManager: boolean;
+  /** failed panel position on the inverter itself (not for SolarEdge inverters) */
+  showPos: boolean;
 }) {
   const upd = (k: string, patch: Partial<InvGroup>) => onChange(groups.map((g) => (g.key === k ? { ...g, ...patch } : g)));
   const updItem = (g: InvGroup, k: string, patch: Partial<StringItem>) => upd(g.key, { items: g.items.map((x) => (x.key === k ? { ...x, ...patch } : x)) });
@@ -123,7 +125,7 @@ function InverterGroups({ groups, onChange, optionsFor, strict, brand, defaultKi
               <Field label="อ้างอิง S/N Manager Inverter" required={needManager}><Input className="font-mono" value={g.manager_sn ?? ""} onChange={(e) => upd(g.key, { manager_sn: e.target.value })} /></Field>
             </div>
           )}
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className={cx("grid gap-3", showPos ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]" : "sm:grid-cols-2")}>
             <ModelPicker label="รุ่น / รหัส Inverter" value={g.model} onChange={(v) => upd(g.key, { model: v })} options={optionsFor("inverter")} required={g.claimed} strict={strict} brand={brand} />
             <Field label="S/N Inverter" required>
               <div className="flex gap-1">
@@ -131,7 +133,7 @@ function InverterGroups({ groups, onChange, optionsFor, strict, brand, defaultKi
                 <ScanButton onScan={(sn) => upd(g.key, { sn })} />
               </div>
             </Field>
-            {g.claimed && <Field label="ตำแหน่งที่เสีย (แผง)" hint="0.0.0.0 แก้ได้ช่องละ 3 หลัก"><PosInput value={g.pos} onChange={(v) => upd(g.key, { pos: v })} /></Field>}
+            {g.claimed && showPos && <Field label="ตำแหน่งที่เสีย (แผง)" hint="0.0.0.0 แก้ได้ช่องละ 3 หลัก"><PosInput value={g.pos} onChange={(v) => upd(g.key, { pos: v })} /></Field>}
           </div>
           {(
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -325,6 +327,13 @@ export default function NewClaim() {
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
   const startGroups = (t: ProductType | "") => [emptyGroup(t === "inverter" || !t, t && t !== "inverter" && GROUPED.has(t) ? (t as ItemKind) : undefined)];
   const resetProduct = (t: ProductType | "" = type) => { set("model", ""); setUnits([emptyUnit()]); setGroups(startGroups(t)); };
+  // a new claim type starts steps 2–3 over: brand, product rows, case fields, notes and files
+  const pickType = (t: ProductType) => {
+    if (t === type) return;
+    setType(t); setBrandId(""); setFiles([]); setErr("");
+    setF((x) => ({ ...x, model: "", manager_sn: "", case_no: "", issue: "", description: "", ref_inv_sn: "", symptom: "" }));
+    setUnits([emptyUnit()]); setGroups(startGroups(t));
+  };
 
   function pickFiles(list: FileList | null) {
     if (!list) return;
@@ -366,10 +375,10 @@ export default function NewClaim() {
         }
       }
       if (type === "inverter" && !claimedInv) return setErr("ติ๊ก \"เคลม Inverter ตัวนี้\" อย่างน้อย 1 ตัว");
-      details.inverters = groups.map((g) => ({ sn: g.sn.trim().toUpperCase(), model: g.model.trim() || undefined, pos: g.claimed ? g.pos : undefined, claimed: g.claimed,
+      details.inverters = groups.map((g) => ({ sn: g.sn.trim().toUpperCase(), model: g.model.trim() || undefined, pos: g.claimed && !isSE ? g.pos : undefined, claimed: g.claimed,
         manager_sn: g.manager_sn?.trim(), case_no: g.case_no?.trim(), issue: g.issue?.trim(), description: g.description?.trim() }));
       rows = groups.flatMap((g): Row[] => [
-        ...(g.claimed ? [{ kind: "inverter" as const, model: g.model.trim(), sn: g.sn.trim(), symptom: g.symptom.trim(), pos: g.pos,
+        ...(g.claimed ? [{ kind: "inverter" as const, model: g.model.trim(), sn: g.sn.trim(), symptom: g.symptom.trim(), pos: isSE ? undefined : g.pos,
           manager_sn: g.manager_sn?.trim() || undefined, case_no: g.case_no?.trim() || undefined, issue: g.issue?.trim() || undefined, description: g.description?.trim() || undefined }] : []),
         ...g.items.map((it) => ({ kind: it.kind, model: it.model.trim(), sn: it.sn.trim(), symptom: it.symptom.trim(), pos: it.pos, inv_sn: g.sn.trim().toUpperCase(),
           ...(it.kind === "optimizer" ? { volt: it.volt.trim(), ohm: it.ohm.trim() } : {}) })),
@@ -463,12 +472,13 @@ export default function NewClaim() {
           <p className="mb-2 text-sm font-medium text-slate-700"><span className="mr-1.5 inline-grid h-5 w-5 place-items-center rounded-full bg-navy-800 text-xs text-white">1</span>ประเภทการเคลมสินค้า <span className="text-red-500">*</span></p>
           <div className="flex flex-wrap gap-2">
             {PRODUCT_TYPES.map((t) => (
-              <button key={t.key} type="button" onClick={() => { setType(t.key); resetProduct(t.key); }}
+              <button key={t.key} type="button" onClick={() => pickType(t.key)}
                 className={cx("rounded-xl px-4 py-2 text-sm font-semibold ring-1", type === t.key ? "bg-navy-800 text-white ring-navy-800" : "bg-white text-slate-700 ring-slate-200 hover:ring-navy-300")}>
                 {t.label}
               </button>
             ))}
           </div>
+          {type && <p className="mt-1.5 text-xs text-slate-500">เปลี่ยนประเภทการเคลม ข้อ 2–3 จะล้างและเริ่มกรอกใหม่</p>}
 
           {step >= 2 && (
             <div className="mt-5 max-w-md">
@@ -497,12 +507,12 @@ export default function NewClaim() {
                 <div className="space-y-4">
                   <p className="text-sm text-slate-600">
                     {type === "inverter"
-                      ? "เพิ่ม Inverter ได้หลายตัว ใส่ S/N และตำแหน่งที่เสีย ถ้ามี Optimizer / อุปกรณ์ / แผงเสียในสตริงเดียวกัน เพิ่มไว้ใต้ Inverter ตัวนั้น"
+                      ? `เพิ่ม Inverter ได้หลายตัว ใส่ S/N${isSE ? "" : " และตำแหน่งที่เสีย"} ถ้ามี Optimizer / อุปกรณ์ / แผงเสียในสตริงเดียวกัน เพิ่มไว้ใต้ Inverter ตัวนั้น`
                       : "ระบุ Inverter ที่สินค้าแต่ละชิ้นต่ออยู่ (ไม่ต้องติ๊กเคลม ถ้า Inverter ไม่เสีย) แล้วเพิ่มชิ้นที่เสียไว้ใต้ Inverter ตัวนั้น"}
                   </p>
                   <div className="max-w-md"><SupportContact /></div>
                   <InverterGroups groups={groups} onChange={setGroups} optionsFor={optionsFor} strict={isSE} brand={brand?.name ?? ""}
-                    defaultKind={type !== "inverter" && GROUPED.has(type as ProductType) ? (type as ItemKind) : "optimizer"} needSn={isSE} needCase needManager />
+                    defaultKind={type !== "inverter" && GROUPED.has(type as ProductType) ? (type as ItemKind) : "optimizer"} needSn={isSE} needCase needManager showPos={!isSE} />
                 </div>
               )}
 
