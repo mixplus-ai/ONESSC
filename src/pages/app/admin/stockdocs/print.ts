@@ -133,9 +133,19 @@ export async function printDeliveryDetail(d: StockDoc, items: DocItem[], warehou
   const { list, urls } = await loadDocFiles(d.id, 7 * 24 * 3600);
   const photos = FILE_KINDS.map((k) => ({ ...k, files: list.filter((f) => (f.kind ?? "other") === k.kind && isImage(f.name) && urls[f.path]) }))
     .filter((k) => k.files.length);
-  const cells = photos.flatMap((k) => k.files.map((f) => ({ label: k.label, url: urls[f.path] })));
-  const photoHtml = cells.length ? heading("รูปประกอบ") + `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${cells.map((c) =>
-    `<figure style="margin:0;break-inside:avoid;border:1px solid #cbd5e1;border-radius:6px;padding:4px;text-align:center"><img src="${esc(c.url)}" alt="" style="width:100%;height:150px;object-fit:contain"><figcaption style="font-size:8.5pt;color:#0f2a4a;font-weight:600;margin-top:2px">${esc(c.label)}</figcaption></figure>`).join("")}</div>` : "";
+  // one page: four fixed slots (plate, vehicle papers, driver papers, goods) + up to four extra photos in a smaller row
+  const box = (label: string, url: string | undefined, h: number) =>
+    `<figure style="margin:0;border:1px solid #cbd5e1;border-radius:6px;padding:3px;text-align:center;break-inside:avoid">${url
+      ? `<img src="${esc(url)}" alt="" style="width:100%;height:${h}px;object-fit:contain;display:block">`
+      : `<div style="height:${h}px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:8.5pt;border:1px dashed #cbd5e1;border-radius:4px">ไม่มีรูป</div>`}<figcaption style="font-size:8pt;color:#0f2a4a;font-weight:600;margin-top:2px">${esc(label)}</figcaption></figure>`;
+  const byKind = (k: string) => photos.find((x) => x.kind === k)?.files ?? [];
+  const main = FILE_KINDS.filter((k) => k.kind !== "other").map((k) => ({ label: k.label, url: byKind(k.kind)[0] ? urls[byKind(k.kind)[0].path] : undefined }));
+  const extras = FILE_KINDS.flatMap((k) => (k.kind === "other" ? byKind(k.kind) : byKind(k.kind).slice(1)).map((f) => ({ label: k.label, url: urls[f.path] })));
+  const shown = extras.slice(0, 4);
+  const photoHtml = photos.length ? `<div style="break-inside:avoid">${heading("รูปประกอบ")}
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${main.map((c) => box(c.label, c.url, 88)).join("")}</div>
+${shown.length ? `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px">${shown.map((c) => box(c.label, c.url, 62)).join("")}</div>` : ""}
+${extras.length > shown.length ? `<p class="muted" style="font-size:8pt;margin:4px 0 0">มีรูปเพิ่มอีก ${extras.length - shown.length} รูป ดูได้ในระบบ</p>` : ""}</div>` : "";
 
   const body = [
     heading("รายการสินค้า"),
@@ -155,7 +165,7 @@ export async function printDeliveryDetail(d: StockDoc, items: DocItem[], warehou
     watermark: watermarkOf(d),
     panels: [partnerPanel(d), { heading: "คลังสินค้า", rows: [["คลัง", wh], ["ทิศทาง", DIR[d.doc_type] === "in" ? "รับเข้าคลัง" : "จ่ายออกจากคลัง"], ["ยืนยันเมื่อ", d.posted_at ? formatDate(d.posted_at) : null]] }, vehiclePanel(d)],
     body,
-    signatures: ["ผู้จัดทำ", "พนักงานขับรถ"],
+    signatures: DIR[d.doc_type] === "in" ? ["ผู้ส่งสินค้า", "ผู้รับสินค้า", "ผู้อนุมัติ"] : ["ผู้เบิก", "ผู้รับ", "ผู้อนุมัติ"],
     fileName: `${DOC_LABEL[d.doc_type]} ${d.doc_no ?? ""}`,
   }, w);
 }
