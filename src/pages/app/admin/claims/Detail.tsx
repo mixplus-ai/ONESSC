@@ -10,6 +10,7 @@ import { useAuth } from "../../../../lib/auth";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import { printClaim, exportClaimImage, exportClaimXlsx } from "./exporters";
 import { staffName, useBoard } from "./shared";
+import { ClaimSnChanges } from "./SnChanges";
 import { ClaimStockSteps, autoClaimStock } from "./StockSteps";
 
 const chipTone: Record<StepState, string> = {
@@ -475,6 +476,9 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
               {canEdit && s.n > 1 && (
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
                   <button type="button" className="text-xs font-semibold text-navy-700 hover:underline" onClick={() => setGrid(s.n)}>{p.count ? "แก้ไข" : "กรอก"}</button>
+                  {s.n === 3 && (
+                    <button type="button" className="text-xs font-semibold text-navy-700 hover:underline" onClick={() => document.getElementById("claim-sn-changes")?.scrollIntoView({ behavior: "smooth", block: "center" })}>ขอแก้ SN</button>
+                  )}
                   {s.n === lastStep && (
                     <button type="button" disabled={undoing} className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50" title="ล้างข้อมูลขั้นนี้เพื่อถอยกลับไปแก้ไข (ย้อนได้ทีละขั้นจากขั้นล่าสุด)" onClick={() => undoStep(s.n)}>
                       {undoing ? "กำลังยกเลิก…" : "ยกเลิกขั้นนี้"}
@@ -493,6 +497,8 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
           <Photos claim={claim} kind="issue" title="ขั้น 2 · ส่งของให้ลูกค้า" canUpload={canEdit || claim.assigned_to === me} />
         </div>
       </Card>
+
+      <ClaimSnChanges claim={claim} units={units} />
 
       <ClaimStockSteps claim={claim} units={units} />
 
