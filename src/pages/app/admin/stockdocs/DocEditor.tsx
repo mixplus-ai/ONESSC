@@ -12,6 +12,7 @@ import { DocFiles, uploadDocFiles, type PendingFile } from "./DocFiles";
 import { CameraScan } from "./CameraScan";
 import { PhotoScan } from "./PhotoScan";
 import { printDeliveryDetail, printDeliverySns, printStockDoc } from "./print";
+import { isReserveWarehouse, soFromRv } from "./fromRv";
 
 interface StockRow { sku: string; description: string | null }
 interface CompanyOpt { id: string; name: string; tax_id: string }
@@ -30,9 +31,9 @@ const uniq = (list: DocItem[], add: DocItem[]) => {
   return [...list, ...add.filter((i) => !k.has(snKey(i.sn)) && k.add(snKey(i.sn)))];
 };
 
-export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservationId, onClose, onChanged }: {
+export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservationId, onClose, onChanged, onOpen }: {
   id: string | null; type: DocType; warehouses: Warehouse[]; deliveryId?: string | null; claimId?: string | null; reservationId?: string | null;
-  onClose: () => void; onChanged: (id: string) => void;
+  onClose: () => void; onChanged: (id: string) => void; onOpen?: (id: string) => void;
 }) {
   const { can, isAdmin, profile } = useAuth();
   const canPost = can("stock.post");
@@ -40,7 +41,10 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
   const canCheck = can("stock.check") || can("stock.post");
   const cfg = useRows<{ check_types: DocType[] }>(() => supabase.from("stock_config").select("check_types").eq("id", 1));
   // receipts go into the main warehouse first (role "main" when the claims update has set it, else the first in order)
-  const [head, setHead] = useState<Head>({ doc_type: type, doc_date: today(), warehouse_id: (warehouses.find((w) => w.role === "main") ?? warehouses[0])?.id });
+  const mainWh = (warehouses.find((w) => w.role === "main" && !isReserveWarehouse(w)) ?? warehouses.find((w) => w.role === "main") ?? warehouses[0])?.id;
+  // RV (ใบจอง): reserved SNs move to the reservation warehouse (คลังจอง) when there is one
+  const reserveTo = (from: string | undefined) => warehouses.find((w) => isReserveWarehouse(w) && w.id !== from)?.id ?? null;
+  const [head, setHead] = useState<Head>({ doc_type: type, doc_date: today(), warehouse_id: mainWh, to_warehouse_id: type === "RV" ? reserveTo(mainWh) : null });
   const [items, setItems] = useState<DocItem[]>([]);
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState("");
@@ -165,6 +169,14 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       });
   }, [reservationId, head.reservation_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // SO made from a reservation (RV): show which one
+  const [fromRv, setFromRv] = useState<{ id: string; doc_no: string } | null>(null);
+  useEffect(() => {
+    if (t !== "SO" || !head.return_of || fromRv?.id === head.return_of) return;
+    supabase.from("stock_docs").select("id, doc_no, doc_type").eq("id", head.return_of).single()
+      .then(({ data }) => { if (data?.doc_type === "RV") setFromRv({ id: data.id, doc_no: data.doc_no }); });
+  }, [t, head.return_of]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const set = (k: keyof StockDoc, v: string | null) => setHead((h) => ({ ...h, [k]: v || null }));
 
   // add scanned SNs: in-docs use the chosen code; others look the SN up to get its code
@@ -271,6 +283,16 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     setHead(data as StockDoc);
     onChanged(head.id!);
   });
+  // sold after a reservation: make the delivery note (SO) from the SNs still reserved here, cut from the reservation warehouse
+  const onSold = () => run("sold", async () => {
+    if (!head.id) return;
+    setErr("");
+    try {
+      const so = await soFromRv(head.id);
+      onChanged(so);
+      if (onOpen) onOpen(so); else setMsg("สร้างใบส่งของแล้ว ดูได้ในรายการเอกสาร");
+    } catch (e) { setErr(errorMessage(e)); }
+  });
   const onDelete = () => run("delete", async () => {
     if (!head.id || !confirm("ลบร่างนี้?")) return;
     const { error } = await supabase.rpc("delete_stock_draft", { p_id: head.id });
@@ -322,7 +344,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         <div className="grid gap-3 sm:grid-cols-3">
           {!id && !head.id && (
             <Field label="ประเภทเอกสาร">
-              <Select value={t} onChange={(e) => { setHead((h) => ({ ...h, doc_type: e.target.value as DocType })); setItems([]); }}>
+              <Select value={t} onChange={(e) => { const nt = e.target.value as DocType; setHead((h) => ({ ...h, doc_type: nt, to_warehouse_id: nt === "RV" ? reserveTo(h.warehouse_id) : null })); setItems([]); }}>
                 {DOC_TYPES.filter((d) => d.type !== "OB" || isAdmin).map((d) => <option key={d.type} value={d.type}>{d.type} · {d.label}</option>)}
               </Select>
             </Field>
@@ -330,15 +352,19 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
           <Field label="วันที่เอกสาร" required>
             <Input type="date" disabled={locked} value={head.doc_date ?? ""} onChange={(e) => set("doc_date", e.target.value)} />
           </Field>
-          <Field label={t === "TR" ? "จากคลัง" : dir === "in" ? "รับเข้าคลัง" : "จากคลัง"} required>
-            <Select disabled={locked || items.length > 0 && dir !== "in"} value={head.warehouse_id ?? ""} onChange={(e) => set("warehouse_id", e.target.value)}>
+          <Field label={dir === "in" ? "รับเข้าคลัง" : "คลังต้นทาง"} required hint={items.length > 0 && dir !== "in" && !locked ? "ล้าง SN ก่อนถ้าจะเปลี่ยนคลังต้นทาง" : undefined}>
+            <Select disabled={locked || items.length > 0 && dir !== "in"} value={head.warehouse_id ?? ""} onChange={(e) => {
+              const v = e.target.value;
+              setHead((h) => ({ ...h, warehouse_id: v, ...(h.to_warehouse_id === v ? { to_warehouse_id: t === "RV" ? reserveTo(v) : null } : {}) }));
+            }}>
               {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </Select>
           </Field>
-          {t === "TR" && (
-            <Field label="ไปคลัง" required>
+          {(t === "TR" || t === "RV") && (
+            <Field label={t === "RV" ? "→ คลังปลายทาง (เก็บของที่จอง)" : "→ คลังปลายทาง"} required={t === "TR"}
+              hint={t === "RV" ? "SN ที่จองจะย้ายไปคลังนี้ เมื่อขายแล้วกดออกใบส่งของ ระบบตัดจากคลังนี้ให้" : undefined}>
               <Select disabled={locked} value={head.to_warehouse_id ?? ""} onChange={(e) => set("to_warehouse_id", e.target.value)}>
-                <option value="">— เลือก —</option>
+                <option value="">{t === "RV" ? "— ไม่ย้าย (จองไว้ในคลังต้นทาง) —" : "— เลือก —"}</option>
                 {warehouses.filter((w) => w.id !== head.warehouse_id).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
               </Select>
             </Field>
@@ -419,6 +445,13 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         </div>
       </Card>
 
+      {t === "SO" && fromRv && (
+        <Alert tone="navy">
+          ใบส่งของนี้ออกจากใบจอง{" "}
+          {onOpen ? <button onClick={() => onOpen(fromRv.id)} className="font-mono font-semibold underline">{fromRv.doc_no}</button> : <b className="font-mono">{fromRv.doc_no}</b>}
+          {" "}· ตัดสต๊อกจาก {wh(head.warehouse_id)} · ใส่ข้อมูลรถ/คนขับ แนบรูป แล้วกดยืนยัน
+        </Alert>
+      )}
       {claim && (
         <Alert tone="navy">
           จากงานเคลม <b>{claim.claim_no}</b> · {claim.company_name ?? claim.contact_name} · SN ที่แจ้ง: <span className="font-mono">{claim.reported_sns.join(", ") || "-"}</span>
@@ -552,7 +585,8 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         {!locked && !canPost && <p className="self-center text-sm text-slate-500">บันทึกร่างแล้วให้ผู้มีสิทธิ์อนุมัติกดยืนยัน</p>}
         {head.status === "draft" && <Button variant="secondary" onClick={onDelete} loading={busy === "delete"}>ลบร่าง</Button>}
         {head.status === "posted" && canPost && <Button variant="secondary" onClick={onCancel} loading={busy === "cancel"}>ยกเลิกเอกสาร</Button>}
-        {head.status === "posted" && <span className="self-center text-xs text-slate-500">คลัง: {wh(head.warehouse_id)}{t === "TR" ? ` → ${wh(head.to_warehouse_id)}` : ""}</span>}
+        {head.status === "posted" && t === "RV" && (canSave || canPost) && <Button onClick={onSold} loading={busy === "sold"}>ขายแล้ว → ออกใบส่งของ</Button>}
+        {head.status === "posted" && <span className="self-center text-xs text-slate-500">คลัง: {wh(head.warehouse_id)}{(t === "TR" || t === "RV") && head.to_warehouse_id ? ` → ${wh(head.to_warehouse_id)}` : ""}</span>}
       </div>
     </div>
   );
