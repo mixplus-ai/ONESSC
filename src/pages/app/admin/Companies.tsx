@@ -10,6 +10,7 @@ import type { Company, Profile, TeamMember } from "../../../lib/types";
 import { RankBadge } from "../../../components/catalog";
 import type { PriceRank } from "../../../lib/catalog";
 import { Select } from "../../../components/ui";
+import { SalesScopeNote } from "../../../components/SalesScope";
 
 function PendingList({ onChange }: { onChange: () => void }) {
   const pending = useRows<Profile>(() =>
@@ -163,6 +164,7 @@ export default function Companies() {
   return (
     <Gate allow={can("companies")}>
       <PageTitle title="บริษัทลูกค้า" subtitle="อนุมัติการผูกผู้ใช้กับบริษัทด้วยเลขผู้เสียภาษี และดูรายชื่อบริษัท" />
+      <SalesScopeNote pending={tab === "pending"} />
       <div className="mb-5 inline-flex rounded-lg bg-slate-200/60 p-1">
         {(["pending", "all"] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={cx("rounded-md px-4 py-1.5 text-sm font-medium", tab === t ? "bg-white text-navy-900 shadow-sm" : "text-slate-600")}>

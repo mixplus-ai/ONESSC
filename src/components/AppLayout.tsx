@@ -3,7 +3,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABEL } from "../lib/types";
-import { AcademicIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, LogIcon, LogoutIcon, MenuIcon, ShieldIcon, StarIcon, TagIcon, UserIcon, UsersIcon, WrenchIcon, XIcon, TruckIcon } from "./icons";
+import { AcademicIcon, BarcodeIcon, BoxIcon, BuildingIcon, CartIcon, ChartIcon, EditIcon, FileIcon, GiftIcon, HomeIcon, ImageIcon, InboxIcon, KeyIcon, LogIcon, LogoutIcon, MailIcon, MegaphoneIcon, MenuIcon, ShieldIcon, StarIcon, TableIcon, TagIcon, UserIcon, UsersIcon, WarehouseIcon, WrenchIcon, XIcon, TruckIcon } from "./icons";
 import { useCart } from "../lib/cart";
 import { Logo } from "./PublicLayout";
 import { Alert, Loading, cx } from "./ui";
@@ -88,6 +88,33 @@ export default function AppLayout() {
       ],
     },
     {
+      // งานขาย: everything a salesperson does with customers
+      title: "งานขาย",
+      items: [
+        { to: "/app/admin/requests", label: "ใบเสนอราคาและการจอง", icon: InboxIcon, show: can("requests") || can("requests.all") },
+        { to: "/app/admin/customers", label: "ลูกค้า", icon: UserIcon, show: can("companies") },
+        { to: "/app/admin/companies", label: "บริษัทลูกค้า", icon: BuildingIcon, show: can("companies") },
+        { to: "/app/admin/pricing", label: "ราคาตาม Rank / บริษัท", icon: TagIcon, show: can("pricing") },
+        { to: "/app/admin/messages", label: "ข้อความติดต่อ", icon: MailIcon, show: can("contact_messages") },
+      ],
+    },
+    {
+      title: "สินค้าและโปรโมชั่น",
+      items: [
+        { to: "/app/admin/products", label: "สินค้า", icon: BoxIcon, show: can("products") },
+        { to: "/app/admin/products-grid", label: "แก้สินค้าแบบตาราง", icon: TableIcon, show: can("products") || can("products.bulk") || can("products.bulk_price") },
+        { to: "/app/admin/promotions", label: "โปรโมชั่นและแพ็กเกจ", icon: MegaphoneIcon, show: can("products") },
+      ],
+    },
+    {
+      title: "คลังสินค้าและจัดส่ง",
+      items: [
+        { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: WarehouseIcon, show: can("stock.view") },
+        { to: "/app/admin/stock-docs", label: stockAlert ? `เอกสารคลังและ SN (${stockAlert})` : "เอกสารคลังและ SN", icon: BarcodeIcon, show: can("stock.view") || can("stock.docs") || can("stock.post") || can("stock.check") || can("stock.count") },
+        { to: "/app/admin/deliveries", label: "ตารางส่งสินค้า", icon: TruckIcon, show: can("deliveries.view") || can("deliveries.manage") },
+      ],
+    },
+    {
       title: "งานบริการ",
       items: [{ to: "/app/admin/claims", label: "งานบริการและเคลม", icon: WrenchIcon, show: can("claims.view") || can("claims") }],
     },
@@ -100,28 +127,6 @@ export default function AppLayout() {
       ],
     },
     {
-      title: "สินค้าและการขาย",
-      items: [
-        { to: "/app/admin/requests", label: "คำขอจากลูกค้า", icon: InboxIcon, show: can("requests") || can("requests.all") },
-        { to: "/app/admin/stock", label: "สต๊อกสินค้า", icon: ChartIcon, show: can("stock.view") },
-        { to: "/app/admin/stock-docs", label: stockAlert ? `เอกสารคลังและ SN (${stockAlert})` : "เอกสารคลังและ SN", icon: FileIcon, show: can("stock.view") || can("stock.docs") || can("stock.post") || can("stock.check") || can("stock.count") },
-        { to: "/app/admin/deliveries", label: "ตารางส่งสินค้า", icon: TruckIcon, show: can("deliveries.view") || can("deliveries.manage") },
-        { to: "/app/admin/pricing", label: "ราคาตาม Rank / บริษัท", icon: TagIcon, show: can("pricing") },
-        { to: "/app/admin/products", label: "สินค้า", icon: BoxIcon, show: can("products") },
-        { to: "/app/admin/products-grid", label: "แก้สินค้าแบบตาราง", icon: BoxIcon, show: can("products") || can("products.bulk") || can("products.bulk_price") },
-        { to: "/app/admin/promotions", label: "โปรโมชั่นและแพ็กเกจ", icon: TagIcon, show: can("products") },
-      ],
-    },
-    {
-      title: "จัดการ",
-      items: [
-        { to: "/app/admin/users", label: "ผู้ใช้และสิทธิ์", icon: UsersIcon, show: isAdmin },
-        { to: "/app/admin/customers", label: "ลูกค้า", icon: UserIcon, show: can("companies") },
-        { to: "/app/admin/companies", label: "บริษัทลูกค้า", icon: BuildingIcon, show: can("companies") },
-        { to: "/app/admin/messages", label: "ข้อความติดต่อ", icon: InboxIcon, show: can("contact_messages") },
-      ],
-    },
-    {
       title: "หน้าเว็บ",
       items: [
         { to: "/app/admin/content", label: "เนื้อหาเว็บและโฆษณา", icon: EditIcon, show: can("site_content") },
@@ -129,10 +134,14 @@ export default function AppLayout() {
         { to: "/app/admin/team", label: "ทีมงาน", icon: UsersIcon, show: can("site_content") },
       ],
     },
-    { title: "ระบบ", items: [
-      { to: "/app/admin/reports", label: "รายงานและส่งออก", icon: ChartIcon, show: can("reports") },
-      { to: "/app/admin/logs", label: "Log การใช้งาน", icon: LogIcon, show: isAdmin },
-    ] },
+    {
+      title: "ผู้ดูแลระบบ",
+      items: [
+        { to: "/app/admin/users", label: "ผู้ใช้และสิทธิ์", icon: KeyIcon, show: isAdmin },
+        { to: "/app/admin/reports", label: "รายงานและส่งออก", icon: ChartIcon, show: can("reports") },
+        { to: "/app/admin/logs", label: "Log การใช้งาน", icon: LogIcon, show: isAdmin },
+      ],
+    },
     ...(isCustomer ? [] : [{ title: "ของฉัน (ในฐานะลูกค้า)", items: mine, fold: true }]),
   ] as { title?: string; items: Item[]; fold?: boolean }[]).map((g) => ({ ...g, fold: g.fold ?? Boolean(g.title) }));
 
