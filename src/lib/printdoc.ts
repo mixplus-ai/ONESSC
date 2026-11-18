@@ -153,3 +153,51 @@ ${sigs.length ? `<div class="sig" style="grid-template-columns:repeat(${sigs.len
 <script>(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () { setTimeout(function () { window.print(); }, 250); });</script>
 </body></html>`;
 }
+
+/**
+ * Save a document as a PNG picture (A4 width, every page stacked): the same HTML as the PDF, drawn in a hidden frame.
+ */
+// Sarabun (Thai + Latin) as data URLs, so the picture keeps the document font (a cross-origin stylesheet can't be read)
+let fontCss: Promise<string> | null = null;
+function sarabunCss() {
+  fontCss ??= (async () => {
+    try {
+      const css = await (await fetch("https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap")).text();
+      const blocks = css.split("@font-face").slice(1).filter((b) => /0E01|U\+0000-00FF/.test(b));
+      const out = await Promise.all(blocks.map(async (b) => {
+        const url = b.match(/url\(([^)]+)\)/)?.[1];
+        if (!url) return "";
+        const blob = await (await fetch(url)).blob();
+        const data = await new Promise<string>((r) => { const fr = new FileReader(); fr.onload = () => r(String(fr.result)); fr.readAsDataURL(blob); });
+        return "@font-face" + b.replace(url, data);
+      }));
+      return out.join("\n");
+    } catch { return ""; }
+  })();
+  return fontCss;
+}
+
+export async function exportPrintPng(doc: PrintDoc, fileName: string) {
+  const html = (await printHtml(doc)).replace(/<script>[\s\S]*?<\/script>/g, "");
+  const { toPng } = await import("html-to-image");
+  const frame = document.createElement("iframe");
+  frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${doc.landscape ? 1160 : 830}px;height:1200px;border:0;background:#fff`;
+  document.body.appendChild(frame);
+  try {
+    await new Promise<void>((res) => { frame.onload = () => res(); frame.srcdoc = html; });
+    const fd = frame.contentDocument!;
+    await (fd.fonts?.ready ?? Promise.resolve());
+    await Promise.all([...fd.images].map((img) => img.complete ? null : new Promise((r) => { img.onload = img.onerror = r; })));
+    const page = (fd.querySelector(".page") as HTMLElement) ?? fd.body;
+    page.style.margin = "0";
+    page.style.boxShadow = "none";
+    const fontEmbedCSS = await sarabunCss();
+    const url = await toPng(page, { pixelRatio: 2, backgroundColor: "#ffffff", width: page.scrollWidth, height: page.scrollHeight, ...(fontEmbedCSS ? { fontEmbedCSS } : {}) });
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName.endsWith(".png") ? fileName : `${fileName}.png`;
+    a.click();
+  } finally {
+    frame.remove();
+  }
+}

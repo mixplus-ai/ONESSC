@@ -1,5 +1,5 @@
 import { formatDate } from "../../../../lib/catalog";
-import { esc, heading, note, openPrintDoc, preparePrintWindow, table, type Panel, type PrintDoc } from "../../../../lib/printdoc";
+import { esc, exportPrintPng, heading, note, openPrintDoc, preparePrintWindow, table, type Panel, type PrintDoc } from "../../../../lib/printdoc";
 import {
   CONDITION_LABEL, DIR, DOC_LABEL, docRoute, DOC_STATUS_LABEL, FILE_KINDS, PARTNER_LABEL, REF_LABEL,
   type CountReport, type DocItem, type DocType, type StockCount, type StockDoc, type Warehouse,
@@ -132,6 +132,11 @@ const partnerPanel = (d: StockDoc): Panel => ({
 export async function printDeliveryDetail(d: StockDoc, items: DocItem[], warehouses: Warehouse[]) {
   const w = preparePrintWindow();
   if (!w) return;
+  return openPrintDoc(await deliveryDetailDoc(d, items, warehouses), w);
+}
+
+/** Sheet 1: the delivery / receipt detail (parties, route, totals per code, vehicle, photos). */
+export async function deliveryDetailDoc(d: StockDoc, items: DocItem[], warehouses: Warehouse[]): Promise<PrintDoc> {
   const groups = groupItems(items);
   const { list, urls } = await loadDocFiles(d.id, 7 * 24 * 3600);
   const photos = FILE_KINDS.map((k) => ({ ...k, files: list.filter((f) => (f.kind ?? "other") === k.kind && isImage(f.name) && urls[f.path]) }))
@@ -162,7 +167,7 @@ ${extras.length > shown.length ? `<p class="muted" style="font-size:8pt;margin:4
     photoHtml,
   ].join("");
 
-  return openPrintDoc({
+  return {
     title: DOC_LABEL[d.doc_type], titleEn: DOC_TITLE_EN[d.doc_type], docNo: d.doc_no, date: formatDate(d.doc_date),
     extra: [["สถานะ", DOC_STATUS_LABEL[d.status]], [REF_LABEL[d.doc_type] ?? "อ้างอิง", d.ref_no]],
     watermark: watermarkOf(d),
@@ -170,23 +175,67 @@ ${extras.length > shown.length ? `<p class="muted" style="font-size:8pt;margin:4
     body,
     signatures: DIR[d.doc_type] === "in" ? ["ผู้ส่งสินค้า", "ผู้รับสินค้า", "ผู้อนุมัติ"] : ["ผู้เบิก", "ผู้รับ", "ผู้อนุมัติ"],
     fileName: `${DOC_LABEL[d.doc_type]} ${d.doc_no ?? ""}`,
-  }, w);
+  };
 }
 
 export function printDeliverySns(d: StockDoc, items: DocItem[], warehouses: Warehouse[]) {
+  return openPrintDoc(deliverySnsDoc(d, items, warehouses));
+}
+
+/** Sheet 2: project name, document number and every SN, with signatures. */
+export function deliverySnsDoc(d: StockDoc, items: DocItem[], warehouses: Warehouse[]): PrintDoc {
   const showCond = DIR[d.doc_type] === "in";
   const body = [
     heading(`รายการ Serial Number (${items.length} รายการ)`),
     ...groupItems(items).map(([sku, g]) => `<p style="margin:8px 0 4px;font-weight:700">${esc(sku)} <span class="muted" style="font-weight:400">${esc(g.description ?? "")} · ${g.sns.length} ชิ้น</span></p>${snGrid(g.sns, showCond)}`),
     note("อ้างอิง", `ใบนี้เป็นใบแนบของ${DOC_LABEL[d.doc_type]} เลขที่ ${d.doc_no ?? "-"}`),
   ].join("");
-  return openPrintDoc({
+  return {
     title: "ใบรายการ Serial Number", titleEn: `SERIAL LIST · ${DOC_TITLE_EN[d.doc_type]}`, docNo: d.doc_no ? `${d.doc_no}-SN` : null, date: formatDate(d.doc_date),
-    extra: [["อ้างอิงใบรายละเอียด", d.doc_no], ["สถานะ", DOC_STATUS_LABEL[d.status]]],
+    extra: [["อ้างอิงใบรายละเอียด", d.doc_no], ["ชื่อโครงการ", d.site_name || "-"], ["สถานะ", DOC_STATUS_LABEL[d.status]]],
     watermark: watermarkOf(d),
     panels: [{ heading: PARTNER_LABEL[d.doc_type] ?? "ผู้ติดต่อ", rows: [["ชื่อ", d.partner_name], ["ชื่อโครงการ", d.site_name]] }, routePanel(d, warehouses), vehiclePanel(d)],
     body,
     signatures: ["ผู้ตรวจ", DIR[d.doc_type] === "in" ? "ผู้รับสินค้าเข้าคลัง" : "ผู้รับสินค้า", "ผู้อนุมัติ"],
     fileName: `${d.doc_no ?? ""}-SN ใบรายการ Serial Number`,
-  });
+  };
+}
+
+/** Both sheets as PNG pictures (one file each). */
+export async function exportDeliveryPng(d: StockDoc, items: DocItem[], warehouses: Warehouse[], sheet: "detail" | "sn") {
+  const name = `${d.doc_no ?? DOC_LABEL[d.doc_type]}${sheet === "sn" ? "-SN" : ""}`;
+  return exportPrintPng(sheet === "detail" ? await deliveryDetailDoc(d, items, warehouses) : deliverySnsDoc(d, items, warehouses), name);
+}
+
+/** Excel with the same two sheets: รายละเอียด (header + totals per code) and Serial Number (one row per SN). */
+export async function exportDeliveryXlsx(d: StockDoc, items: DocItem[], warehouses: Warehouse[]) {
+  const { default: writeXlsxFile } = await import("write-excel-file/browser");
+  const r = docRoute(d, (id: string | null | undefined) => warehouses.find((w) => w.id === id)?.name ?? "-");
+  const b = (v: string) => ({ value: v, fontWeight: "bold" as const });
+  const cell = (v: string | number | null | undefined) => ({ value: v ?? "" });
+  const info: [string, string | null | undefined][] = [
+    ["เลขที่เอกสาร", d.doc_no], ["วันที่", formatDate(d.doc_date)], ["สถานะ", DOC_STATUS_LABEL[d.status]],
+    [PARTNER_LABEL[d.doc_type] ?? "ผู้ติดต่อ", d.partner_name], ["เลขผู้เสียภาษี", d.partner_tax_id], ["ชื่อโครงการ", d.site_name],
+    [REF_LABEL[d.doc_type] ?? "อ้างอิง", d.ref_no], ["PO ลูกค้า", d.customer_po], ["ต้นทาง", r.from], ["ปลายทาง", r.to],
+    ["ทะเบียนรถ", d.vehicle_plate], ["คนขับ", d.driver_name], ["เบอร์โทรคนขับ", d.driver_phone], ["หมายเหตุ", d.note],
+  ];
+  const groups = groupItems(items);
+  const sheet1 = [
+    [b(`${DOC_LABEL[d.doc_type]} ${d.doc_no ?? ""}`)], [],
+    ...info.filter(([, v]) => v).map(([k, v]) => [b(k), cell(v)]), [],
+    [b("ลำดับ"), b("รหัสสินค้า"), b("ชื่อสินค้า"), b("จำนวน (ชิ้น)")],
+    ...groups.map(([sku, g], i) => [cell(i + 1), cell(sku), cell(g.description), cell(g.sns.length)]),
+    [cell(""), cell(""), b("รวมทั้งสิ้น"), { value: items.length, fontWeight: "bold" as const }],
+  ];
+  let n = 0;
+  const sheet2 = [
+    [b(`ใบรายการ Serial Number ${d.doc_no ? `${d.doc_no}-SN` : ""}`)], [],
+    [b("อ้างอิงใบรายละเอียด"), cell(d.doc_no)], [b("ชื่อโครงการ"), cell(d.site_name || "-")], [b(PARTNER_LABEL[d.doc_type] ?? "ผู้ติดต่อ"), cell(d.partner_name)], [],
+    [b("ลำดับ"), b("รหัสสินค้า"), b("ชื่อสินค้า"), b("Serial Number"), b("สภาพ")],
+    ...groups.flatMap(([sku, g]) => g.sns.map((i) => [cell(++n), cell(sku), cell(g.description), cell(i.sn), cell(CONDITION_LABEL[i.condition])])),
+  ];
+  await writeXlsxFile([
+    { sheet: "รายละเอียด", data: sheet1, columns: [{ width: 18 }, { width: 22 }, { width: 40 }, { width: 14 }] },
+    { sheet: "Serial Number", data: sheet2, columns: [{ width: 8 }, { width: 20 }, { width: 36 }, { width: 26 }, { width: 8 }] },
+  ]).toFile(`${d.doc_no ?? DOC_LABEL[d.doc_type]}.xlsx`);
 }

@@ -11,7 +11,7 @@ import {
 import { DocFiles, uploadDocFiles, type PendingFile } from "./DocFiles";
 import { CameraScan } from "./CameraScan";
 import { PhotoScan } from "./PhotoScan";
-import { printDeliveryDetail, printDeliverySns, printStockDoc } from "./print";
+import { exportDeliveryPng, exportDeliveryXlsx, printDeliveryDetail, printDeliverySns } from "./print";
 import { isReserveWarehouse, soFromRv } from "./fromRv";
 import { SnPicker } from "./SnPicker";
 import { SOURCE_LABEL, listSources, loadSource, type PlanLine, type SourceKind, type SourceOption, type SourcePick } from "./docSources";
@@ -217,7 +217,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
   const set = (k: keyof StockDoc, v: string | null) => setHead((h) => ({ ...h, [k]: v || null }));
 
   // add scanned SNs: in-docs use the chosen code; others look the SN up to get its code
-  async function addSns(raw: string, condFor: Condition = cond) {
+  async function addSns(raw: string, condFor: Condition = cond, forceSku?: string) {
     const sns = splitSns(raw);
     if (!sns.length) return;
     const have = new Set(items.map((i) => snKey(i.sn)));
@@ -227,7 +227,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     if (!fresh.length) { setWarn(w); setScan(""); return; }
 
     if (t === "OB" || t === "GR" || t === "GN") {
-      const code = sku.trim().toUpperCase();
+      const code = (forceSku ?? sku).trim().toUpperCase();
       if (!code) { setWarn(["เลือกรหัสสินค้าก่อนสแกน"]); return; }
       setItems((list) => uniq(list, fresh.map((sn) => ({ sku: code, description: skuName.get(code) ?? null, sn, condition: cond }))));
       const { data } = await supabase.from("serials").select("sn, status").in("sn_key", fresh.map(snKey));
@@ -240,6 +240,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       for (const sn of fresh) {
         const s = found.get(snKey(sn));
         if (!s) { w.push(`ไม่พบ ${sn} ในระบบ`); continue; }
+        if (forceSku && s.sku !== forceSku) { w.push(`${sn} เป็นรหัส ${s.sku} ไม่ใช่ ${forceSku}`); continue; }
         if (t === "RT") {
           if (!["borrowed", "withdrawn", "sold"].includes(s.status)) w.push(`${sn} ไม่ได้อยู่นอกคลัง (${SERIAL_STATUS_LABEL[s.status]})`);
         } else if (s.warehouse_id !== head.warehouse_id) w.push(`${sn} ไม่ได้อยู่ในคลังที่เลือก (${SERIAL_STATUS_LABEL[s.status]})`);
@@ -343,6 +344,17 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     onClose();
   });
 
+  // product rows: products with SNs, plus planned / added products still without SNs
+  const [extraSkus, setExtraSkus] = useState<string[]>([]);
+  const [addSku, setAddSku] = useState("");
+  function addProduct() {
+    const code = addSku.trim().toUpperCase();
+    if (!code) return;
+    if (!skuName.has(code) && !confirm(`ไม่พบรหัส ${code} ในสต๊อก เพิ่มเป็นรหัสใหม่?`)) return;
+    setExtraSkus((l) => (l.includes(code) ? l : [...l, code]));
+    setAddSku("");
+    if (dir !== "in") setPickSku(code); else setSku(code);
+  }
   const groups = useMemo(() => {
     const m = new Map<string, { sku: string; description: string | null; rows: { item: DocItem; idx: number }[] }>();
     items.forEach((item, idx) => {
@@ -352,6 +364,12 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     });
     return [...m.values()];
   }, [items]);
+  const tableRows = useMemo(() => {
+    const have = new Set(groups.map((g) => g.sku));
+    const more = [...(plan?.lines.map((l) => l.sku) ?? []), ...extraSkus].filter((k, i, a) => !have.has(k) && a.indexOf(k) === i)
+      .map((k) => ({ sku: k, description: skuName.get(k) ?? plan?.lines.find((l) => l.sku === k)?.label ?? null, rows: [] as { item: DocItem; idx: number }[] }));
+    return [...groups, ...more];
+  }, [groups, plan, extraSkus, skuName]);
 
   if (loading) return <Loading />;
   const needCheck = (cfg.rows[0]?.check_types ?? []).includes(t);
@@ -370,14 +388,18 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         <button onClick={onClose} className="text-sm font-semibold text-navy-700 hover:underline">← กลับไปรายการเอกสาร</button>
         <h2 className="text-lg font-bold text-navy-900">{DOC_LABEL[t]} {head.doc_no && <span className="font-mono">{head.doc_no}</span>}</h2>
         {head.status && <Badge tone={DOC_STATUS_TONE[head.status]}>{DOC_STATUS_LABEL[head.status]}</Badge>}
-        <div className="ml-auto flex gap-2">
-          {head.id && (truck ? (
-            <>
-              <Button variant="secondary" onClick={() => printDeliveryDetail(head as StockDoc, items, warehouses)}>ใบรายละเอียด (PDF)</Button>
-              <Button variant="secondary" onClick={() => printDeliverySns(head as StockDoc, items, warehouses)}>ใบรายการ SN + ลายเซ็น (PDF)</Button>
-            </>
-          ) : <Button variant="secondary" onClick={() => printStockDoc(head as StockDoc, items, warehouses)}>พิมพ์ / PDF</Button>)}
-        </div>
+        {head.id && (
+          <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">
+            {([["detail", "ใบที่ 1 รายละเอียด"], ["sn", "ใบที่ 2 รายการ SN"]] as const).map(([k, label]) => (
+              <span key={k} className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">
+                <span className="text-xs font-semibold text-navy-900">{label}</span>
+                <button className="rounded px-1.5 text-xs font-semibold text-navy-700 hover:bg-slate-100" onClick={() => (k === "detail" ? printDeliveryDetail : printDeliverySns)(head as StockDoc, items, warehouses)}>PDF</button>
+                <button className="rounded px-1.5 text-xs font-semibold text-navy-700 hover:bg-slate-100" onClick={() => run("png", async () => { try { await exportDeliveryPng(head as StockDoc, items, warehouses, k); } catch (e) { setErr("สร้างรูป PNG ไม่สำเร็จ: " + errorMessage(e)); } })}>PNG</button>
+              </span>
+            ))}
+            <Button variant="secondary" loading={busy === "xlsx"} onClick={() => run("xlsx", async () => { try { await exportDeliveryXlsx(head as StockDoc, items, warehouses); } catch (e) { setErr(errorMessage(e)); } })}>Excel (2 แผ่น)</Button>
+          </div>
+        )}
       </div>
 
       {head.status === "cancelled" && <Alert>ยกเลิกเมื่อ {formatDateTime(head.cancelled_at)} · {head.cancel_reason}</Alert>}
@@ -614,12 +636,28 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         )}
         {warn.length > 0 && <div className="mt-3"><Alert tone="amber">{warn.map((w, i) => <div key={i}>{w}</div>)}</Alert></div>}
 
-        <div className="mt-4 space-y-4">
-          {groups.map((g) => (
-            <div key={g.sku}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-navy-900">{g.sku} <span className="font-normal text-slate-500">{g.description ?? skuName.get(g.sku) ?? ""}</span> · {g.rows.length} ชิ้น</p>
-                {t === "SO" && (() => {
+        <div className="mt-4 overflow-x-auto rounded-xl ring-1 ring-slate-200">
+          <table className="min-w-full bg-white text-sm">
+            <thead className="bg-slate-50 text-left text-xs text-slate-500">
+              <tr>
+                <th className="w-10 px-3 py-2 text-center">#</th>
+                <th className="px-3 py-2">รหัสสินค้า</th>
+                <th className="px-3 py-2">ชื่อสินค้า</th>
+                <th className="px-3 py-2">Serial Number</th>
+                <th className="px-3 py-2 text-right">จำนวน</th>
+                {!locked && <th className="w-10 px-2 py-2" />}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 align-top">
+              {tableRows.map((g, gi) => {
+                const want = plan?.lines.find((x) => x.sku === g.sku)?.qty;
+                return (
+                  <tr key={g.sku}>
+                    <td className="px-3 py-2 text-center text-slate-400">{gi + 1}</td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono font-semibold text-navy-900">{g.sku}</td>
+                    <td className="min-w-[10rem] px-3 py-2">
+                      <p>{g.description ?? skuName.get(g.sku) ?? "-"}</p>
+                      <div className="mt-1">{t === "SO" && (() => {
                   const def = defMonths.get(g.sku.toUpperCase()) ?? null;
                   const cur = groupWarranty.get(g.sku);
                   const promo = cur != null && def != null && cur !== def;
@@ -639,28 +677,71 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
                       {promo ? <Badge tone="amber">ปกติ {fmtWarranty(def)}</Badge> : <span className="text-slate-400">{def != null ? `ว่าง = ตามสินค้า ${fmtWarranty(def)}` : "สินค้ายังไม่ตั้งประกัน"}</span>}
                     </label>
                   );
-                })()}
-              </div>
-              <div className="mt-1 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-                {g.rows.map(({ item, idx }) => (
-                  <div key={item.sn} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">
-                    <span className="w-6 text-right text-xs text-slate-400">{idx + 1}</span>
-                    <span className="flex-1 truncate font-mono text-sm">{item.sn}</span>
-                    {showCond ? (
-                      locked ? <Badge tone={item.condition === "good" ? "green" : "red"}>{CONDITION_LABEL[item.condition]}</Badge> : (
-                        <select value={item.condition} onChange={(e) => setItems((l) => l.map((x, i) => i === idx ? { ...x, condition: e.target.value as Condition } : x))}
-                          className={cx("rounded border-0 bg-transparent text-xs", item.condition === "good" ? "text-emerald-700" : "text-red-700")}>
-                          <option value="good">ดี</option><option value="defective">เสีย</option>
-                        </select>
-                      )
-                    ) : null}
-                    {!locked && <button onClick={() => setItems((l) => l.filter((_, i) => i !== idx))} className="px-1 text-slate-400 hover:text-red-600" aria-label="ลบ">✕</button>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-          {!items.length && <p className="text-sm text-slate-500">ยังไม่มี SN</p>}
+                })()}</div>
+                    </td>
+                    <td className="min-w-[18rem] px-3 py-2">
+                      <div className="flex flex-wrap gap-1">
+                        {g.rows.map(({ item, idx }) => (
+                          <span key={item.sn} className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 ring-1 ring-slate-200">
+                            <span className="font-mono text-xs">{item.sn}</span>
+                            {showCond ? (
+                              locked ? (item.condition === "defective" && <Badge tone="red">{CONDITION_LABEL[item.condition]}</Badge>) : (
+                                <select value={item.condition} onChange={(e) => setItems((l) => l.map((x, i) => i === idx ? { ...x, condition: e.target.value as Condition } : x))}
+                                  className={cx("rounded border-0 bg-transparent py-0 text-[11px]", item.condition === "good" ? "text-emerald-700" : "text-red-700")}>
+                                  <option value="good">ดี</option><option value="defective">เสีย</option>
+                                </select>
+                              )
+                            ) : null}
+                            {!locked && <button onClick={() => setItems((l) => l.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-red-600" aria-label="ลบ SN">✕</button>}
+                          </span>
+                        ))}
+                      </div>
+                      {!locked && (
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <input placeholder="+ พิมพ์ / สแกน SN แล้ว Enter" className="h-8 w-48 rounded-md border border-slate-300 px-2 font-mono text-xs"
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const v = (e.target as HTMLInputElement).value; (e.target as HTMLInputElement).value = ""; addSns(v, cond, g.sku); } }}
+                            onPaste={(e) => { const v = e.clipboardData.getData("text"); if (/[\n,;\t]/.test(v)) { e.preventDefault(); addSns(v, cond, g.sku); } }} />
+                          {dir !== "in" && <button className="text-xs font-semibold text-navy-700 underline" onClick={() => { setPickSku(g.sku); pickRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>เลือก SN จากคลัง</button>}
+                        </div>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">
+                      <span className={want != null ? (g.rows.length === want ? "text-emerald-700" : "text-amber-700") : "text-navy-900"}>{g.rows.length}</span>
+                      {want != null && <span className="text-slate-400"> / {want}</span>}
+                    </td>
+                    {!locked && (
+                      <td className="px-2 py-2 text-center">
+                        <button title="ลบสินค้านี้" className="text-slate-400 hover:text-red-600"
+                          onClick={() => { setItems((l) => l.filter((x) => x.sku !== g.sku)); setExtraSkus((l) => l.filter((x) => x !== g.sku)); }}>🗑</button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+              {!tableRows.length && <tr><td colSpan={6} className="px-3 py-4 text-center text-slate-500">ยังไม่มีสินค้า เพิ่มสินค้าด้านล่าง หรือสแกน SN ด้านบน</td></tr>}
+            </tbody>
+            <tfoot className="bg-slate-50 text-sm">
+              {!locked && (
+                <tr>
+                  <td />
+                  <td colSpan={3} className="px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input list="sd-add-skus" className="h-9 max-w-xs" value={addSku} onChange={(e) => setAddSku(e.target.value.toUpperCase())}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addProduct(); } }} placeholder="+ เพิ่มสินค้า: พิมพ์หรือเลือกรหัส / ชื่อ" />
+                      <datalist id="sd-add-skus">{stock.rows.map((r) => <option key={r.sku} value={r.sku}>{r.description}</option>)}</datalist>
+                      <Button variant="secondary" onClick={addProduct} disabled={!addSku.trim()}>เพิ่มสินค้า</Button>
+                    </div>
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              )}
+              <tr className="font-semibold">
+                <td colSpan={4} className="px-3 py-2 text-right">รวม {tableRows.length} รายการ</td>
+                <td className="px-3 py-2 text-right">{items.length}</td>
+                {!locked && <td />}
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </Card>
 
