@@ -56,6 +56,159 @@ function RankSettings({ rank, onSaved }: { rank: PriceRank; onSaved: () => void 
 }
 
 /**
+ * All 4 ranks side by side (owner, 17 Nov): one price column per rank so the differences are visible,
+ * a % box in each column header fills that whole column from the normal price, and one Save for everything.
+ */
+function RankGrid({ ranks, variants, companies, plusSet, onRanksSaved }: { ranks: PriceRank[]; variants: Row[]; companies: Company[]; plusSet: Set<string>; onRanksSaved: () => void }) {
+  const [saved, setSaved] = useState<Map<string, Map<string, PriceRow>>>(new Map());
+  const [draft, setDraft] = useState<Map<string, string>>(new Map()); // key `${rank}|${variant}`
+  const [pct, setPct] = useState<Record<string, string>>({});
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [settings, setSettings] = useState<string | null>(null);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const shown = ranks.filter((r) => r.is_active);
+
+  async function load() {
+    const { data } = await supabase.from("rank_prices").select("rank_code, variant_id, price, updated_at");
+    const m = new Map<string, Map<string, PriceRow>>();
+    for (const r of (data ?? []) as (PriceRow & { rank_code: string })[]) {
+      if (!m.has(r.rank_code)) m.set(r.rank_code, new Map());
+      m.get(r.rank_code)!.set(r.variant_id, r);
+    }
+    setSaved(m);
+  }
+  useEffect(() => { load(); }, []);
+
+  const rows = useMemo(() => {
+    const n = q.trim().toLowerCase();
+    return variants.filter((v) => !n || [v.sku, v.name, v.products?.name, v.products?.brands?.name].join(" ").toLowerCase().includes(n));
+  }, [variants, q]);
+
+  const savedVal = (rank: string, id: string) => saved.get(rank)?.get(id)?.price?.toString() ?? "";
+  const val = (rank: string, id: string) => { const k = `${rank}|${id}`; return draft.has(k) ? (draft.get(k) as string) : savedVal(rank, id); };
+  const setVal = (rank: string, id: string, v: string) => setDraft((d) => new Map(d).set(`${rank}|${id}`, v));
+  const changes = [...draft].filter(([k, v]) => { const [r, id] = k.split("|"); return v !== savedVal(r, id); });
+
+  function fillColumn(rank: string) {
+    const p = Number(pct[rank]);
+    if (!Number.isFinite(p) || p <= 0 || p >= 100) return setErr("ใส่ส่วนลดเป็น % ระหว่าง 1–99");
+    setErr("");
+    setDraft((d) => {
+      const next = new Map(d);
+      for (const v of rows) if (v.base_price != null) next.set(`${rank}|${v.id}`, (Math.round(Number(v.base_price) * (100 - p)) / 100).toFixed(2));
+      return next;
+    });
+  }
+
+  async function save() {
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    const upserts: { rank_code: string; variant_id: string; price: number }[] = [];
+    const deletes = new Map<string, string[]>();
+    for (const [k, raw] of changes) {
+      const [rank, id] = k.split("|");
+      if (raw.trim() === "") {
+        if (saved.get(rank)?.has(id)) deletes.set(rank, [...(deletes.get(rank) ?? []), id]);
+        continue;
+      }
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0) { setBusy(false); return setErr(`ราคาไม่ถูกต้อง: ${raw}`); }
+      upserts.push({ rank_code: rank, variant_id: id, price: n });
+    }
+    try {
+      if (upserts.length) {
+        const { error } = await supabase.from("rank_prices").upsert(upserts, { onConflict: "rank_code,variant_id" });
+        if (error) throw error;
+      }
+      for (const [rank, ids] of deletes) {
+        const { error } = await supabase.from("rank_prices").delete().eq("rank_code", rank).in("variant_id", ids);
+        if (error) throw error;
+      }
+      const n = upserts.length + [...deletes.values()].reduce((s, a) => s + a.length, 0);
+      setMsg(n ? `บันทึก ${n} ราคาแล้ว ทุกบริษัทใน Rank เปลี่ยนตามทันที` : "ไม่มีราคาที่เปลี่ยน");
+      setDraft(new Map());
+      await load();
+    } catch (x) {
+      setErr(errorMessage(x));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const settingsRank = ranks.find((r) => r.code === settings);
+  return (
+    <>
+      <Card className="mb-4 flex flex-wrap items-center gap-3">
+        <Input type="search" placeholder="ค้นหารหัส / ชื่อสินค้า / แบรนด์" value={q} onChange={(e) => setQ(e.target.value)} className="min-w-0 flex-1" />
+        <span className="text-xs text-slate-500">ช่องว่าง = ใช้ % ส่วนลดของ Rank (ถ้าตั้งไว้) หรือราคาปกติ</span>
+      </Card>
+      {settingsRank && <div className="mb-4"><RankSettings rank={settingsRank} onSaved={() => { onRanksSaved(); setMsg(`บันทึกการตั้งค่า ${settingsRank.name} แล้ว`); setSettings(null); }} /></div>}
+      {msg && <div className="mb-4"><Alert tone="green">{msg}</Alert></div>}
+      {err && <div className="mb-4"><Alert>{err}</Alert></div>}
+      <Card className="!p-0 overflow-x-auto">
+        <table className="w-full min-w-[960px] text-sm">
+          <thead className="bg-slate-50 align-top text-left text-xs text-slate-500">
+            <tr>
+              <th className="sticky left-0 z-10 bg-slate-50 p-3">รหัส / สินค้า</th>
+              <th className="p-3 text-right">ราคาปกติ</th>
+              {shown.map((r) => {
+                const n = companies.filter((c) => c.price_rank === r.code);
+                return (
+                  <th key={r.code} className="p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <RankBadge rank={{ ...r, plus: false }} />
+                      <button onClick={() => setSettings(settings === r.code ? null : r.code)} className="text-[11px] font-semibold text-navy-700 hover:underline">ตั้งค่า</button>
+                    </div>
+                    <p className="mt-1 font-normal" title={n.map((c) => c.name + (plusSet.has(c.id) ? " (+)" : "")).join(", ")}>{n.length} บริษัท{r.discount_pct != null ? ` · ว่าง = −${r.discount_pct}%` : ""}</p>
+                    <div className="mt-2 flex items-center gap-1 font-normal">
+                      <span>ลด</span>
+                      <Input className="!w-16 !px-2 !py-1" type="number" min="1" max="99" value={pct[r.code] ?? ""} onChange={(e) => setPct({ ...pct, [r.code]: e.target.value })} aria-label={`ลด % ทั้งช่อง ${r.name}`} />
+                      <span>%</span>
+                      <Button variant="secondary" className="!px-2 !py-1 text-xs" onClick={() => fillColumn(r.code)} disabled={!pct[r.code]}>ใส่ทั้งช่อง</Button>
+                    </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((v) => (
+              <tr key={v.id}>
+                <td className="sticky left-0 z-10 bg-white p-3">
+                  <p className="font-mono text-xs text-slate-500">{v.sku}</p>
+                  <p className="font-medium text-navy-900">{v.products?.name}{v.name !== v.sku && ` · ${v.name}`}</p>
+                </td>
+                <td className="p-3 text-right">{formatBaht(v.base_price)}</td>
+                {shown.map((r) => {
+                  const k = `${r.code}|${v.id}`;
+                  const changed = draft.has(k) && draft.get(k) !== savedVal(r.code, v.id);
+                  const fallback = rankPrice(r, new Map(), v);
+                  const cur = val(r.code, v.id);
+                  const off = cur !== "" && v.base_price ? Math.round((1 - Number(cur) / Number(v.base_price)) * 1000) / 10 : null;
+                  return (
+                    <td key={r.code} className={cx("p-2", changed && "bg-sun-300/25")}>
+                      <Input type="number" min="0" step="0.01" className="!w-32" value={cur} onChange={(e) => setVal(r.code, v.id, e.target.value)} placeholder={fallback != null ? formatBaht(fallback) : "ราคาปกติ"} />
+                      {off != null && off > 0 && <p className="mt-0.5 text-[11px] text-slate-500">−{off}%</p>}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+      <div className="sticky bottom-4 mt-4 flex items-center justify-end gap-3">
+        {changes.length > 0 && <Button variant="ghost" onClick={() => setDraft(new Map())}>ยกเลิกที่แก้</Button>}
+        <Button onClick={save} loading={busy} className="shadow-lg">บันทึกราคา{changes.length ? ` (${changes.length})` : ""}</Button>
+      </div>
+    </>
+  );
+}
+
+/**
  * Prices by rank (Silver / Gold / Platinum / Diamond): every company in the rank follows the rank's prices.
  * A company can still get its own price per SKU, shown to staff and customers as "Gold+".
  */
@@ -67,7 +220,7 @@ export default function Pricing() {
   const plusCompanies = useRows<{ company_id: string }>(() => supabase.from("company_prices").select("company_id"));
   const plusSet = useMemo(() => new Set(plusCompanies.rows.map((r) => r.company_id)), [plusCompanies.rows]);
   const [mode, setMode] = useState<Mode>(() => (new URLSearchParams(location.search).get("company") ? "company" : "rank"));
-  const [rankCode, setRankCode] = useState("gold");
+  const rankCode = "gold"; // rank mode now edits all ranks at once (RankGrid)
   const [companyId, setCompanyId] = useState(() => new URLSearchParams(location.search).get("company") ?? "");
   const [prices, setPrices] = useState<Map<string, PriceRow>>(new Map());
   const [rankRows, setRankRows] = useState<Map<string, PriceRow>>(new Map());
@@ -76,7 +229,6 @@ export default function Pricing() {
   const [onlySet, setOnlySet] = useState(false);
   const [pct, setPct] = useState("");
   const [busy, setBusy] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
@@ -184,8 +336,25 @@ export default function Pricing() {
     }
   }
 
-  const inRank = (code: string) => companies.rows.filter((c) => c.price_rank === code);
   const companyRankInfo = company && activeRank ? { ...activeRank, plus: plusSet.has(company.id) || prices.size > 0 } : null;
+
+  const modeTabs = (
+    <div className="mb-4 inline-flex rounded-lg bg-slate-200/60 p-1">
+      {(["rank", "company"] as const).map((m) => (
+        <button key={m} onClick={() => setMode(m)} className={cx("rounded-md px-4 py-1.5 text-sm font-medium", mode === m ? "bg-white text-navy-900 shadow-sm" : "text-slate-600")}>
+          {m === "rank" ? "ราคาตาม Rank (4 ช่อง)" : "ราคาเฉพาะบริษัท (Rank+)"}
+        </button>
+      ))}
+    </div>
+  );
+  if (mode === "rank")
+    return (
+      <Gate allow={can("pricing")}>
+        <PageTitle title="ราคาตาม Rank / บริษัท" subtitle="ดูและแก้ราคาทั้ง 4 Rank พร้อมกัน ทุกบริษัทใน Rank เปลี่ยนตาม โปรโมชั่นที่กำลังใช้งานจะแสดงแทนเสมอ" />
+        {modeTabs}
+        {variants.loading ? <Loading /> : <RankGrid ranks={ranks.rows} variants={variants.rows} companies={companies.rows} plusSet={plusSet} onRanksSaved={ranks.reload} />}
+      </Gate>
+    );
 
   return (
     <Gate allow={can("pricing")}>
@@ -193,40 +362,9 @@ export default function Pricing() {
         title="ราคาตาม Rank / บริษัท"
         subtitle="ตั้งราคาเป็น Rank แล้วทุกบริษัทใน Rank เปลี่ยนตาม แก้ราคาเฉพาะบริษัทได้ (แสดงเป็น Rank+) โปรโมชั่นที่กำลังใช้งานจะแสดงแทนเสมอ"
       />
-      <div className="mb-4 inline-flex rounded-lg bg-slate-200/60 p-1">
-        {(["rank", "company"] as const).map((m) => (
-          <button key={m} onClick={() => setMode(m)} className={cx("rounded-md px-4 py-1.5 text-sm font-medium", mode === m ? "bg-white text-navy-900 shadow-sm" : "text-slate-600")}>
-            {m === "rank" ? "ราคาตาม Rank" : "ราคาเฉพาะบริษัท (Rank+)"}
-          </button>
-        ))}
-      </div>
+      {modeTabs}
 
-      {mode === "rank" ? (
-        <Card className="mb-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {ranks.rows.map((r) => (
-              <button
-                key={r.code}
-                onClick={() => setRankCode(r.code)}
-                className={cx("flex items-center gap-2 rounded-xl px-3 py-2 ring-1 transition", rankCode === r.code ? "bg-navy-50 ring-navy-300" : "bg-white ring-slate-200 hover:ring-slate-300", !r.is_active && "opacity-50")}
-              >
-                <RankBadge rank={{ ...r, plus: false }} />
-                <span className="text-xs text-slate-500">{inRank(r.code).length} บริษัท</span>
-              </button>
-            ))}
-            {activeRank && (
-              <button onClick={() => setShowSettings((s) => !s)} className="ml-auto text-sm font-semibold text-navy-700 hover:underline">
-                {showSettings ? "ปิดการตั้งค่า" : `ตั้งค่า ${activeRank.name} (ชื่อ สี โลโก้ % ส่วนลด)`}
-              </button>
-            )}
-          </div>
-          {showSettings && activeRank && <RankSettings rank={activeRank} onSaved={() => { ranks.reload(); setMsg("บันทึก Rank แล้ว"); }} />}
-          {activeRank && inRank(activeRank.code).length > 0 && (
-            <p className="text-xs text-slate-500">บริษัทใน Rank นี้: {inRank(activeRank.code).map((c) => c.name + (plusSet.has(c.id) ? " (+)" : "")).join(", ")}</p>
-          )}
-          <Input type="search" placeholder="ค้นหารหัส / ชื่อสินค้า / แบรนด์" value={q} onChange={(e) => setQ(e.target.value)} />
-        </Card>
-      ) : (
+      {(
         <Card className="mb-4 grid gap-3 md:grid-cols-[1fr_14rem_1fr]">
           <Select value={companyId} onChange={(e) => setCompanyId(e.target.value)} aria-label="เลือกบริษัท">
             <option value="">เลือกบริษัทลูกค้า</option>
@@ -264,7 +402,7 @@ export default function Pricing() {
       {err && <div className="mb-4"><Alert>{err}</Alert></div>}
 
       {!editable ? (
-        <Empty>{mode === "rank" ? "เลือก Rank เพื่อตั้งราคา" : "เลือกบริษัทเพื่อตั้ง Rank หรือราคาเฉพาะบริษัท (บริษัทจะถูกสร้างเมื่ออนุมัติการผูกบริษัทในหน้า “บริษัทลูกค้า”)"}</Empty>
+        <Empty>{"เลือกบริษัทเพื่อตั้ง Rank หรือราคาเฉพาะบริษัท (บริษัทจะถูกสร้างเมื่ออนุมัติการผูกบริษัทในหน้า “บริษัทลูกค้า”)"}</Empty>
       ) : variants.loading ? (
         <Loading />
       ) : (
@@ -275,8 +413,8 @@ export default function Pricing() {
                 <tr>
                   <th className="p-3">รหัส / สินค้า</th>
                   <th className="p-3 text-right">ราคาปกติ</th>
-                  {mode === "company" && <th className="p-3 text-right">ราคา Rank {activeRank?.name ?? "-"}</th>}
-                  <th className="p-3">{mode === "rank" ? `ราคา Rank ${activeRank?.name}` : `ราคาเฉพาะ ${company?.name}`}</th>
+                  {<th className="p-3 text-right">ราคา Rank {activeRank?.name ?? "-"}</th>}
+                  <th className="p-3">{`ราคาเฉพาะ ${company?.name}`}</th>
                   <th className="p-3">แก้ไขล่าสุด</th>
                 </tr>
               </thead>
@@ -284,9 +422,7 @@ export default function Pricing() {
                 {rows.map((v) => {
                   const changed = draft.has(v.id) && draft.get(v.id) !== (editing.get(v.id)?.price?.toString() ?? "");
                   const rp = rankPrice(activeRank, rankRows, v);
-                  const placeholder = mode === "rank"
-                    ? (activeRank?.discount_pct != null && v.base_price != null ? `${formatBaht(rp)} (−${activeRank.discount_pct}%)` : "ใช้ราคาปกติ")
-                    : rp != null ? `ใช้ราคา Rank ${formatBaht(rp)}` : "ใช้ราคาปกติ";
+                  const placeholder = rp != null ? `ใช้ราคา Rank ${formatBaht(rp)}` : "ใช้ราคาปกติ";
                   return (
                     <tr key={v.id} className={changed ? "bg-sun-300/20" : undefined}>
                       <td className="p-3">
@@ -294,7 +430,7 @@ export default function Pricing() {
                         <p className="font-medium text-navy-900">{v.products?.name}{v.name !== v.sku && ` · ${v.name}`}</p>
                       </td>
                       <td className="p-3 text-right">{formatBaht(v.base_price)}</td>
-                      {mode === "company" && <td className="p-3 text-right text-slate-600">{rp != null ? formatBaht(rp) : "-"}</td>}
+                      {<td className="p-3 text-right text-slate-600">{rp != null ? formatBaht(rp) : "-"}</td>}
                       <td className="p-3"><Input type="number" min="0" step="0.01" className="!w-48" value={value(v.id)} onChange={(e) => setValue(v.id, e.target.value)} placeholder={placeholder} /></td>
                       <td className="p-3 text-xs text-slate-500">{editing.get(v.id) ? formatDateTime(editing.get(v.id)?.updated_at) : "-"}</td>
                     </tr>
