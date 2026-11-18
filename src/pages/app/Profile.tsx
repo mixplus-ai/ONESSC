@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Avatar } from "../../components/Avatar";
-import { Alert, Badge, Button, Card, Field, Input, PageTitle, Spinner, Textarea } from "../../components/ui";
+import { Alert, Badge, Button, Card, Field, Input, PasswordInput, PageTitle, Spinner, Textarea } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, supabase } from "../../lib/supabase";
 import { BILLING_TYPE, type Billing } from "../../lib/training";
@@ -102,8 +102,8 @@ export default function Profile() {
         <Card>
           <h3 className="font-semibold text-navy-900">เปลี่ยนรหัสผ่าน</h3>
           <form onSubmit={changePassword} className="mt-4 space-y-4">
-            <Field label="รหัสผ่านใหม่"><Input name="password" type="password" minLength={8} required autoComplete="new-password" /></Field>
-            <Field label="ยืนยันรหัสผ่านใหม่"><Input name="password2" type="password" required autoComplete="new-password" /></Field>
+            <Field label="รหัสผ่านใหม่"><PasswordInput name="password" minLength={8} required autoComplete="new-password" /></Field>
+            <Field label="ยืนยันรหัสผ่านใหม่"><PasswordInput name="password2" required autoComplete="new-password" /></Field>
             {pwMsg && <Alert tone={pwMsg.tone}>{pwMsg.text}</Alert>}
             <Button type="submit" variant="secondary" loading={pwBusy}>เปลี่ยนรหัสผ่าน</Button>
           </form>
