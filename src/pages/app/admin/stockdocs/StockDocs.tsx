@@ -12,6 +12,7 @@ import {
 } from "../../../../lib/stockdocs";
 import { Tabs } from "../../MyRequests";
 import { DocEditor } from "./DocEditor";
+import { postedRvFor, soFromRv } from "./fromRv";
 import { SnLookup } from "./SnLookup";
 import { StockCounts } from "./StockCount";
 
@@ -367,8 +368,14 @@ export default function StockDocs() {
   useEffect(() => {
     if (!deliveryParam || !newType) return setChecked(true);
     supabase.from("stock_docs").select("id").eq(deliveryParam.startsWith("r:") ? "reservation_id" : "delivery_id", deliveryParam.replace(/^r:/, "")).eq("doc_type", newType).neq("status", "cancelled").limit(1)
-      .then(({ data }) => {
-        if (data?.[0]) setParams((p) => { p.set("doc", data[0].id); p.delete("new"); p.delete("delivery"); p.delete("reservation"); return p; }, { replace: true });
+      .then(async ({ data }) => {
+        const go = (id: string) => setParams((p) => { p.set("doc", id); p.delete("new"); p.delete("delivery"); p.delete("reservation"); return p; }, { replace: true });
+        if (data?.[0]) go(data[0].id);
+        // sold after a posted RV: the delivery note is made from the reserved SNs (cut from the reservation warehouse)
+        else if (newType === "SO" && deliveryParam.startsWith("r:")) {
+          const rv = await postedRvFor(deliveryParam.slice(2));
+          if (rv) { try { go(await soFromRv(rv)); } catch { /* fall back to an empty SO */ } }
+        }
         setChecked(true);
       });
   }, [deliveryParam, newType]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -388,7 +395,7 @@ export default function StockDocs() {
       <PageTitle title="เอกสารคลังและ Serial Number" subtitle="รับเข้า จ่ายออก ยืม คืน จำหน่าย ทุกชิ้นตาม SN และค้นประวัติ SN ได้ในช่องเดียว" />
       {(docId || newType) && !wh.loading && checked ? (
         <DocEditor key={docId ?? newType} id={docId} type={newType ?? "GR"} warehouses={docId ? wh.rows : active} deliveryId={params.get("delivery")} claimId={params.get("claim")} reservationId={params.get("reservation")}
-          onClose={close} onChanged={() => setListKey((k) => k + 1)} />
+          onClose={close} onChanged={() => setListKey((k) => k + 1)} onOpen={open} />
       ) : (
         <>
           <Tabs value={tab} onChange={setTab} tabs={[
