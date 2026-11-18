@@ -13,6 +13,8 @@ import { CameraScan } from "./CameraScan";
 import { PhotoScan } from "./PhotoScan";
 import { printDeliveryDetail, printDeliverySns, printStockDoc } from "./print";
 import { isReserveWarehouse, soFromRv } from "./fromRv";
+import { SnPicker } from "./SnPicker";
+import { SOURCE_LABEL, listSources, loadSource, type PlanLine, type SourceKind, type SourceOption, type SourcePick } from "./docSources";
 
 interface StockRow { sku: string; description: string | null }
 interface CompanyOpt { id: string; name: string; tax_id: string }
@@ -165,6 +167,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         if (!data) return;
         const r = data as unknown as ReservationRef;
         setResv(r);
+        setPlan({ kind: "reservation", code: r.code, lines: r.reservation_items.map((i) => ({ sku: i.sku.toUpperCase(), label: i.label, qty: Number(i.qty) })) });
         if (id) return;
         setHead((h) => ({
           ...h, reservation_id: r.id, company_id: r.company_id, ref_no: r.code,
@@ -173,13 +176,43 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       });
   }, [reservationId, head.reservation_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // SO made from a reservation (RV): show which one
+  // SO / WD made from a reservation (RV): show which one and what it holds
   const [fromRv, setFromRv] = useState<{ id: string; doc_no: string } | null>(null);
   useEffect(() => {
-    if (t !== "SO" || !head.return_of || fromRv?.id === head.return_of) return;
+    if ((t !== "SO" && t !== "WD") || !head.return_of || fromRv?.id === head.return_of) return;
     supabase.from("stock_docs").select("id, doc_no, doc_type").eq("id", head.return_of).single()
       .then(({ data }) => { if (data?.doc_type === "RV") setFromRv({ id: data.id, doc_no: data.doc_no }); });
   }, [t, head.return_of]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // what the document should hold, from the quotation / reservation it was filled from
+  const [plan, setPlan] = useState<{ kind: SourceKind; code: string; lines: PlanLine[] } | null>(null);
+  useEffect(() => {
+    if (!head.quote_id || plan?.kind === "quote") return;
+    loadSource("quote", head.quote_id).then((p) => p && setPlan({ kind: "quote", code: p.code, lines: p.lines }));
+  }, [head.quote_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [srcKind, setSrcKind] = useState<SourceKind | "">("");
+  const [srcOpts, setSrcOpts] = useState<SourceOption[]>([]);
+  const srcKinds: SourceKind[] = t === "SO" || t === "WD" ? ["quote", "reservation", "rv"] : ["SO", "BR", "RV"].includes(t) ? ["quote", "reservation"] : [];
+  useEffect(() => { setSrcOpts([]); if (srcKind) listSources(srcKind).then(setSrcOpts); }, [srcKind]);
+  async function pullSource(kind: SourceKind, sid: string) {
+    if (!sid) return;
+    const p: SourcePick | null = await loadSource(kind, sid);
+    if (!p) return setErr("ไม่พบเอกสารที่เลือก");
+    setHead((h) => ({
+      ...h, partner_name: p.partner_name ?? h.partner_name, partner_tax_id: p.partner_tax_id ?? h.partner_tax_id, company_id: p.company_id ?? h.company_id,
+      ref_no: h.ref_no || p.code,
+      ...(kind === "quote" ? { quote_id: p.id } : kind === "reservation" ? { reservation_id: p.id } : { return_of: p.id, ...(p.warehouse_id ? { warehouse_id: p.warehouse_id } : {}) }),
+    }));
+    if (kind === "rv") {
+      setFromRv({ id: p.id, doc_no: p.code });
+      setItems((l) => uniq(kind === "rv" && p.warehouse_id && p.warehouse_id !== head.warehouse_id ? [] : l, p.sns ?? []));
+      setWarn(p.sns?.length ? [] : ["ใบจองนี้ไม่มี SN ที่ยังจองอยู่"]);
+    }
+    setPlan({ kind, code: p.code, lines: p.lines });
+    setMsg(`ดึงรายการจาก${SOURCE_LABEL[kind]} ${p.code} แล้ว${kind === "rv" ? "" : " เลือก SN ของแต่ละรายการด้านล่าง"}`);
+  }
+  const [pickSku, setPickSku] = useState("");
+  const pickRef = useRef<HTMLDivElement>(null);
 
   const set = (k: keyof StockDoc, v: string | null) => setHead((h) => ({ ...h, [k]: v || null }));
 
@@ -211,7 +244,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
           if (!["borrowed", "withdrawn", "sold"].includes(s.status)) w.push(`${sn} ไม่ได้อยู่นอกคลัง (${SERIAL_STATUS_LABEL[s.status]})`);
         } else if (s.warehouse_id !== head.warehouse_id) w.push(`${sn} ไม่ได้อยู่ในคลังที่เลือก (${SERIAL_STATUS_LABEL[s.status]})`);
         else if (["SO", "BR", "WD", "RV"].includes(t) && s.condition !== "good") w.push(`${sn} เป็นของเสีย`);
-        else if (t === "SO" ? !["in_stock", "reserved"].includes(s.status) : t !== "WO" && t !== "TR" && s.status !== "in_stock") w.push(`${sn} สถานะ${SERIAL_STATUS_LABEL[s.status]}`);
+        else if (t === "SO" || t === "WD" ? !["in_stock", "reserved"].includes(s.status) : t !== "WO" && t !== "TR" && s.status !== "in_stock") w.push(`${sn} สถานะ${SERIAL_STATUS_LABEL[s.status]}`);
         add.push({ sku: s.sku, description: s.description ?? skuName.get(s.sku) ?? null, sn: s.sn, condition: t === "RT" ? condFor : s.condition });
       }
       setItems((list) => uniq(list, add));
@@ -247,6 +280,11 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       const r = await supabase.rpc("save_stock_doc_reservation", { p_id: d.id, p_reservation: head.reservation_id });
       if (r.error) { setErr(errorMessage(r.error)); return null; }
       d = { ...d, reservation_id: head.reservation_id };
+    }
+    if (head.quote_id && !d.quote_id) {
+      const r = await supabase.rpc("save_stock_doc_quote", { p_id: d.id, p_quote: head.quote_id });
+      if (r.error) { setErr(errorMessage(r.error)); return null; }
+      d = { ...d, quote_id: head.quote_id };
     }
     setHead(d);
     if (pendingFiles.length) {
@@ -393,6 +431,24 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
               {head.status !== "posted" && <> · ก่อนอนุมัติ สินค้ายังอยู่ที่เดิม</>}
             </p>
           </div>
+          {!locked && srcKinds.length > 0 && (
+            <div className="sm:col-span-3">
+              <Field label="ดึงรายการจากเอกสาร" hint="เลือกแล้วระบบใส่ลูกค้าและรายการสินค้าให้ แล้วเลือก SN ของแต่ละรายการ (ใบจองในคลังดึง SN ที่จองไว้มาให้เลย)">
+                <div className="flex flex-wrap gap-2">
+                  <Select className="max-w-[14rem]" value={srcKind} onChange={(e) => setSrcKind(e.target.value as SourceKind | "")}>
+                    <option value="">— ไม่ดึง —</option>
+                    {srcKinds.map((k) => <option key={k} value={k}>{SOURCE_LABEL[k]}</option>)}
+                  </Select>
+                  {srcKind && (
+                    <Select className="min-w-[16rem] flex-1" value="" onChange={(e) => pullSource(srcKind, e.target.value)}>
+                      <option value="">{srcOpts.length ? `— เลือก${SOURCE_LABEL[srcKind]} —` : "กำลังโหลด / ไม่มีเอกสาร"}</option>
+                      {srcOpts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    </Select>
+                  )}
+                </div>
+              </Field>
+            </div>
+          )}
           {PARTNER_LABEL[t] && (
             <Field label={PARTNER_LABEL[t]!} required={["SO", "BR", "WD", "RV", "RT"].includes(t)}>
               <Input disabled={locked} list="sd-companies" value={head.partner_name ?? ""} onChange={(e) => {
@@ -469,9 +525,9 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         </div>
       </Card>
 
-      {t === "SO" && fromRv && (
+      {(t === "SO" || t === "WD") && fromRv && (
         <Alert tone="navy">
-          ใบส่งของนี้ออกจากใบจอง{" "}
+          {DOC_LABEL[t]}นี้ออกจากใบจอง{" "}
           {onOpen ? <button onClick={() => onOpen(fromRv.id)} className="font-mono font-semibold underline">{fromRv.doc_no}</button> : <b className="font-mono">{fromRv.doc_no}</b>}
           {" "}· ตัดสต๊อกจาก {wh(head.warehouse_id)} · ใส่ข้อมูลรถ/คนขับ แนบรูป แล้วกดยืนยัน
         </Alert>
@@ -482,13 +538,21 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
           {t === "RT" ? " · ระบบใส่ SN ที่แจ้งเป็นสภาพเสียให้แล้ว (SN ที่ไม่เคยขายจากระบบจะไม่ถูกเพิ่ม)" : " · สแกน SN ตัวใหม่ที่ส่งเปลี่ยนให้ลูกค้า"}
         </Alert>
       )}
-      {resv && (
+      {plan && (
         <Alert tone="navy">
-          ตามใบจอง {resv.code}:{" "}
-          {resv.reservation_items.map((i) => {
-            const n = items.filter((x) => x.sku === i.sku.toUpperCase()).length;
-            return <span key={i.sku} className="mr-3 inline-block">{i.sku} × {Number(i.qty)}{" "}<b className={n === Number(i.qty) ? "text-emerald-700" : "text-amber-700"}>(สแกนแล้ว {n})</b></span>;
-          })}
+          <p className="font-semibold">ตาม{SOURCE_LABEL[plan.kind]} {plan.code}</p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {plan.lines.map((i) => {
+              const n = items.filter((x) => x.sku === i.sku).length;
+              return (
+                <span key={i.sku} className="inline-flex items-center gap-2 rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">
+                  <span title={i.label}>{i.sku} × {i.qty}</span>
+                  <b className={n === i.qty ? "text-emerald-700" : "text-amber-700"}>(ใส่ SN แล้ว {n})</b>
+                  {!locked && dir !== "in" && n < i.qty && <button className="text-xs font-semibold text-navy-700 underline" onClick={() => { setPickSku(i.sku); pickRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>เลือก SN</button>}
+                </span>
+              );
+            })}
+          </div>
         </Alert>
       )}
       {delivery && (
@@ -525,7 +589,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
                   </Select>
                 </Field>
               )}
-              {dir !== "in" && <p className="text-xs text-slate-500">สแกน SN แล้วระบบดึงรหัสสินค้าให้เอง</p>}
+              {dir !== "in" && <p className="text-xs text-slate-500">สแกน / พิมพ์ SN ได้เลย ระบบดึงรหัสสินค้าให้เอง หรือเลือกสินค้าจากฐานข้อมูลด้านล่างแล้วติ๊ก SN</p>}
             </div>
             <div>
               <textarea ref={scanRef} rows={3} value={scan} onChange={(e) => setScan(e.target.value)}
@@ -539,6 +603,13 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
                 <span className="text-xs text-slate-500">แยกด้วยบรรทัดใหม่ เครื่องหมาย , หรือแท็บ</span>
               </div>
             </div>
+          </div>
+        )}
+        {!locked && dir !== "in" && (
+          <div ref={pickRef} className="mt-3">
+            <SnPicker type={t} warehouseId={head.warehouse_id} sku={pickSku} setSku={setPickSku} skus={stock.rows}
+              want={(() => { const l = plan?.lines.find((x) => x.sku === pickSku.trim().toUpperCase()); return l ? Math.max(0, l.qty - items.filter((x) => x.sku === l.sku).length) : undefined; })()}
+              existing={new Set(items.map((i) => snKey(i.sn)))} onAdd={(add) => { setItems((l) => uniq(l, add)); setWarn([]); }} />
           </div>
         )}
         {warn.length > 0 && <div className="mt-3"><Alert tone="amber">{warn.map((w, i) => <div key={i}>{w}</div>)}</Alert></div>}

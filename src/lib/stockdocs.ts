@@ -27,6 +27,7 @@ export interface StockDoc {
   delivery_id: string | null;
   claim_id: string | null;
   reservation_id?: string | null;
+  quote_id?: string | null;
   created_by: string | null;
   created_at: string;
   posted_by: string | null;
