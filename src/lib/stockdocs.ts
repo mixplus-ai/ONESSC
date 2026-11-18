@@ -131,3 +131,28 @@ export const PARTNER_LABEL: Partial<Record<DocType, string>> = {
 export const splitSns = (s: string) =>
   s.split(/[\n\r,;\t]+/).map((x) => x.trim().toUpperCase()).filter(Boolean);
 export const snKey = (s: string) => s.toUpperCase().replace(/[\s\-_./]/g, "").replace(/O/g, "0");
+
+/**
+ * Where a document moves goods from and to (every document has both ends; outside parties are shown by name).
+ * TO_WH: whether the document picks a destination warehouse (to_warehouse_id).
+ */
+export const TO_WH: Record<DocType, "none" | "optional" | "required"> = {
+  OB: "none", GR: "none", GN: "none", RT: "none", SO: "none", WO: "none", TR: "required", RV: "optional", BR: "optional", WD: "optional",
+};
+const OUTSIDE_FROM: Partial<Record<DocType, string>> = { OB: "ยอดยกมา (ของที่มีอยู่ก่อนใช้ระบบ)", GR: "ผู้ขายต่างประเทศ", GN: "ผู้ขายในประเทศ", RT: "รับคืนจากภายนอก" };
+const OUTSIDE_TO: Partial<Record<DocType, string>> = { SO: "ลูกค้า", BR: "ส่งเคลม (อยู่นอกคลัง)", WD: "ผู้เบิก / ผู้ยืม (อยู่นอกคลัง)", WO: "ตัดจำหน่ายออกจากระบบ" };
+export function docRoute(d: Pick<StockDoc, "doc_type" | "warehouse_id" | "to_warehouse_id" | "partner_name">, whName: (id: string | null | undefined) => string) {
+  const t = d.doc_type;
+  const party = (base: string) => d.partner_name ? `${base}: ${d.partner_name}` : base;
+  if (DIR[t] === "in") return { from: party(OUTSIDE_FROM[t]!), to: whName(d.warehouse_id), fromWh: false, toWh: true };
+  if (d.to_warehouse_id) return { from: whName(d.warehouse_id), to: whName(d.to_warehouse_id), fromWh: true, toWh: true };
+  if (t === "TR") return { from: whName(d.warehouse_id), to: "-", fromWh: true, toWh: true };
+  if (t === "RV") return { from: whName(d.warehouse_id), to: `${whName(d.warehouse_id)} (จองไว้ในคลังเดิม)`, fromWh: true, toWh: true };
+  return { from: whName(d.warehouse_id), to: party(OUTSIDE_TO[t]!), fromWh: true, toWh: false };
+}
+/** What approving the document does to each SN. */
+export const POST_EFFECT: Record<DocType, string> = {
+  OB: "เข้าคลังปลายทาง สถานะในคลัง", GR: "เข้าคลังปลายทาง สถานะในคลัง", GN: "เข้าคลังปลายทาง สถานะในคลัง", RT: "กลับเข้าคลังปลายทาง สถานะในคลัง",
+  SO: "ออกจากคลังต้นทาง สถานะขายแล้ว", BR: "ออกจากคลังต้นทาง สถานะส่งเคลม", WD: "ออกจากคลังต้นทาง สถานะเบิก / ยืม",
+  WO: "ออกจากคลังต้นทาง สถานะตัดจำหน่าย", TR: "ย้ายไปคลังปลายทาง สถานะเดิม", RV: "ย้ายไปคลังปลายทาง สถานะจอง",
+};

@@ -7,7 +7,7 @@ import { formatDate } from "../../../../lib/catalog";
 import { useRows } from "../../../../lib/content";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import {
-  DIR, DOC_LABEL, DOC_STATUS_LABEL, DOC_STATUS_TONE, DOC_TYPES, SERIAL_STATUS_LABEL,
+  DIR, DOC_LABEL, docRoute, DOC_STATUS_LABEL, DOC_STATUS_TONE, DOC_TYPES, SERIAL_STATUS_LABEL,
   type DocStatus, type DocType, type Serial, type SerialStatus, type StockDoc, type Warehouse,
 } from "../../../../lib/stockdocs";
 import { Tabs } from "../../MyRequests";
@@ -18,7 +18,8 @@ import { StockCounts } from "./StockCount";
 
 type Tab = "search" | "docs" | "balance" | "out" | "count" | "settings";
 
-function DocList({ open, newDoc }: { open: (id: string) => void; newDoc: (t: DocType) => void }) {
+function DocList({ open, newDoc, warehouses }: { open: (id: string) => void; newDoc: (t: DocType) => void; warehouses: Warehouse[] }) {
+  const whName = (id: string | null | undefined) => warehouses.find((w) => w.id === id)?.name ?? "-";
   const { can, isAdmin } = useAuth();
   const [type, setType] = useState<"" | DocType>("");
   const [status, setStatus] = useState<"" | DocStatus>("");
@@ -66,7 +67,7 @@ function DocList({ open, newDoc }: { open: (id: string) => void; newDoc: (t: Doc
         <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
           <table className="min-w-full bg-white text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
-              <tr><th className="px-3 py-2">เลขที่</th><th className="px-3 py-2">ประเภท</th><th className="px-3 py-2">วันที่</th><th className="px-3 py-2">คู่ค้า / ลูกค้า</th><th className="px-3 py-2">อ้างอิง</th><th className="px-3 py-2 text-right">ชิ้น</th><th className="px-3 py-2">สถานะ</th></tr>
+              <tr><th className="px-3 py-2">เลขที่</th><th className="px-3 py-2">ประเภท</th><th className="px-3 py-2">วันที่</th><th className="px-3 py-2">ต้นทาง → ปลายทาง</th><th className="px-3 py-2">อ้างอิง</th><th className="px-3 py-2 text-right">ชิ้น</th><th className="px-3 py-2">สถานะ</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shown.map((d) => (
@@ -74,7 +75,7 @@ function DocList({ open, newDoc }: { open: (id: string) => void; newDoc: (t: Doc
                   <td className="px-3 py-2 font-mono font-semibold text-navy-800">{d.doc_no}</td>
                   <td className="px-3 py-2">{DOC_LABEL[d.doc_type]}</td>
                   <td className="px-3 py-2">{formatDate(d.doc_date)}</td>
-                  <td className="px-3 py-2">{d.partner_name ?? "-"}</td>
+                  <td className="px-3 py-2">{(() => { const r = docRoute(d, whName); return <>{r.from} <span className="text-slate-400">→</span> {r.to}</>; })()}</td>
                   <td className="px-3 py-2">{[d.ref_no, d.customer_po].filter(Boolean).join(" · ") || "-"}</td>
                   <td className="px-3 py-2 text-right">{d.stock_doc_items?.[0]?.count ?? 0}</td>
                   <td className="px-3 py-2"><Badge tone={DOC_STATUS_TONE[d.status]}>{DOC_STATUS_LABEL[d.status]}</Badge>{d.status === "draft" && d.checked_at && <> <Badge tone="navy">ตรวจแล้ว</Badge></>}</td>
@@ -151,7 +152,7 @@ function Balance({ warehouses, open }: { warehouses: Warehouse[]; open: (id: str
       const r = m.get(s.sku) ?? { sku: s.sku, description: s.description, c: {} };
       const k = s.status === "in_stock" && s.condition === "defective" ? "defective" : s.status;
       r.c[k] = (r.c[k] ?? 0) + 1;
-      if (s.status === "in_stock" || s.status === "reserved") r.c["wh:" + s.warehouse_id] = (r.c["wh:" + s.warehouse_id] ?? 0) + 1;
+      if (s.warehouse_id && ["in_stock", "reserved", "borrowed", "withdrawn"].includes(s.status)) r.c["wh:" + s.warehouse_id] = (r.c["wh:" + s.warehouse_id] ?? 0) + 1;
       m.set(s.sku, r);
     }
     const t = q.trim().toLowerCase();
@@ -407,7 +408,7 @@ export default function StockDocs() {
             ...(isAdmin ? [{ key: "settings" as Tab, label: "ตั้งค่า" }] : []),
           ]} />
           {tab === "search" && <SnLookup initial={params.get("sn") ?? ""} />}
-          {tab === "docs" && <DocList key={listKey} open={open} newDoc={newDoc} />}
+          {tab === "docs" && <DocList key={listKey} open={open} newDoc={newDoc} warehouses={wh.rows} />}
           {tab === "balance" && <Balance warehouses={active} open={open} />}
           {tab === "out" && <OutList open={open} />}
           {tab === "count" && canCount && <StockCounts warehouses={active} openDoc={open} />}
