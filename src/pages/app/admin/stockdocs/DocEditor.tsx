@@ -14,6 +14,7 @@ import { PhotoScan } from "./PhotoScan";
 import { exportDeliveryPng, exportDeliveryXlsx, printDeliveryDetail, printDeliverySns } from "./print";
 import { isReserveWarehouse, soFromRv } from "./fromRv";
 import { SnPicker } from "./SnPicker";
+import { ProductSearch } from "./ProductSearch";
 import { SOURCE_LABEL, listSources, loadSource, type PlanLine, type SourceKind, type SourceOption, type SourcePick } from "./docSources";
 
 interface StockRow { sku: string; description: string | null }
@@ -112,7 +113,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         supabase.from("stock_doc_items").select("*").eq("doc_id", id).order("sort"),
       ]);
       if (d.error) setErr(errorMessage(d.error));
-      else setHead(d.data as StockDoc);
+      else { setHead(d.data as StockDoc); setDocLines(((d.data as StockDoc).lines ?? []).map((l) => ({ ...l, qty: Number(l.qty) || 0 }))); }
       setItems((it.data ?? []) as DocItem[]);
       setLoading(false);
     })();
@@ -186,6 +187,15 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
 
   // what the document should hold, from the quotation / reservation it was filled from
   const [plan, setPlan] = useState<{ kind: SourceKind; code: string; lines: PlanLine[] } | null>(null);
+  const [docLines, setDocLines] = useState<{ sku: string; description: string | null; qty: number }[]>([]);
+  // lines from the quotation / reservation become product rows (kept on the document when saved)
+  useEffect(() => {
+    if (!plan || locked) return;
+    setDocLines((l) => {
+      const have = new Set(l.map((x) => x.sku));
+      return [...l, ...plan.lines.filter((x) => !have.has(x.sku)).map((x) => ({ sku: x.sku, description: x.label, qty: x.qty }))];
+    });
+  }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!head.quote_id || plan?.kind === "quote") return;
     loadSource("quote", head.quote_id).then((p) => p && setPlan({ kind: "quote", code: p.code, lines: p.lines }));
@@ -282,6 +292,12 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       if (r.error) { setErr(errorMessage(r.error)); return null; }
       d = { ...d, reservation_id: head.reservation_id };
     }
+    {
+      const lines = tableRows.map((r) => ({ sku: r.sku, description: r.description, qty: Math.max(r.qty, r.rows.length) }));
+      const r = await supabase.rpc("save_stock_doc_lines", { p_id: d.id, p_lines: lines });
+      if (r.error) { setErr(errorMessage(r.error)); return null; }
+      d = { ...d, lines };
+    }
     if (head.quote_id && !d.quote_id) {
       const r = await supabase.rpc("save_stock_doc_quote", { p_id: d.id, p_quote: head.quote_id });
       if (r.error) { setErr(errorMessage(r.error)); return null; }
@@ -299,6 +315,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
 
   const onSave = () => run("save", async () => { if (await save()) setMsg("บันทึกร่างแล้ว"); });
   const onPost = () => run("post", async () => {
+    if (short.length) return setErr(`ยังใส่ SN ไม่ครบ: ${short.map((r) => `${r.sku} ${r.rows.length}/${r.qty}`).join(", ")} (แก้จำนวนหรือใส่ SN ให้ครบก่อนยืนยัน)`);
     if (!confirm(`อนุมัติ${DOC_LABEL[t]} ${items.length} ชิ้น?\nต้นทาง: ${route.from}\nปลายทาง: ${route.to}\nSN ${effect}\nอนุมัติแล้วแก้ไม่ได้`)) return;
     const did = await save();
     if (!did) return;
@@ -345,13 +362,12 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
   });
 
   // product rows: products with SNs, plus planned / added products still without SNs
-  const [extraSkus, setExtraSkus] = useState<string[]>([]);
   const [addSku, setAddSku] = useState("");
-  function addProduct() {
-    const code = addSku.trim().toUpperCase();
+  function addProduct(picked?: string) {
+    const code = (picked ?? addSku).trim().toUpperCase();
     if (!code) return;
     if (!skuName.has(code) && !confirm(`ไม่พบรหัส ${code} ในสต๊อก เพิ่มเป็นรหัสใหม่?`)) return;
-    setExtraSkus((l) => (l.includes(code) ? l : [...l, code]));
+    setDocLines((l) => (l.some((x) => x.sku === code) ? l : [...l, { sku: code, description: skuName.get(code) ?? null, qty: 1 }]));
     setAddSku("");
     if (dir !== "in") setPickSku(code); else setSku(code);
   }
@@ -364,12 +380,20 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     });
     return [...m.values()];
   }, [items]);
+  // rows in line order first, then codes that only have SNs; qty = wanted quantity (defaults to the SN count)
   const tableRows = useMemo(() => {
-    const have = new Set(groups.map((g) => g.sku));
-    const more = [...(plan?.lines.map((l) => l.sku) ?? []), ...extraSkus].filter((k, i, a) => !have.has(k) && a.indexOf(k) === i)
-      .map((k) => ({ sku: k, description: skuName.get(k) ?? plan?.lines.find((l) => l.sku === k)?.label ?? null, rows: [] as { item: DocItem; idx: number }[] }));
-    return [...groups, ...more];
-  }, [groups, plan, extraSkus, skuName]);
+    const bySku = new Map(groups.map((g) => [g.sku, g]));
+    const rows = docLines.map((l) => ({ sku: l.sku, description: bySku.get(l.sku)?.description ?? l.description ?? skuName.get(l.sku) ?? null, rows: bySku.get(l.sku)?.rows ?? [], qty: l.qty }));
+    const seen = new Set(docLines.map((l) => l.sku));
+    groups.filter((g) => !seen.has(g.sku)).forEach((g) => rows.push({ ...g, qty: g.rows.length }));
+    return rows;
+  }, [groups, docLines, skuName]);
+  const setLineQty = (code: string, v: string) => {
+    const n = Math.max(0, Math.min(100000, Math.round(Number(v) || 0)));
+    setDocLines((l) => l.some((x) => x.sku === code) ? l.map((x) => x.sku === code ? { ...x, qty: n } : x) : [...l, { sku: code, description: skuName.get(code) ?? null, qty: n }]);
+  };
+  const short = tableRows.filter((r) => r.qty > r.rows.length);
+  const docForPrint = { ...head, lines: tableRows.map((r) => ({ sku: r.sku, description: r.description, qty: Math.max(r.qty, r.rows.length) })) } as StockDoc;
 
   if (loading) return <Loading />;
   const needCheck = (cfg.rows[0]?.check_types ?? []).includes(t);
@@ -393,11 +417,11 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
             {([["detail", "ใบที่ 1 รายละเอียด"], ["sn", "ใบที่ 2 รายการ SN"]] as const).map(([k, label]) => (
               <span key={k} className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">
                 <span className="text-xs font-semibold text-navy-900">{label}</span>
-                <button className="rounded px-1.5 text-xs font-semibold text-navy-700 hover:bg-slate-100" onClick={() => (k === "detail" ? printDeliveryDetail : printDeliverySns)(head as StockDoc, items, warehouses)}>PDF</button>
-                <button className="rounded px-1.5 text-xs font-semibold text-navy-700 hover:bg-slate-100" onClick={() => run("png", async () => { try { await exportDeliveryPng(head as StockDoc, items, warehouses, k); } catch (e) { setErr("สร้างรูป PNG ไม่สำเร็จ: " + errorMessage(e)); } })}>PNG</button>
+                <button className="rounded px-1.5 text-xs font-semibold text-navy-700 hover:bg-slate-100" onClick={() => (k === "detail" ? printDeliveryDetail : printDeliverySns)(docForPrint, items, warehouses)}>PDF</button>
+                <button className="rounded px-1.5 text-xs font-semibold text-navy-700 hover:bg-slate-100" onClick={() => run("png", async () => { try { await exportDeliveryPng(docForPrint, items, warehouses, k); } catch (e) { setErr("สร้างรูป PNG ไม่สำเร็จ: " + errorMessage(e)); } })}>PNG</button>
               </span>
             ))}
-            <Button variant="secondary" loading={busy === "xlsx"} onClick={() => run("xlsx", async () => { try { await exportDeliveryXlsx(head as StockDoc, items, warehouses); } catch (e) { setErr(errorMessage(e)); } })}>Excel (2 แผ่น)</Button>
+            <Button variant="secondary" loading={busy === "xlsx"} onClick={() => run("xlsx", async () => { try { await exportDeliveryXlsx(docForPrint, items, warehouses); } catch (e) { setErr(errorMessage(e)); } })}>Excel (2 แผ่น)</Button>
           </div>
         )}
       </div>
@@ -650,7 +674,6 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
             </thead>
             <tbody className="divide-y divide-slate-100 align-top">
               {tableRows.map((g, gi) => {
-                const want = plan?.lines.find((x) => x.sku === g.sku)?.qty;
                 return (
                   <tr key={g.sku}>
                     <td className="px-3 py-2 text-center text-slate-400">{gi + 1}</td>
@@ -705,14 +728,17 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
                         </div>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold">
-                      <span className={want != null ? (g.rows.length === want ? "text-emerald-700" : "text-amber-700") : "text-navy-900"}>{g.rows.length}</span>
-                      {want != null && <span className="text-slate-400"> / {want}</span>}
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      {locked ? <span className="font-semibold">{Math.max(g.qty, g.rows.length)}</span> : (
+                        <input type="number" min={0} inputMode="numeric" value={g.qty} onChange={(e) => setLineQty(g.sku, e.target.value)}
+                          className="h-8 w-20 rounded-md border border-slate-300 px-2 text-right text-sm" aria-label="จำนวน" />
+                      )}
+                      <p className={cx("mt-1 text-xs font-semibold", g.rows.length >= g.qty ? "text-emerald-700" : "text-amber-700")}>SN {g.rows.length}/{Math.max(g.qty, g.rows.length)}</p>
                     </td>
                     {!locked && (
                       <td className="px-2 py-2 text-center">
                         <button title="ลบสินค้านี้" className="text-slate-400 hover:text-red-600"
-                          onClick={() => { setItems((l) => l.filter((x) => x.sku !== g.sku)); setExtraSkus((l) => l.filter((x) => x !== g.sku)); }}>🗑</button>
+                          onClick={() => { setItems((l) => l.filter((x) => x.sku !== g.sku)); setDocLines((l) => l.filter((x) => x.sku !== g.sku)); }}>🗑</button>
                       </td>
                     )}
                   </tr>
@@ -726,10 +752,8 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
                   <td />
                   <td colSpan={3} className="px-3 py-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Input list="sd-add-skus" className="h-9 max-w-xs" value={addSku} onChange={(e) => setAddSku(e.target.value.toUpperCase())}
-                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addProduct(); } }} placeholder="+ เพิ่มสินค้า: พิมพ์หรือเลือกรหัส / ชื่อ" />
-                      <datalist id="sd-add-skus">{stock.rows.map((r) => <option key={r.sku} value={r.sku}>{r.description}</option>)}</datalist>
-                      <Button variant="secondary" onClick={addProduct} disabled={!addSku.trim()}>เพิ่มสินค้า</Button>
+                      <ProductSearch className="w-full max-w-md" products={stock.rows} value={addSku} onChange={setAddSku} onPick={(k) => addProduct(k)} placeholder="+ เพิ่มสินค้า: พิมพ์หรือเลือกรหัส / ชื่อสินค้า" />
+                      <Button variant="secondary" onClick={() => addProduct()} disabled={!addSku.trim()}>เพิ่มสินค้า</Button>
                     </div>
                   </td>
                   <td colSpan={2} />
@@ -737,7 +761,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
               )}
               <tr className="font-semibold">
                 <td colSpan={4} className="px-3 py-2 text-right">รวม {tableRows.length} รายการ</td>
-                <td className="px-3 py-2 text-right">{items.length}</td>
+                <td className="px-3 py-2 text-right">{tableRows.reduce((a, r) => a + Math.max(r.qty, r.rows.length), 0)} <span className="text-xs font-normal text-slate-500">(SN {items.length})</span></td>
                 {!locked && <td />}
               </tr>
             </tfoot>

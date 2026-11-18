@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Input } from "../../../../components/ui";
+import { ProductSearch } from "./ProductSearch";
 import { formatDate } from "../../../../lib/catalog";
 import { supabase } from "../../../../lib/supabase";
 import { SERIAL_STATUS_LABEL, snKey, type DocItem, type DocType, type Serial, type SerialStatus } from "../../../../lib/stockdocs";
@@ -52,8 +53,7 @@ export function SnPicker({ type, warehouseId, sku, setSku, want, skus, existing,
       <div className="flex flex-wrap items-end gap-2">
         <label className="block min-w-[14rem] flex-1">
           <span className="text-xs font-medium text-slate-600">เลือกสินค้าจากฐานข้อมูล</span>
-          <Input list="sd-pick-skus" value={sku} onChange={(e) => setSku(e.target.value.toUpperCase())} placeholder="พิมพ์หรือเลือกรหัส / ชื่อสินค้า" />
-          <datalist id="sd-pick-skus">{skus.map((r) => <option key={r.sku} value={r.sku}>{r.description}</option>)}</datalist>
+          <ProductSearch products={skus} value={sku} onChange={setSku} onPick={setSku} placeholder="พิมพ์หรือเลือกรหัส / ชื่อสินค้า" />
         </label>
         {code && free.length > 0 && (
           <>
@@ -64,6 +64,9 @@ export function SnPicker({ type, warehouseId, sku, setSku, want, skus, existing,
         )}
       </div>
       {code && <p className="mt-1 text-xs text-slate-500">{desc ?? "ไม่พบรหัสนี้ในสต๊อก"} · ในคลังต้นทางที่ใช้ได้ {loading ? "…" : `${free.length} ชิ้น`}</p>}
+      {code && !loading && !free.length && (
+        <p className="mt-1 text-xs text-amber-700">ยังไม่มี SN ของสินค้านี้ในคลังต้นทาง ต้องรับเข้าคลังก่อน (ใบยอดยกมา / ใบรับสินค้า) แล้วจึงเลือก SN ได้ (ระบุจำนวนในตารางไว้ก่อนได้)</p>
+      )}
       {code && free.length > 12 && <Input className="mt-2 max-w-xs" placeholder="ค้นหา SN" value={q} onChange={(e) => setQ(e.target.value)} />}
       {code && shown.length > 0 && (
         <div className="mt-2 grid max-h-64 gap-1 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">

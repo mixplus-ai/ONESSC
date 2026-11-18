@@ -28,6 +28,7 @@ export interface StockDoc {
   claim_id: string | null;
   reservation_id?: string | null;
   quote_id?: string | null;
+  lines?: { sku: string; description: string | null; qty: number }[];
   created_by: string | null;
   created_at: string;
   posted_by: string | null;

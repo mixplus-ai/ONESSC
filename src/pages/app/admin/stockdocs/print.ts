@@ -119,6 +119,14 @@ function groupItems(items: DocItem[]) {
   });
   return [...groups.entries()];
 }
+/** Product rows for the detail sheet: the document's lines (wanted qty) plus codes that only have SNs. */
+function lineRows(d: StockDoc, items: DocItem[]) {
+  const g = new Map(groupItems(items));
+  const rows = (d.lines ?? []).map((l) => ({ sku: l.sku, description: g.get(l.sku)?.description ?? l.description, qty: Math.max(Number(l.qty) || 0, g.get(l.sku)?.sns.length ?? 0), sns: g.get(l.sku)?.sns.length ?? 0 }));
+  const seen = new Set(rows.map((r) => r.sku));
+  g.forEach((v, sku) => { if (!seen.has(sku)) rows.push({ sku, description: v.description, qty: v.sns.length, sns: v.sns.length }); });
+  return rows;
+}
 const watermarkOf = (d: StockDoc) => (d.status === "cancelled" ? "ยกเลิก" : d.status === "draft" ? "ร่าง" : null);
 const vehiclePanel = (d: StockDoc): Panel => ({
   heading: DIR[d.doc_type] === "in" ? "รถที่มาส่ง" : "รถขนส่ง",
@@ -137,7 +145,7 @@ export async function printDeliveryDetail(d: StockDoc, items: DocItem[], warehou
 
 /** Sheet 1: the delivery / receipt detail (parties, route, totals per code, vehicle, photos). */
 export async function deliveryDetailDoc(d: StockDoc, items: DocItem[], warehouses: Warehouse[]): Promise<PrintDoc> {
-  const groups = groupItems(items);
+  const lines = lineRows(d, items);
   const { list, urls } = await loadDocFiles(d.id, 7 * 24 * 3600);
   const photos = FILE_KINDS.map((k) => ({ ...k, files: list.filter((f) => (f.kind ?? "other") === k.kind && isImage(f.name) && urls[f.path]) }))
     .filter((k) => k.files.length);
@@ -157,9 +165,9 @@ ${extras.length > shown.length ? `<p class="muted" style="font-size:8pt;margin:4
 
   const body = [
     heading("รายการสินค้า"),
-    table([["ลำดับ", "c"], ["รหัสสินค้า"], ["รายละเอียด"], ["จำนวน (ชิ้น)", "r"]],
-      groups.map(([sku, g], i) => [i + 1, sku, g.description, g.sns.length]),
-      { foot: ["", "", "รวมทั้งสิ้น", items.length], widths: ["44px", "26%", undefined, "90px"] }),
+    table([["ลำดับ", "c"], ["รหัสสินค้า"], ["รายละเอียด"], ["จำนวน (ชิ้น)", "r"], ["SN", "r"]],
+      lines.map((r, i) => [i + 1, r.sku, r.description, r.qty, r.sns]),
+      { foot: ["", "", "รวมทั้งสิ้น", lines.reduce((a, r) => a + r.qty, 0), items.length], widths: ["44px", "24%", undefined, "86px", "60px"] }),
     note("รายการ Serial Number", `${items.length} รายการ แยกอยู่ในใบรายการ SN เลขที่ ${d.doc_no ?? "-"}-SN`),
     note("เหตุผล", d.reason),
     note("หมายเหตุ", d.note),
@@ -223,9 +231,9 @@ export async function exportDeliveryXlsx(d: StockDoc, items: DocItem[], warehous
   const sheet1 = [
     [b(`${DOC_LABEL[d.doc_type]} ${d.doc_no ?? ""}`)], [],
     ...info.filter(([, v]) => v).map(([k, v]) => [b(k), cell(v)]), [],
-    [b("ลำดับ"), b("รหัสสินค้า"), b("ชื่อสินค้า"), b("จำนวน (ชิ้น)")],
-    ...groups.map(([sku, g], i) => [cell(i + 1), cell(sku), cell(g.description), cell(g.sns.length)]),
-    [cell(""), cell(""), b("รวมทั้งสิ้น"), { value: items.length, fontWeight: "bold" as const }],
+    [b("ลำดับ"), b("รหัสสินค้า"), b("ชื่อสินค้า"), b("จำนวน (ชิ้น)"), b("SN ที่ใส่")],
+    ...lineRows(d, items).map((r, i) => [cell(i + 1), cell(r.sku), cell(r.description), cell(r.qty), cell(r.sns)]),
+    [cell(""), cell(""), b("รวมทั้งสิ้น"), { value: lineRows(d, items).reduce((a, r) => a + r.qty, 0), fontWeight: "bold" as const }, { value: items.length, fontWeight: "bold" as const }],
   ];
   let n = 0;
   const sheet2 = [
@@ -235,7 +243,7 @@ export async function exportDeliveryXlsx(d: StockDoc, items: DocItem[], warehous
     ...groups.flatMap(([sku, g]) => g.sns.map((i) => [cell(++n), cell(sku), cell(g.description), cell(i.sn), cell(CONDITION_LABEL[i.condition])])),
   ];
   await writeXlsxFile([
-    { sheet: "รายละเอียด", data: sheet1, columns: [{ width: 18 }, { width: 22 }, { width: 40 }, { width: 14 }] },
+    { sheet: "รายละเอียด", data: sheet1, columns: [{ width: 18 }, { width: 22 }, { width: 40 }, { width: 14 }, { width: 10 }] },
     { sheet: "Serial Number", data: sheet2, columns: [{ width: 8 }, { width: 20 }, { width: 36 }, { width: 26 }, { width: 8 }] },
   ]).toFile(`${d.doc_no ?? DOC_LABEL[d.doc_type]}.xlsx`);
 }
