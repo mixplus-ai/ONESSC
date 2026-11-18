@@ -80,3 +80,8 @@ export const HeartIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path
 export const ShareIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M12 3v12M7 8l5-5 5 5M5 13v6a1 1 0 001 1h12a1 1 0 001-1v-6" /></svg>;
 export const ChevronLeftIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M15 6l-6 6 6 6" /></svg>;
 export const TrashIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>;
+export const TableIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M3 15h18M9 4v16" /></svg>;
+export const MegaphoneIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M3 11v3a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1zM15 9a3 3 0 010 6M18 6a7 7 0 010 12" /></svg>;
+export const WarehouseIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M3 9l9-5 9 5v11H3z" /><path d="M7 20v-7h10v7M7 16h10" /></svg>;
+export const BarcodeIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><path d="M4 6v12M7 6v12M11 6v12M14 6v12M17 6v12M20 6v12" /></svg>;
+export const KeyIcon = (p: SVGProps<SVGSVGElement>) => <svg {...base(p)}><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M17 6l3 3M15 8l2 2" /></svg>;
