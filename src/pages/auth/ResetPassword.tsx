@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
-import { Alert, Button, Field, Input } from "../../components/ui";
+import { Link, useNavigate } from "react-router-dom";
+import { Alert, Button, Field, PasswordInput } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, supabase } from "../../lib/supabase";
 import AuthShell from "./AuthShell";
@@ -11,6 +11,11 @@ export default function ResetPassword() {
   const nav = useNavigate();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // Supabase puts the reason in the URL when a link is expired or already used, e.g. #error_code=otp_expired
+  const [linkErr] = useState(() => {
+    const q = new URLSearchParams(window.location.hash.slice(1) || window.location.search);
+    return q.get("error_code") || q.get("error") ? q.get("error_code") ?? "error" : "";
+  });
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -28,11 +33,19 @@ export default function ResetPassword() {
   return (
     <AuthShell title="ตั้งรหัสผ่านใหม่">
       {!loading && !session ? (
-        <Alert tone="amber">ลิงก์หมดอายุหรือไม่ถูกต้อง กรุณาขอลิงก์ใหม่จากหน้า “ลืมรหัสผ่าน”</Alert>
+        <div className="space-y-4">
+          <Alert tone="amber">
+            {linkErr === "otp_expired"
+              ? "ลิงก์นี้หมดอายุหรือถูกใช้ไปแล้ว (ลิงก์ใช้ได้ครั้งเดียว และต้องใช้ลิงก์จากอีเมลล่าสุดเท่านั้น)"
+              : "ลิงก์หมดอายุหรือไม่ถูกต้อง"}{" "}
+            กรุณาขอลิงก์ใหม่จากหน้า “ลืมรหัสผ่าน”
+          </Alert>
+          <Link to="/forgot-password" className="block text-center text-sm font-semibold text-navy-700 hover:underline">ขอลิงก์รีเซ็ตรหัสผ่านใหม่</Link>
+        </div>
       ) : (
         <form onSubmit={submit} className="space-y-5">
-          <Field label="รหัสผ่านใหม่" hint="อย่างน้อย 8 ตัวอักษร"><Input name="password" type="password" required minLength={8} autoComplete="new-password" /></Field>
-          <Field label="ยืนยันรหัสผ่านใหม่"><Input name="password2" type="password" required autoComplete="new-password" /></Field>
+          <Field label="รหัสผ่านใหม่" hint="อย่างน้อย 8 ตัวอักษร"><PasswordInput name="password" required minLength={8} autoComplete="new-password" /></Field>
+          <Field label="ยืนยันรหัสผ่านใหม่"><PasswordInput name="password2" required autoComplete="new-password" /></Field>
           {err && <Alert>{err}</Alert>}
           <Button type="submit" loading={busy} className="w-full">บันทึกรหัสผ่าน</Button>
         </form>

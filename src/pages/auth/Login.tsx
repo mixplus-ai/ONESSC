@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { Alert, Button, Field, Input } from "../../components/ui";
+import { Alert, Button, Field, Input, PasswordInput } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, supabase } from "../../lib/supabase";
 import AuthShell from "./AuthShell";
@@ -37,7 +37,7 @@ export default function Login() {
     >
       <form onSubmit={submit} className="space-y-5">
         <Field label="อีเมล"><Input name="email" type="email" required autoComplete="email" /></Field>
-        <Field label="รหัสผ่าน"><Input name="password" type="password" required autoComplete="current-password" /></Field>
+        <Field label="รหัสผ่าน"><PasswordInput name="password" required autoComplete="current-password" /></Field>
         <div className="flex justify-end text-sm">
           <Link to="/forgot-password" className="font-medium text-navy-700 hover:underline">ลืมรหัสผ่าน?</Link>
         </div>
