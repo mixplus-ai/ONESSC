@@ -109,8 +109,11 @@ export interface ClaimDetails {
   qty?: number;
   sn?: string;
   items?: { model: string; qty: number; bad_sn?: string; ref_inv_sn?: string }[];
-  /** claim form v2: one row per S/N with its own symptom (optimizer: measured V and resistance) */
-  units?: { model?: string; sn?: string; symptom?: string; volt?: string; ohm?: string }[];
+  /** claim form v2: one row per S/N with its own symptom (optimizer: measured V and resistance).
+   *  v3 (migration 40): kind, failed panel position 0.0.0.0 and the inverter (string) it belongs to */
+  units?: { kind?: ProductType; model?: string; sn?: string; symptom?: string; volt?: string; ohm?: string; pos?: string; inv_sn?: string; manager_sn?: string; case_no?: string; issue?: string; description?: string }[];
+  /** v3: every inverter on the job, claimed or only referenced by other items */
+  inverters?: { sn: string; model?: string; pos?: string; claimed?: boolean; manager_sn?: string; case_no?: string; issue?: string; description?: string }[];
   po_no?: string;
 }
 
@@ -125,10 +128,14 @@ export interface ClaimUnit {
   /** step 4: RMA from the manufacturer (keyed by staff) */
   rma_no: string | null; rma_date: string | null; rma_note: string | null;
   ok_pcode: string | null; ok_doc: string | null; ok_date: string | null; ok_sn: string | null;
+  /** migration 40: what the customer reported for this piece */
+  item_type?: ProductType | null; reported_sn?: string | null; case_no?: string | null; manager_sn?: string | null; ref_inv_sn?: string | null; position?: string | null; symptom?: string | null;
+  /** step 3 inspection: good → main stock, bad → defect warehouse */
+  ret_result?: "good" | "bad" | null;
   updated_at: string;
   updated_by: string | null;
 }
-export type UnitField = Exclude<keyof ClaimUnit, "id" | "claim_id" | "seq" | "updated_at" | "updated_by">;
+export type UnitField = Exclude<keyof ClaimUnit, "id" | "claim_id" | "seq" | "updated_at" | "updated_by" | "item_type" | "reported_sn" | "case_no" | "manager_sn" | "ref_inv_sn" | "position" | "symptom" | "ret_result">;
 
 export interface ClaimFile {
   id: string;
@@ -212,7 +219,7 @@ export interface ClaimSettings {
 export interface RmaHeader { customer_name?: string; country?: string; ship_address?: string; bill_company?: string; bill_address?: string }
 export const REQUIRE_FIELD_LABEL: Record<string, string> = {
   installer_name: "ผู้ติดตั้ง (EPC)",
-  site_name: "ชื่อไซต์งาน",
+  site_name: "ชื่อโครงการ (Project Name)",
   case_no: "หมายเลข Case (Inverter)",
   manager_sn: "S/N Manager (Inverter)",
   ref_inv_sn: "อ้างอิง S/N Inverter",
@@ -697,7 +704,7 @@ export const isImage = (f: { file_name?: string | null; content_type?: string | 
   (f.content_type ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif|heic)$/i.test(f.file_name ?? f.path);
 
 // ---------------------------------------------------------------------------
-// SN correction requests (customer asks, staff approve) · migration 20
+// SN correction requests (customer or staff asks, the claim handler approves) · migrations 20, 43
 // ---------------------------------------------------------------------------
 export type SnChangeReason = "typo" | "wrong_unit" | "wrong_product" | "other";
 export const SN_REASON: Record<SnChangeReason, string> = {
@@ -719,6 +726,8 @@ export interface SnChange {
   decided_by: string | null;
   decided_at: string | null;
   created_at: string;
+  /** staff asked (migration 43): another handler or Admin confirms */
+  by_staff?: boolean;
 }
 export const SN_CHANGE_STATUS: Record<SnChange["status"], { label: string; tone: Tone }> = {
   pending: { label: "รออนุมัติ", tone: "amber" },

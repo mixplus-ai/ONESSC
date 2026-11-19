@@ -46,6 +46,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
+      // a reset link that lands anywhere other than the reset page (e.g. the site's home page): send the user to set a new password
+      if (event === "PASSWORD_RECOVERY" && window.location.pathname !== "/reset-password") {
+        window.location.replace("/reset-password");
+        return;
+      }
       // defer DB calls out of the auth callback (supabase-js recommendation)
       if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "USER_UPDATED") {
         setTimeout(() => loadProfile(s), 0);

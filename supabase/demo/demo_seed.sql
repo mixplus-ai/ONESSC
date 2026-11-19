@@ -80,7 +80,7 @@ end $$;
 create temp table demo_users (login text primary key, full_name text, phone text, role text, dept text, perms text[], position text, tax_id text);
 insert into demo_users values
   ('admin',      'คุณอรวรรณ ผู้ดูแลระบบ',    '081-000-0001', 'admin', 'other',        '{}', 'ผู้จัดการระบบ', null),
-  ('sales',      'คุณธนพล ขายเก่ง',           '081-000-0002', 'staff', 'sales',        '{requests,pricing,company_points,companies,stock.view,deliveries.view,reports,rewards,products}', 'Sales Manager', null),
+  ('sales',      'คุณธนพล ขายเก่ง',           '081-000-0002', 'staff', 'sales',        '{requests,requests.all,customers.all,pricing,company_points,companies,stock.view,deliveries.view,reports,rewards,products}', 'Sales Manager', null),
   ('service',    'คุณวิศรุต ช่างเทคนิค',       '081-000-0003', 'staff', 'service',      '{claims.view,claims.handle,claims,stock.view,reports}', 'Service Engineer', null),
   ('service2',   'คุณกมลชนก ดูแลเคลม',        '081-000-0004', 'staff', 'service',      '{claims.view,claims.handle}', 'Service Coordinator', null),
   ('stock',      'คุณสมศักดิ์ คลังสินค้า',     '081-000-0005', 'staff', 'coordination', '{stock.view,stock.docs,stock.count,deliveries.view,deliveries.manage}', 'เจ้าหน้าที่คลัง', null),
@@ -244,6 +244,17 @@ begin
 end $$;
 update public.profiles set company_reviewed_at = now() - interval '120 days' where company_status = 'approved';
 
+-- ระดับราคา (Rank) ของบริษัท: Silver / Gold / Platinum / Diamond
+update public.price_ranks set discount_pct = d from (values ('silver', 3), ('gold', 5), ('platinum', 8), ('diamond', 12)) x(c, d) where code = x.c;
+update public.companies set price_rank = x.r from (values
+  ('0105561000011', 'diamond'), ('0105559000022', 'platinum'), ('0103562000033', 'silver'), ('0105564000044', 'gold'), ('0105565000055', 'gold')) x(t, r)
+ where tax_id = x.t;
+insert into public.rank_prices (rank_code, variant_id, price)
+select r, pg_temp.vid(s), p from (values
+  ('gold', 'SE5000H-THR00BNN4', 36500), ('gold', 'SE10K-TH0TEBNN4', 59000), ('gold', 'S1200-1GM4MBV', 2690),
+  ('platinum', 'SE5000H-THR00BNN4', 35500), ('platinum', 'SE33.3K-TH00IBND4', 110000), ('platinum', 'S1200-1GM4MBV', 2590),
+  ('diamond', 'SE5000H-THR00BNN4', 34500), ('diamond', 'SE33.3K-TH00IBND4', 105000), ('diamond', 'LP210-210-M-66-NB-710W', 3650)) x(r, s, p);
+
 -- ราคาเฉพาะบริษัท
 insert into public.company_prices (company_id, variant_id, price, note)
 select pg_temp.co('0105561000011'), pg_temp.vid(s), p, 'ราคาโครงการ Q4' from (values
@@ -256,7 +267,7 @@ select pg_temp.co('0105559000022'), pg_temp.vid(s), p, 'ราคาลูกค
 -- 5. คลังสินค้า: เอกสารรับเข้า/จ่ายออกตาม SN
 -- ---------------------------------------------------------------------------
 insert into public.warehouses (code, name, sort) values ('BKK', 'คลังสำนักงานใหญ่ วังทองหลาง', 2) on conflict do nothing;
-update public.stock_config set low_threshold = 5, show_qty_to_users = true, reservation_days = 7 where id = 1;
+update public.stock_config set low_threshold = 5, reservation_days = 7 where id = 1;
 do $$ begin
   perform pg_temp.act('admin');
   perform public.set_stock_source('docs', current_date - 120);

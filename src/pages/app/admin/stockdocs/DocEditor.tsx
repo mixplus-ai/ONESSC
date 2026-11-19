@@ -6,12 +6,16 @@ import { useRows } from "../../../../lib/content";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import {
   CONDITION_LABEL, DIR, DOC_LABEL, DOC_STATUS_LABEL, DOC_STATUS_TONE, DOC_TYPES, PARTNER_LABEL, REF_LABEL, SERIAL_STATUS_LABEL,
-  snKey, splitSns, type Condition, type DocItem, type DocType, type Serial, type StockDoc, type Warehouse,
+  TO_WH, POST_EFFECT, docRoute, TRUCK_TYPES, snKey, splitSns, type Condition, type DocItem, type DocType, type Serial, type StockDoc, type Warehouse,
 } from "../../../../lib/stockdocs";
-import { DocFiles, uploadDocFiles } from "./DocFiles";
+import { DocFiles, uploadDocFiles, type PendingFile } from "./DocFiles";
 import { CameraScan } from "./CameraScan";
 import { PhotoScan } from "./PhotoScan";
-import { printStockDoc } from "./print";
+import { exportDeliveryPng, exportDeliveryXlsx, printDeliveryDetail, printDeliverySns } from "./print";
+import { isReserveWarehouse, soFromRv } from "./fromRv";
+import { SnPicker } from "./SnPicker";
+import { ProductSearch } from "./ProductSearch";
+import { SOURCE_LABEL, listSources, loadSource, type PlanLine, type SourceKind, type SourceOption, type SourcePick } from "./docSources";
 
 interface StockRow { sku: string; description: string | null }
 interface CompanyOpt { id: string; name: string; tax_id: string }
@@ -30,16 +34,24 @@ const uniq = (list: DocItem[], add: DocItem[]) => {
   return [...list, ...add.filter((i) => !k.has(snKey(i.sn)) && k.add(snKey(i.sn)))];
 };
 
-export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservationId, onClose, onChanged }: {
+export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservationId, onClose, onChanged, onOpen }: {
   id: string | null; type: DocType; warehouses: Warehouse[]; deliveryId?: string | null; claimId?: string | null; reservationId?: string | null;
-  onClose: () => void; onChanged: (id: string) => void;
+  onClose: () => void; onChanged: (id: string) => void; onOpen?: (id: string) => void;
 }) {
   const { can, isAdmin, profile } = useAuth();
   const canPost = can("stock.post");
   const canSave = can("stock.docs") || can("stock.post");
   const canCheck = can("stock.check") || can("stock.post");
   const cfg = useRows<{ check_types: DocType[] }>(() => supabase.from("stock_config").select("check_types").eq("id", 1));
-  const [head, setHead] = useState<Head>({ doc_type: type, doc_date: today(), warehouse_id: warehouses[0]?.id });
+  // receipts go into the main warehouse first (role "main" when the claims update has set it, else the first in order)
+  const mainWh = (warehouses.find((w) => w.role === "main" && !isReserveWarehouse(w) && !/ยืม|เสีย|ตัวอย่าง|พรีเมียม|พลีเมี่ยม/.test(w.name)) ?? warehouses.find((w) => w.role === "main") ?? warehouses[0])?.id;
+  // RV (ใบจอง): reserved SNs move to the reservation warehouse (คลังจอง) when there is one
+  // default destination: RV → คลังจอง, WD → คลังยืม (when such a warehouse exists); others none
+  const defaultTo = (dt: DocType, from: string | undefined) => {
+    const pick = dt === "RV" ? isReserveWarehouse : dt === "WD" ? (w: Warehouse) => /ยืม|LEND|BORROW/i.test(`${w.code} ${w.name}`) : null;
+    return (pick && warehouses.find((w) => pick(w) && w.id !== from)?.id) || null;
+  };
+  const [head, setHead] = useState<Head>({ doc_type: type, doc_date: today(), warehouse_id: mainWh, to_warehouse_id: defaultTo(type, mainWh) });
   const [items, setItems] = useState<DocItem[]>([]);
   const [loading, setLoading] = useState(!!id);
   const [busy, setBusy] = useState("");
@@ -50,7 +62,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
   const [scan, setScan] = useState("");
   const [warn, setWarn] = useState<string[]>([]);
   const scanRef = useRef<HTMLTextAreaElement>(null);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [fileTick, setFileTick] = useState(0);
 
   const t = head.doc_type;
@@ -101,7 +113,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         supabase.from("stock_doc_items").select("*").eq("doc_id", id).order("sort"),
       ]);
       if (d.error) setErr(errorMessage(d.error));
-      else setHead(d.data as StockDoc);
+      else { setHead(d.data as StockDoc); setDocLines(((d.data as StockDoc).lines ?? []).map((l) => ({ ...l, qty: Number(l.qty) || 0 }))); }
       setItems((it.data ?? []) as DocItem[]);
       setLoading(false);
     })();
@@ -156,6 +168,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         if (!data) return;
         const r = data as unknown as ReservationRef;
         setResv(r);
+        setPlan({ kind: "reservation", code: r.code, lines: r.reservation_items.map((i) => ({ sku: i.sku.toUpperCase(), label: i.label, qty: Number(i.qty) })) });
         if (id) return;
         setHead((h) => ({
           ...h, reservation_id: r.id, company_id: r.company_id, ref_no: r.code,
@@ -164,10 +177,57 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       });
   }, [reservationId, head.reservation_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // SO / WD made from a reservation (RV): show which one and what it holds
+  const [fromRv, setFromRv] = useState<{ id: string; doc_no: string } | null>(null);
+  useEffect(() => {
+    if ((t !== "SO" && t !== "WD") || !head.return_of || fromRv?.id === head.return_of) return;
+    supabase.from("stock_docs").select("id, doc_no, doc_type").eq("id", head.return_of).single()
+      .then(({ data }) => { if (data?.doc_type === "RV") setFromRv({ id: data.id, doc_no: data.doc_no }); });
+  }, [t, head.return_of]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // what the document should hold, from the quotation / reservation it was filled from
+  const [plan, setPlan] = useState<{ kind: SourceKind; code: string; lines: PlanLine[] } | null>(null);
+  const [docLines, setDocLines] = useState<{ sku: string; description: string | null; qty: number }[]>([]);
+  // lines from the quotation / reservation become product rows (kept on the document when saved)
+  useEffect(() => {
+    if (!plan || locked) return;
+    setDocLines((l) => {
+      const have = new Set(l.map((x) => x.sku));
+      return [...l, ...plan.lines.filter((x) => !have.has(x.sku)).map((x) => ({ sku: x.sku, description: x.label, qty: x.qty }))];
+    });
+  }, [plan]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!head.quote_id || plan?.kind === "quote") return;
+    loadSource("quote", head.quote_id).then((p) => p && setPlan({ kind: "quote", code: p.code, lines: p.lines }));
+  }, [head.quote_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [srcKind, setSrcKind] = useState<SourceKind | "">("");
+  const [srcOpts, setSrcOpts] = useState<SourceOption[]>([]);
+  const srcKinds: SourceKind[] = t === "SO" || t === "WD" ? ["quote", "reservation", "rv"] : ["SO", "BR", "RV"].includes(t) ? ["quote", "reservation"] : [];
+  useEffect(() => { setSrcOpts([]); if (srcKind) listSources(srcKind).then(setSrcOpts); }, [srcKind]);
+  async function pullSource(kind: SourceKind, sid: string) {
+    if (!sid) return;
+    const p: SourcePick | null = await loadSource(kind, sid);
+    if (!p) return setErr("ไม่พบเอกสารที่เลือก");
+    setHead((h) => ({
+      ...h, partner_name: p.partner_name ?? h.partner_name, partner_tax_id: p.partner_tax_id ?? h.partner_tax_id, company_id: p.company_id ?? h.company_id,
+      ref_no: h.ref_no || p.code,
+      ...(kind === "quote" ? { quote_id: p.id } : kind === "reservation" ? { reservation_id: p.id } : { return_of: p.id, ...(p.warehouse_id ? { warehouse_id: p.warehouse_id } : {}) }),
+    }));
+    if (kind === "rv") {
+      setFromRv({ id: p.id, doc_no: p.code });
+      setItems((l) => uniq(kind === "rv" && p.warehouse_id && p.warehouse_id !== head.warehouse_id ? [] : l, p.sns ?? []));
+      setWarn(p.sns?.length ? [] : ["ใบจองนี้ไม่มี SN ที่ยังจองอยู่"]);
+    }
+    setPlan({ kind, code: p.code, lines: p.lines });
+    setMsg(`ดึงรายการจาก${SOURCE_LABEL[kind]} ${p.code} แล้ว${kind === "rv" ? "" : " เลือก SN ของแต่ละรายการด้านล่าง"}`);
+  }
+  const [pickSku, setPickSku] = useState("");
+  const pickRef = useRef<HTMLDivElement>(null);
+
   const set = (k: keyof StockDoc, v: string | null) => setHead((h) => ({ ...h, [k]: v || null }));
 
   // add scanned SNs: in-docs use the chosen code; others look the SN up to get its code
-  async function addSns(raw: string, condFor: Condition = cond) {
+  async function addSns(raw: string, condFor: Condition = cond, forceSku?: string) {
     const sns = splitSns(raw);
     if (!sns.length) return;
     const have = new Set(items.map((i) => snKey(i.sn)));
@@ -177,7 +237,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     if (!fresh.length) { setWarn(w); setScan(""); return; }
 
     if (t === "OB" || t === "GR" || t === "GN") {
-      const code = sku.trim().toUpperCase();
+      const code = (forceSku ?? sku).trim().toUpperCase();
       if (!code) { setWarn(["เลือกรหัสสินค้าก่อนสแกน"]); return; }
       setItems((list) => uniq(list, fresh.map((sn) => ({ sku: code, description: skuName.get(code) ?? null, sn, condition: cond }))));
       const { data } = await supabase.from("serials").select("sn, status").in("sn_key", fresh.map(snKey));
@@ -190,11 +250,12 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       for (const sn of fresh) {
         const s = found.get(snKey(sn));
         if (!s) { w.push(`ไม่พบ ${sn} ในระบบ`); continue; }
+        if (forceSku && s.sku !== forceSku) { w.push(`${sn} เป็นรหัส ${s.sku} ไม่ใช่ ${forceSku}`); continue; }
         if (t === "RT") {
           if (!["borrowed", "withdrawn", "sold"].includes(s.status)) w.push(`${sn} ไม่ได้อยู่นอกคลัง (${SERIAL_STATUS_LABEL[s.status]})`);
         } else if (s.warehouse_id !== head.warehouse_id) w.push(`${sn} ไม่ได้อยู่ในคลังที่เลือก (${SERIAL_STATUS_LABEL[s.status]})`);
         else if (["SO", "BR", "WD", "RV"].includes(t) && s.condition !== "good") w.push(`${sn} เป็นของเสีย`);
-        else if (t === "SO" ? !["in_stock", "reserved"].includes(s.status) : t !== "WO" && t !== "TR" && s.status !== "in_stock") w.push(`${sn} สถานะ${SERIAL_STATUS_LABEL[s.status]}`);
+        else if (t === "SO" || t === "WD" ? !["in_stock", "reserved"].includes(s.status) : t !== "WO" && t !== "TR" && s.status !== "in_stock") w.push(`${sn} สถานะ${SERIAL_STATUS_LABEL[s.status]}`);
         add.push({ sku: s.sku, description: s.description ?? skuName.get(s.sku) ?? null, sn: s.sn, condition: t === "RT" ? condFor : s.condition });
       }
       setItems((list) => uniq(list, add));
@@ -218,7 +279,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
 
   async function save(): Promise<string | null> {
     setErr(""); setMsg("");
-    const payload = { ...head };
+    const payload = { ...head, to_warehouse_id: TO_WH[t] === "none" ? null : head.to_warehouse_id ?? null };
     const { data, error } = await supabase.rpc("save_stock_doc", {
       p_id: id ?? head.id ?? null,
       p_doc: payload,
@@ -230,6 +291,17 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
       const r = await supabase.rpc("save_stock_doc_reservation", { p_id: d.id, p_reservation: head.reservation_id });
       if (r.error) { setErr(errorMessage(r.error)); return null; }
       d = { ...d, reservation_id: head.reservation_id };
+    }
+    {
+      const lines = tableRows.map((r) => ({ sku: r.sku, description: r.description, qty: Math.max(r.qty, r.rows.length) }));
+      const r = await supabase.rpc("save_stock_doc_lines", { p_id: d.id, p_lines: lines });
+      if (r.error) { setErr(errorMessage(r.error)); return null; }
+      d = { ...d, lines };
+    }
+    if (head.quote_id && !d.quote_id) {
+      const r = await supabase.rpc("save_stock_doc_quote", { p_id: d.id, p_quote: head.quote_id });
+      if (r.error) { setErr(errorMessage(r.error)); return null; }
+      d = { ...d, quote_id: head.quote_id };
     }
     setHead(d);
     if (pendingFiles.length) {
@@ -243,7 +315,8 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
 
   const onSave = () => run("save", async () => { if (await save()) setMsg("บันทึกร่างแล้ว"); });
   const onPost = () => run("post", async () => {
-    if (!confirm(`ยืนยัน${DOC_LABEL[t]} ${items.length} ชิ้น? ยืนยันแล้วแก้ไม่ได้`)) return;
+    if (short.length) return setErr(`ยังใส่ SN ไม่ครบ: ${short.map((r) => `${r.sku} ${r.rows.length}/${r.qty}`).join(", ")} (แก้จำนวนหรือใส่ SN ให้ครบก่อนยืนยัน)`);
+    if (!confirm(`อนุมัติ${DOC_LABEL[t]} ${items.length} ชิ้น?\nต้นทาง: ${route.from}\nปลายทาง: ${route.to}\nSN ${effect}\nอนุมัติแล้วแก้ไม่ได้`)) return;
     const did = await save();
     if (!did) return;
     const { data, error } = await supabase.rpc("post_stock_doc", { p_id: did });
@@ -270,6 +343,16 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     setHead(data as StockDoc);
     onChanged(head.id!);
   });
+  // sold after a reservation: make the delivery note (SO) from the SNs still reserved here, cut from the reservation warehouse
+  const onSold = () => run("sold", async () => {
+    if (!head.id) return;
+    setErr("");
+    try {
+      const so = await soFromRv(head.id);
+      onChanged(so);
+      if (onOpen) onOpen(so); else setMsg("สร้างใบส่งของแล้ว ดูได้ในรายการเอกสาร");
+    } catch (e) { setErr(errorMessage(e)); }
+  });
   const onDelete = () => run("delete", async () => {
     if (!head.id || !confirm("ลบร่างนี้?")) return;
     const { error } = await supabase.rpc("delete_stock_draft", { p_id: head.id });
@@ -278,6 +361,16 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     onClose();
   });
 
+  // product rows: products with SNs, plus planned / added products still without SNs
+  const [addSku, setAddSku] = useState("");
+  function addProduct(picked?: string) {
+    const code = (picked ?? addSku).trim().toUpperCase();
+    if (!code) return;
+    if (!skuName.has(code) && !confirm(`ไม่พบรหัส ${code} ในสต๊อก เพิ่มเป็นรหัสใหม่?`)) return;
+    setDocLines((l) => (l.some((x) => x.sku === code) ? l : [...l, { sku: code, description: skuName.get(code) ?? null, qty: 1 }]));
+    setAddSku("");
+    if (dir !== "in") setPickSku(code); else setSku(code);
+  }
   const groups = useMemo(() => {
     const m = new Map<string, { sku: string; description: string | null; rows: { item: DocItem; idx: number }[] }>();
     items.forEach((item, idx) => {
@@ -287,12 +380,31 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
     });
     return [...m.values()];
   }, [items]);
+  // rows in line order first, then codes that only have SNs; qty = wanted quantity (defaults to the SN count)
+  const tableRows = useMemo(() => {
+    const bySku = new Map(groups.map((g) => [g.sku, g]));
+    const rows = docLines.map((l) => ({ sku: l.sku, description: bySku.get(l.sku)?.description ?? l.description ?? skuName.get(l.sku) ?? null, rows: bySku.get(l.sku)?.rows ?? [], qty: l.qty }));
+    const seen = new Set(docLines.map((l) => l.sku));
+    groups.filter((g) => !seen.has(g.sku)).forEach((g) => rows.push({ ...g, qty: g.rows.length }));
+    return rows;
+  }, [groups, docLines, skuName]);
+  const setLineQty = (code: string, v: string) => {
+    const n = Math.max(0, Math.min(100000, Math.round(Number(v) || 0)));
+    setDocLines((l) => l.some((x) => x.sku === code) ? l.map((x) => x.sku === code ? { ...x, qty: n } : x) : [...l, { sku: code, description: skuName.get(code) ?? null, qty: n }]);
+  };
+  const short = tableRows.filter((r) => r.qty > r.rows.length);
+  const docForPrint = { ...head, lines: tableRows.map((r) => ({ sku: r.sku, description: r.description, qty: Math.max(r.qty, r.rows.length) })) } as StockDoc;
 
   if (loading) return <Loading />;
   const needCheck = (cfg.rows[0]?.check_types ?? []).includes(t);
   const postBlocked = needCheck && (!head.checked_at || head.checked_by === profile?.id);
   const wh = (wid: string | null | undefined) => warehouses.find((w) => w.id === wid)?.name ?? "-";
   const showCond = t === "RT" || dir === "in";
+  const truck = TRUCK_TYPES.includes(t);
+  const route = docRoute({ ...head, warehouse_id: head.warehouse_id ?? "", to_warehouse_id: TO_WH[t] === "none" ? null : head.to_warehouse_id ?? null, partner_name: head.partner_name ?? null }, wh);
+  const effect = (t === "BR" || t === "WD") && head.to_warehouse_id
+    ? `ย้ายไปคลังปลายทาง สถานะ${t === "BR" ? "ส่งเคลม" : "เบิก / ยืม"}`
+    : t === "RV" && !head.to_warehouse_id ? "จองไว้ในคลังต้นทาง" : POST_EFFECT[t];
 
   return (
     <div className="space-y-4">
@@ -300,9 +412,18 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         <button onClick={onClose} className="text-sm font-semibold text-navy-700 hover:underline">← กลับไปรายการเอกสาร</button>
         <h2 className="text-lg font-bold text-navy-900">{DOC_LABEL[t]} {head.doc_no && <span className="font-mono">{head.doc_no}</span>}</h2>
         {head.status && <Badge tone={DOC_STATUS_TONE[head.status]}>{DOC_STATUS_LABEL[head.status]}</Badge>}
-        <div className="ml-auto flex gap-2">
-          {head.id && <Button variant="secondary" onClick={() => printStockDoc(head as StockDoc, items, warehouses)}>พิมพ์ / PDF</Button>}
-        </div>
+        {head.id && (
+          <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">
+            {([["detail", "ใบที่ 1 รายละเอียด"], ["sn", "ใบที่ 2 รายการ SN"]] as const).map(([k, label]) => (
+              <span key={k} className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">
+                <span className="text-xs font-semibold text-navy-900">{label}</span>
+                <button className="rounded px-1.5 text-xs font-semibold text-navy-700 hover:bg-slate-100" onClick={() => (k === "detail" ? printDeliveryDetail : printDeliverySns)(docForPrint, items, warehouses)}>PDF</button>
+                <button className="rounded px-1.5 text-xs font-semibold text-navy-700 hover:bg-slate-100" onClick={() => run("png", async () => { try { await exportDeliveryPng(docForPrint, items, warehouses, k); } catch (e) { setErr("สร้างรูป PNG ไม่สำเร็จ: " + errorMessage(e)); } })}>PNG</button>
+              </span>
+            ))}
+            <Button variant="secondary" loading={busy === "xlsx"} onClick={() => run("xlsx", async () => { try { await exportDeliveryXlsx(docForPrint, items, warehouses); } catch (e) { setErr(errorMessage(e)); } })}>Excel (2 แผ่น)</Button>
+          </div>
+        )}
       </div>
 
       {head.status === "cancelled" && <Alert>ยกเลิกเมื่อ {formatDateTime(head.cancelled_at)} · {head.cancel_reason}</Alert>}
@@ -315,7 +436,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         <div className="grid gap-3 sm:grid-cols-3">
           {!id && !head.id && (
             <Field label="ประเภทเอกสาร">
-              <Select value={t} onChange={(e) => { setHead((h) => ({ ...h, doc_type: e.target.value as DocType })); setItems([]); }}>
+              <Select value={t} onChange={(e) => { const nt = e.target.value as DocType; setHead((h) => ({ ...h, doc_type: nt, to_warehouse_id: defaultTo(nt, h.warehouse_id) })); setItems([]); }}>
                 {DOC_TYPES.filter((d) => d.type !== "OB" || isAdmin).map((d) => <option key={d.type} value={d.type}>{d.type} · {d.label}</option>)}
               </Select>
             </Field>
@@ -323,18 +444,56 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
           <Field label="วันที่เอกสาร" required>
             <Input type="date" disabled={locked} value={head.doc_date ?? ""} onChange={(e) => set("doc_date", e.target.value)} />
           </Field>
-          <Field label={t === "TR" ? "จากคลัง" : dir === "in" ? "รับเข้าคลัง" : "จากคลัง"} required>
-            <Select disabled={locked || items.length > 0 && dir !== "in"} value={head.warehouse_id ?? ""} onChange={(e) => set("warehouse_id", e.target.value)}>
-              {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </Select>
-          </Field>
-          {t === "TR" && (
-            <Field label="ไปคลัง" required>
-              <Select disabled={locked} value={head.to_warehouse_id ?? ""} onChange={(e) => set("to_warehouse_id", e.target.value)}>
-                <option value="">— เลือก —</option>
-                {warehouses.filter((w) => w.id !== head.warehouse_id).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </Select>
-            </Field>
+          <div className="rounded-xl bg-navy-50/60 p-3 ring-1 ring-navy-100 sm:col-span-3">
+            <p className="text-sm font-semibold text-navy-900">เส้นทางสินค้า</p>
+            <div className="mt-2 grid items-end gap-3 sm:grid-cols-[1fr_auto_1fr]">
+              <Field label="ต้นทาง" required={route.fromWh} hint={route.fromWh && items.length > 0 && !locked ? "ล้าง SN ก่อนถ้าจะเปลี่ยนคลังต้นทาง" : undefined}>
+                {route.fromWh ? (
+                  <Select disabled={locked || items.length > 0} value={head.warehouse_id ?? ""} onChange={(e) => {
+                    const v = e.target.value;
+                    setHead((h) => ({ ...h, warehouse_id: v, ...(h.to_warehouse_id === v ? { to_warehouse_id: defaultTo(t, v) } : {}) }));
+                  }}>
+                    {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </Select>
+                ) : <div className="flex h-10 items-center rounded-lg bg-white px-3 text-sm text-slate-700 ring-1 ring-slate-200">{route.from}</div>}
+              </Field>
+              <span className="hidden pb-2 text-xl font-bold text-navy-700 sm:block" aria-hidden>→</span>
+              <Field label="ปลายทาง" required={dir === "in" || TO_WH[t] === "required"}
+                hint={t === "RV" ? "SN ที่จองจะย้ายไปคลังนี้ ขายแล้วกดออกใบส่งของ ระบบตัดจากคลังนี้ให้" : TO_WH[t] === "optional" ? "ไม่เลือก = ของออกไปอยู่กับผู้รับ ไม่อยู่คลังใด" : undefined}>
+                {dir === "in" ? (
+                  <Select disabled={locked} value={head.warehouse_id ?? ""} onChange={(e) => set("warehouse_id", e.target.value)}>
+                    {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </Select>
+                ) : TO_WH[t] !== "none" ? (
+                  <Select disabled={locked} value={head.to_warehouse_id ?? ""} onChange={(e) => set("to_warehouse_id", e.target.value)}>
+                    <option value="">{t === "TR" ? "— เลือกคลังปลายทาง —" : t === "RV" ? "— ไม่ย้าย (จองไว้ในคลังต้นทาง) —" : `— ${t === "BR" ? "ส่งเคลมออกไป" : "ออกไปกับผู้เบิก / ผู้ยืม"} (ไม่เข้าคลัง) —`}</option>
+                    {warehouses.filter((w) => w.id !== head.warehouse_id).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </Select>
+                ) : <div className="flex h-10 items-center rounded-lg bg-white px-3 text-sm text-slate-700 ring-1 ring-slate-200">{route.to}</div>}
+              </Field>
+            </div>
+            <p className="mt-2 text-xs text-slate-600">
+              {head.status === "posted" ? "อนุมัติแล้ว: " : "เมื่ออนุมัติ: "}SN {items.length} ชิ้น {effect}
+              {head.status !== "posted" && <> · ก่อนอนุมัติ สินค้ายังอยู่ที่เดิม</>}
+            </p>
+          </div>
+          {!locked && srcKinds.length > 0 && (
+            <div className="sm:col-span-3">
+              <Field label="ดึงรายการจากเอกสาร" hint="เลือกแล้วระบบใส่ลูกค้าและรายการสินค้าให้ แล้วเลือก SN ของแต่ละรายการ (ใบจองในคลังดึง SN ที่จองไว้มาให้เลย)">
+                <div className="flex flex-wrap gap-2">
+                  <Select className="max-w-[14rem]" value={srcKind} onChange={(e) => setSrcKind(e.target.value as SourceKind | "")}>
+                    <option value="">— ไม่ดึง —</option>
+                    {srcKinds.map((k) => <option key={k} value={k}>{SOURCE_LABEL[k]}</option>)}
+                  </Select>
+                  {srcKind && (
+                    <Select className="min-w-[16rem] flex-1" value="" onChange={(e) => pullSource(srcKind, e.target.value)}>
+                      <option value="">{srcOpts.length ? `— เลือก${SOURCE_LABEL[srcKind]} —` : "กำลังโหลด / ไม่มีเอกสาร"}</option>
+                      {srcOpts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    </Select>
+                  )}
+                </div>
+              </Field>
+            </div>
           )}
           {PARTNER_LABEL[t] && (
             <Field label={PARTNER_LABEL[t]!} required={["SO", "BR", "WD", "RV", "RT"].includes(t)}>
@@ -360,12 +519,12 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
             </Field>
           )}
           {["SO", "BR", "WD"].includes(t) && (
-            <Field label="ไซต์ / สถานที่ใช้งาน">
+            <Field label="ชื่อโครงการ / สถานที่ใช้งาน">
               <Input disabled={locked} value={head.site_name ?? ""} onChange={(e) => set("site_name", e.target.value)} />
             </Field>
           )}
-          {["BR", "WD", "RV"].includes(t) && (
-            <Field label={t === "RV" ? "จองถึงวันที่" : "กำหนดคืน"} required={t === "BR"}>
+          {["WD", "RV"].includes(t) && (
+            <Field label={t === "RV" ? "จองถึงวันที่" : "กำหนดคืน"}>
               <Input type="date" disabled={locked} value={head.due_date ?? ""} onChange={(e) => set("due_date", e.target.value)} />
             </Field>
           )}
@@ -389,6 +548,21 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
                 placeholder={t === "WO" ? "เช่น เสียหายซ่อมไม่ได้ / ส่งคืนผู้ขาย" : ""} />
             </Field>
           )}
+          {truck && (
+            <div className="grid gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:col-span-3 sm:grid-cols-3">
+              <p className="text-sm font-semibold text-navy-900 sm:col-span-3">{dir === "in" ? "รถที่มาส่งสินค้า" : "รถที่ไปส่งสินค้า"}</p>
+              <Field label="ทะเบียนรถ">
+                <Input disabled={locked} value={head.vehicle_plate ?? ""} onChange={(e) => set("vehicle_plate", e.target.value)} placeholder="เช่น 1กข 1234 กรุงเทพฯ" />
+              </Field>
+              <Field label="ชื่อคนขับ">
+                <Input disabled={locked} value={head.driver_name ?? ""} onChange={(e) => set("driver_name", e.target.value)} />
+              </Field>
+              <Field label="เบอร์โทรคนขับ">
+                <Input disabled={locked} type="tel" inputMode="tel" value={head.driver_phone ?? ""} onChange={(e) => set("driver_phone", e.target.value)} />
+              </Field>
+              <p className="text-xs text-slate-500 sm:col-span-3">แนบรูปทะเบียนรถ เอกสารรถ เอกสารคนขับ และรูปสินค้าบนรถได้ในกล่องรูปด้านล่าง</p>
+            </div>
+          )}
           <div className="sm:col-span-3">
             <Field label="หมายเหตุ">
               <Input disabled={locked} value={head.note ?? ""} onChange={(e) => set("note", e.target.value)} />
@@ -397,19 +571,34 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         </div>
       </Card>
 
+      {(t === "SO" || t === "WD") && fromRv && (
+        <Alert tone="navy">
+          {DOC_LABEL[t]}นี้ออกจากใบจอง{" "}
+          {onOpen ? <button onClick={() => onOpen(fromRv.id)} className="font-mono font-semibold underline">{fromRv.doc_no}</button> : <b className="font-mono">{fromRv.doc_no}</b>}
+          {" "}· ตัดสต๊อกจาก {wh(head.warehouse_id)} · ใส่ข้อมูลรถ/คนขับ แนบรูป แล้วกดยืนยัน
+        </Alert>
+      )}
       {claim && (
         <Alert tone="navy">
           จากงานเคลม <b>{claim.claim_no}</b> · {claim.company_name ?? claim.contact_name} · SN ที่แจ้ง: <span className="font-mono">{claim.reported_sns.join(", ") || "-"}</span>
           {t === "RT" ? " · ระบบใส่ SN ที่แจ้งเป็นสภาพเสียให้แล้ว (SN ที่ไม่เคยขายจากระบบจะไม่ถูกเพิ่ม)" : " · สแกน SN ตัวใหม่ที่ส่งเปลี่ยนให้ลูกค้า"}
         </Alert>
       )}
-      {resv && (
+      {plan && (
         <Alert tone="navy">
-          ตามใบจอง {resv.code}:{" "}
-          {resv.reservation_items.map((i) => {
-            const n = items.filter((x) => x.sku === i.sku.toUpperCase()).length;
-            return <span key={i.sku} className="mr-3 inline-block">{i.sku} × {Number(i.qty)}{" "}<b className={n === Number(i.qty) ? "text-emerald-700" : "text-amber-700"}>(สแกนแล้ว {n})</b></span>;
-          })}
+          <p className="font-semibold">ตาม{SOURCE_LABEL[plan.kind]} {plan.code}</p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {plan.lines.map((i) => {
+              const n = items.filter((x) => x.sku === i.sku).length;
+              return (
+                <span key={i.sku} className="inline-flex items-center gap-2 rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">
+                  <span title={i.label}>{i.sku} × {i.qty}</span>
+                  <b className={n === i.qty ? "text-emerald-700" : "text-amber-700"}>(ใส่ SN แล้ว {n})</b>
+                  {!locked && dir !== "in" && n < i.qty && <button className="text-xs font-semibold text-navy-700 underline" onClick={() => { setPickSku(i.sku); pickRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>เลือก SN</button>}
+                </span>
+              );
+            })}
+          </div>
         </Alert>
       )}
       {delivery && (
@@ -446,7 +635,7 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
                   </Select>
                 </Field>
               )}
-              {dir !== "in" && <p className="text-xs text-slate-500">สแกน SN แล้วระบบดึงรหัสสินค้าให้เอง</p>}
+              {dir !== "in" && <p className="text-xs text-slate-500">สแกน / พิมพ์ SN ได้เลย ระบบดึงรหัสสินค้าให้เอง หรือเลือกสินค้าจากฐานข้อมูลด้านล่างแล้วติ๊ก SN</p>}
             </div>
             <div>
               <textarea ref={scanRef} rows={3} value={scan} onChange={(e) => setScan(e.target.value)}
@@ -456,20 +645,42 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button variant="secondary" onClick={() => addSns(scan)}>+ เพิ่ม SN</Button>
                 <CameraScan onScan={(sns) => addSns(sns.join("\n"))} last={items.length ? { text: `${items.length} SN · ล่าสุด ${items[items.length - 1].sn}`, tone: "green" } : null} />
-                <PhotoScan knownSkus={new Set(stock.rows.map((r) => r.sku))} existing={new Set(items.map((i) => snKey(i.sn)))} onAdd={(sns, photos) => { addSns(sns.join("\n")); if (photos.length) setPendingFiles((p) => [...p, ...photos]); }} />
+                <PhotoScan knownSkus={new Set(stock.rows.map((r) => r.sku))} existing={new Set(items.map((i) => snKey(i.sn)))} onAdd={(sns, photos) => { addSns(sns.join("\n")); if (photos.length) setPendingFiles((p) => [...p, ...photos.map((file) => ({ file, kind: "other" as const }))]); }} />
                 <span className="text-xs text-slate-500">แยกด้วยบรรทัดใหม่ เครื่องหมาย , หรือแท็บ</span>
               </div>
             </div>
           </div>
         )}
+        {!locked && dir !== "in" && (
+          <div ref={pickRef} className="mt-3">
+            <SnPicker type={t} warehouseId={head.warehouse_id} sku={pickSku} setSku={setPickSku} skus={stock.rows}
+              want={(() => { const l = plan?.lines.find((x) => x.sku === pickSku.trim().toUpperCase()); return l ? Math.max(0, l.qty - items.filter((x) => x.sku === l.sku).length) : undefined; })()}
+              existing={new Set(items.map((i) => snKey(i.sn)))} onAdd={(add) => { setItems((l) => uniq(l, add)); setWarn([]); }} />
+          </div>
+        )}
         {warn.length > 0 && <div className="mt-3"><Alert tone="amber">{warn.map((w, i) => <div key={i}>{w}</div>)}</Alert></div>}
 
-        <div className="mt-4 space-y-4">
-          {groups.map((g) => (
-            <div key={g.sku}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-navy-900">{g.sku} <span className="font-normal text-slate-500">{g.description ?? skuName.get(g.sku) ?? ""}</span> · {g.rows.length} ชิ้น</p>
-                {t === "SO" && (() => {
+        <div className="mt-4 overflow-x-auto rounded-xl ring-1 ring-slate-200">
+          <table className="min-w-full bg-white text-sm">
+            <thead className="bg-slate-50 text-left text-xs text-slate-500">
+              <tr>
+                <th className="w-10 px-3 py-2 text-center">#</th>
+                <th className="px-3 py-2">รหัสสินค้า</th>
+                <th className="px-3 py-2">ชื่อสินค้า</th>
+                <th className="px-3 py-2">Serial Number</th>
+                <th className="px-3 py-2 text-right">จำนวน</th>
+                {!locked && <th className="w-10 px-2 py-2" />}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 align-top">
+              {tableRows.map((g, gi) => {
+                return (
+                  <tr key={g.sku}>
+                    <td className="px-3 py-2 text-center text-slate-400">{gi + 1}</td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono font-semibold text-navy-900">{g.sku}</td>
+                    <td className="min-w-[10rem] px-3 py-2">
+                      <p>{g.description ?? skuName.get(g.sku) ?? "-"}</p>
+                      <div className="mt-1">{t === "SO" && (() => {
                   const def = defMonths.get(g.sku.toUpperCase()) ?? null;
                   const cur = groupWarranty.get(g.sku);
                   const promo = cur != null && def != null && cur !== def;
@@ -489,36 +700,96 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
                       {promo ? <Badge tone="amber">ปกติ {fmtWarranty(def)}</Badge> : <span className="text-slate-400">{def != null ? `ว่าง = ตามสินค้า ${fmtWarranty(def)}` : "สินค้ายังไม่ตั้งประกัน"}</span>}
                     </label>
                   );
-                })()}
-              </div>
-              <div className="mt-1 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-                {g.rows.map(({ item, idx }) => (
-                  <div key={item.sn} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1 ring-1 ring-slate-200">
-                    <span className="w-6 text-right text-xs text-slate-400">{idx + 1}</span>
-                    <span className="flex-1 truncate font-mono text-sm">{item.sn}</span>
-                    {showCond ? (
-                      locked ? <Badge tone={item.condition === "good" ? "green" : "red"}>{CONDITION_LABEL[item.condition]}</Badge> : (
-                        <select value={item.condition} onChange={(e) => setItems((l) => l.map((x, i) => i === idx ? { ...x, condition: e.target.value as Condition } : x))}
-                          className={cx("rounded border-0 bg-transparent text-xs", item.condition === "good" ? "text-emerald-700" : "text-red-700")}>
-                          <option value="good">ดี</option><option value="defective">เสีย</option>
-                        </select>
-                      )
-                    ) : null}
-                    {!locked && <button onClick={() => setItems((l) => l.filter((_, i) => i !== idx))} className="px-1 text-slate-400 hover:text-red-600" aria-label="ลบ">✕</button>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-          {!items.length && <p className="text-sm text-slate-500">ยังไม่มี SN</p>}
+                })()}</div>
+                    </td>
+                    <td className="min-w-[18rem] px-3 py-2">
+                      <div className="flex flex-wrap gap-1">
+                        {g.rows.map(({ item, idx }) => (
+                          <span key={item.sn} className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 ring-1 ring-slate-200">
+                            <span className="font-mono text-xs">{item.sn}</span>
+                            {showCond ? (
+                              locked ? (item.condition === "defective" && <Badge tone="red">{CONDITION_LABEL[item.condition]}</Badge>) : (
+                                <select value={item.condition} onChange={(e) => setItems((l) => l.map((x, i) => i === idx ? { ...x, condition: e.target.value as Condition } : x))}
+                                  className={cx("rounded border-0 bg-transparent py-0 text-[11px]", item.condition === "good" ? "text-emerald-700" : "text-red-700")}>
+                                  <option value="good">ดี</option><option value="defective">เสีย</option>
+                                </select>
+                              )
+                            ) : null}
+                            {!locked && <button onClick={() => setItems((l) => l.filter((_, i) => i !== idx))} className="text-slate-400 hover:text-red-600" aria-label="ลบ SN">✕</button>}
+                          </span>
+                        ))}
+                      </div>
+                      {!locked && (
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <input placeholder="+ พิมพ์ / สแกน SN แล้ว Enter" className="h-8 w-48 rounded-md border border-slate-300 px-2 font-mono text-xs"
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const v = (e.target as HTMLInputElement).value; (e.target as HTMLInputElement).value = ""; addSns(v, cond, g.sku); } }}
+                            onPaste={(e) => { const v = e.clipboardData.getData("text"); if (/[\n,;\t]/.test(v)) { e.preventDefault(); addSns(v, cond, g.sku); } }} />
+                          {dir !== "in" && <button className="text-xs font-semibold text-navy-700 underline" onClick={() => { setPickSku(g.sku); pickRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}>เลือก SN จากคลัง</button>}
+                        </div>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      {locked ? <span className="font-semibold">{Math.max(g.qty, g.rows.length)}</span> : (
+                        <input type="number" min={0} inputMode="numeric" value={g.qty} onChange={(e) => setLineQty(g.sku, e.target.value)}
+                          className="h-8 w-20 rounded-md border border-slate-300 px-2 text-right text-sm" aria-label="จำนวน" />
+                      )}
+                      <p className={cx("mt-1 text-xs font-semibold", g.rows.length >= g.qty ? "text-emerald-700" : "text-amber-700")}>SN {g.rows.length}/{Math.max(g.qty, g.rows.length)}</p>
+                    </td>
+                    {!locked && (
+                      <td className="px-2 py-2 text-center">
+                        <button title="ลบสินค้านี้" className="text-slate-400 hover:text-red-600"
+                          onClick={() => { setItems((l) => l.filter((x) => x.sku !== g.sku)); setDocLines((l) => l.filter((x) => x.sku !== g.sku)); }}>🗑</button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+              {!tableRows.length && <tr><td colSpan={6} className="px-3 py-4 text-center text-slate-500">ยังไม่มีสินค้า เพิ่มสินค้าด้านล่าง หรือสแกน SN ด้านบน</td></tr>}
+            </tbody>
+            <tfoot className="bg-slate-50 text-sm">
+              {!locked && (
+                <tr>
+                  <td />
+                  <td colSpan={3} className="px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ProductSearch className="w-full max-w-md" products={stock.rows} value={addSku} onChange={setAddSku} onPick={(k) => addProduct(k)} placeholder="+ เพิ่มสินค้า: พิมพ์หรือเลือกรหัส / ชื่อสินค้า" />
+                      <Button variant="secondary" onClick={() => addProduct()} disabled={!addSku.trim()}>เพิ่มสินค้า</Button>
+                    </div>
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              )}
+              <tr className="font-semibold">
+                <td colSpan={4} className="px-3 py-2 text-right">รวม {tableRows.length} รายการ</td>
+                <td className="px-3 py-2 text-right">{tableRows.reduce((a, r) => a + Math.max(r.qty, r.rows.length), 0)} <span className="text-xs font-normal text-slate-500">(SN {items.length})</span></td>
+                {!locked && <td />}
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </Card>
 
       <Card>
-        <DocFiles docId={head.id ?? null} draft={!locked} pending={pendingFiles} setPending={setPendingFiles} tick={fileTick} />
+        <DocFiles docId={head.id ?? null} draft={!locked} pending={pendingFiles} setPending={setPendingFiles} tick={fileTick} kinds={truck} />
         {head.id && pendingFiles.length > 0 && <p className="mt-2 text-xs text-amber-700">มีรูปรออัปโหลด {pendingFiles.length} ไฟล์ กดบันทึกร่างหรือยืนยันเพื่ออัปโหลด</p>}
       </Card>
 
+      {head.status !== "cancelled" && (
+        <ol className="flex flex-wrap items-center gap-2 text-xs">
+          {[
+            { label: "บันทึกข้อมูล", done: !!head.id, at: head.created_at },
+            ...(needCheck ? [{ label: "ตรวจสอบ (ชั้นที่ 1)", done: !!head.checked_at, at: head.checked_at }] : []),
+            { label: `อนุมัติ${needCheck ? " (ชั้นที่ 2)" : ""} = ย้ายสต๊อก`, done: head.status === "posted", at: head.posted_at },
+          ].map((s, i, a) => (
+            <li key={s.label} className="flex items-center gap-2">
+              <span className={cx("rounded-full px-2.5 py-1 font-semibold ring-1", s.done ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-white text-slate-500 ring-slate-200")}>
+                {s.done ? "✓" : i + 1}. {s.label}{s.done && s.at ? ` · ${formatDateTime(s.at)}` : ""}
+              </span>
+              {i < a.length - 1 && <span className="text-slate-400">→</span>}
+            </li>
+          ))}
+        </ol>
+      )}
       {err && <Alert>{err}</Alert>}
       {msg && <Alert tone="green">{msg}</Alert>}
       <div className="flex flex-wrap gap-2">
@@ -530,7 +801,8 @@ export function DocEditor({ id, type, warehouses, deliveryId, claimId, reservati
         {!locked && !canPost && <p className="self-center text-sm text-slate-500">บันทึกร่างแล้วให้ผู้มีสิทธิ์อนุมัติกดยืนยัน</p>}
         {head.status === "draft" && <Button variant="secondary" onClick={onDelete} loading={busy === "delete"}>ลบร่าง</Button>}
         {head.status === "posted" && canPost && <Button variant="secondary" onClick={onCancel} loading={busy === "cancel"}>ยกเลิกเอกสาร</Button>}
-        {head.status === "posted" && <span className="self-center text-xs text-slate-500">คลัง: {wh(head.warehouse_id)}{t === "TR" ? ` → ${wh(head.to_warehouse_id)}` : ""}</span>}
+        {head.status === "posted" && t === "RV" && (canSave || canPost) && <Button onClick={onSold} loading={busy === "sold"}>ขายแล้ว → ออกใบส่งของ</Button>}
+        {head.status === "posted" && <span className="self-center text-xs text-slate-500">{route.from} → {route.to}</span>}
       </div>
     </div>
   );

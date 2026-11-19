@@ -7,17 +7,19 @@ import { formatDate } from "../../../../lib/catalog";
 import { useRows } from "../../../../lib/content";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import {
-  DIR, DOC_LABEL, DOC_STATUS_LABEL, DOC_STATUS_TONE, DOC_TYPES, SERIAL_STATUS_LABEL,
+  DIR, DOC_LABEL, docRoute, DOC_STATUS_LABEL, DOC_STATUS_TONE, DOC_TYPES, SERIAL_STATUS_LABEL,
   type DocStatus, type DocType, type Serial, type SerialStatus, type StockDoc, type Warehouse,
 } from "../../../../lib/stockdocs";
 import { Tabs } from "../../MyRequests";
 import { DocEditor } from "./DocEditor";
+import { postedRvFor, soFromRv } from "./fromRv";
 import { SnLookup } from "./SnLookup";
 import { StockCounts } from "./StockCount";
 
 type Tab = "search" | "docs" | "balance" | "out" | "count" | "settings";
 
-function DocList({ open, newDoc }: { open: (id: string) => void; newDoc: (t: DocType) => void }) {
+function DocList({ open, newDoc, warehouses }: { open: (id: string) => void; newDoc: (t: DocType) => void; warehouses: Warehouse[] }) {
+  const whName = (id: string | null | undefined) => warehouses.find((w) => w.id === id)?.name ?? "-";
   const { can, isAdmin } = useAuth();
   const [type, setType] = useState<"" | DocType>("");
   const [status, setStatus] = useState<"" | DocStatus>("");
@@ -65,7 +67,7 @@ function DocList({ open, newDoc }: { open: (id: string) => void; newDoc: (t: Doc
         <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
           <table className="min-w-full bg-white text-sm">
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
-              <tr><th className="px-3 py-2">เลขที่</th><th className="px-3 py-2">ประเภท</th><th className="px-3 py-2">วันที่</th><th className="px-3 py-2">คู่ค้า / ลูกค้า</th><th className="px-3 py-2">อ้างอิง</th><th className="px-3 py-2 text-right">ชิ้น</th><th className="px-3 py-2">สถานะ</th></tr>
+              <tr><th className="px-3 py-2">เลขที่</th><th className="px-3 py-2">ประเภท</th><th className="px-3 py-2">วันที่</th><th className="px-3 py-2">ต้นทาง → ปลายทาง</th><th className="px-3 py-2">อ้างอิง</th><th className="px-3 py-2 text-right">ชิ้น</th><th className="px-3 py-2">สถานะ</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shown.map((d) => (
@@ -73,7 +75,7 @@ function DocList({ open, newDoc }: { open: (id: string) => void; newDoc: (t: Doc
                   <td className="px-3 py-2 font-mono font-semibold text-navy-800">{d.doc_no}</td>
                   <td className="px-3 py-2">{DOC_LABEL[d.doc_type]}</td>
                   <td className="px-3 py-2">{formatDate(d.doc_date)}</td>
-                  <td className="px-3 py-2">{d.partner_name ?? "-"}</td>
+                  <td className="px-3 py-2">{(() => { const r = docRoute(d, whName); return <>{r.from} <span className="text-slate-400">→</span> {r.to}</>; })()}</td>
                   <td className="px-3 py-2">{[d.ref_no, d.customer_po].filter(Boolean).join(" · ") || "-"}</td>
                   <td className="px-3 py-2 text-right">{d.stock_doc_items?.[0]?.count ?? 0}</td>
                   <td className="px-3 py-2"><Badge tone={DOC_STATUS_TONE[d.status]}>{DOC_STATUS_LABEL[d.status]}</Badge>{d.status === "draft" && d.checked_at && <> <Badge tone="navy">ตรวจแล้ว</Badge></>}</td>
@@ -150,7 +152,7 @@ function Balance({ warehouses, open }: { warehouses: Warehouse[]; open: (id: str
       const r = m.get(s.sku) ?? { sku: s.sku, description: s.description, c: {} };
       const k = s.status === "in_stock" && s.condition === "defective" ? "defective" : s.status;
       r.c[k] = (r.c[k] ?? 0) + 1;
-      if (s.status === "in_stock" || s.status === "reserved") r.c["wh:" + s.warehouse_id] = (r.c["wh:" + s.warehouse_id] ?? 0) + 1;
+      if (s.warehouse_id && ["in_stock", "reserved", "borrowed", "withdrawn"].includes(s.status)) r.c["wh:" + s.warehouse_id] = (r.c["wh:" + s.warehouse_id] ?? 0) + 1;
       m.set(s.sku, r);
     }
     const t = q.trim().toLowerCase();
@@ -158,7 +160,7 @@ function Balance({ warehouses, open }: { warehouses: Warehouse[]; open: (id: str
   }, [serials.rows, q]);
   const cols: { k: string; label: string }[] = [
     { k: "in_stock", label: "พร้อมขาย" }, { k: "reserved", label: "จอง" }, { k: "defective", label: "เสียในคลัง" },
-    { k: "borrowed", label: "ยืม" }, { k: "withdrawn", label: "เบิก" }, { k: "sold", label: "ขายแล้ว" }, { k: "written_off", label: "จำหน่าย" },
+    { k: "borrowed", label: "ส่งเคลม" }, { k: "withdrawn", label: "เบิก/ยืม" }, { k: "sold", label: "ขายแล้ว" }, { k: "written_off", label: "จำหน่าย" },
   ];
   if (serials.loading) return <Loading />;
   return (
@@ -197,7 +199,7 @@ function OutList({ open }: { open: (id: string) => void }) {
     supabase.from("serials").select("*, stock_docs!serials_last_doc_id_fkey(doc_no, doc_type)").in("status", ["borrowed", "withdrawn", "reserved"]).order("due_date", { nullsFirst: false }));
   const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
   if (list.loading) return <Loading />;
-  if (!list.rows.length) return <Empty>ไม่มีของยืม เบิก หรือจองค้างอยู่</Empty>;
+  if (!list.rows.length) return <Empty>ไม่มีของส่งเคลม เบิก ยืม หรือจองค้างอยู่</Empty>;
   return (
     <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
       <table className="min-w-full bg-white text-sm">
@@ -256,6 +258,31 @@ function Settings({ warehouses, reload }: { warehouses: Warehouse[]; reload: () 
     if (error) return setErr(errorMessage(error));
     setCode(""); setName(""); reload();
   }
+  const [editWh, setEditWh] = useState<{ id: string; code: string; name: string } | null>(null);
+  async function saveWh() {
+    if (!editWh || !editWh.code.trim() || !editWh.name.trim()) return;
+    const { error } = await supabase.from("warehouses").update({ code: editWh.code.trim().toUpperCase(), name: editWh.name.trim() }).eq("id", editWh.id);
+    if (error) return setErr(errorMessage(error));
+    setEditWh(null); reload();
+  }
+  const SYSTEM_ROLES = ["claim_hold", "claim_check", "defect"];
+  async function deleteWh(w: Warehouse) {
+    setErr("");
+    if (w.role && SYSTEM_ROLES.includes(w.role)) return setErr(`${w.name} ใช้กับงานเคลมอยู่ ลบไม่ได้ ถ้าจะเปลี่ยน ให้เลือกคลังอื่นแทนในหน้าตั้งค่างานเคลมก่อน`);
+    // a warehouse that any document, SN or stock count points to stays (its history must keep the name)
+    const [d1, d2, s, c] = await Promise.all([
+      supabase.from("stock_docs").select("id", { count: "exact", head: true }).eq("warehouse_id", w.id),
+      supabase.from("stock_docs").select("id", { count: "exact", head: true }).eq("to_warehouse_id", w.id),
+      supabase.from("serials").select("sn_key", { count: "exact", head: true }).eq("warehouse_id", w.id),
+      supabase.from("stock_counts").select("id", { count: "exact", head: true }).eq("warehouse_id", w.id),
+    ]);
+    const used = (d1.count ?? 0) + (d2.count ?? 0) + (s.count ?? 0) + (c.count ?? 0);
+    if (used > 0) return setErr(`${w.name} มีเอกสาร / SN / รอบตรวจนับอ้างอิงอยู่ ลบไม่ได้ ใช้ "ปิดใช้" แทน`);
+    if (!confirm(`ลบคลัง ${w.code} · ${w.name} ถาวร?`)) return;
+    const { error } = await supabase.from("warehouses").delete().eq("id", w.id);
+    if (error) return setErr(error.code === "23503" ? `${w.name} มีข้อมูลอ้างอิงอยู่ ลบไม่ได้ ใช้ "ปิดใช้" แทน` : errorMessage(error));
+    reload();
+  }
   async function toggleWh(w: Warehouse) {
     const { error } = await supabase.from("warehouses").update({ is_active: !w.is_active }).eq("id", w.id);
     if (error) return setErr(errorMessage(error));
@@ -283,13 +310,26 @@ function Settings({ warehouses, reload }: { warehouses: Warehouse[]; reload: () 
       <Card>
         <h3 className="font-semibold text-navy-900">คลังสินค้า</h3>
         <ul className="mt-2 divide-y divide-slate-100">
-          {warehouses.map((w) => (
-            <li key={w.id} className="flex items-center justify-between py-2 text-sm">
-              <span><span className="font-mono font-semibold">{w.code}</span> · {w.name} {!w.is_active && <Badge>ปิดใช้</Badge>}</span>
-              <button onClick={() => toggleWh(w)} className="text-xs text-navy-700 hover:underline">{w.is_active ? "ปิดใช้" : "เปิดใช้"}</button>
+          {warehouses.map((w, i) => editWh?.id === w.id ? (
+            <li key={w.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+              <Input className="max-w-[8rem]" value={editWh.code} onChange={(e) => setEditWh({ ...editWh, code: e.target.value })} aria-label="รหัสคลัง" />
+              <Input className="max-w-xs" value={editWh.name} onChange={(e) => setEditWh({ ...editWh, name: e.target.value })} aria-label="ชื่อคลัง"
+                onKeyDown={(e) => { if (e.key === "Enter") saveWh(); }} />
+              <Button className="!py-1.5 text-xs" onClick={saveWh}>บันทึก</Button>
+              <button onClick={() => setEditWh(null)} className="text-xs text-slate-500 hover:underline">ยกเลิก</button>
+            </li>
+          ) : (
+            <li key={w.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+              <span><span className="font-mono font-semibold">{w.code}</span> · {w.name} {(w.role === "main" || (!warehouses.some((x) => x.role === "main") && i === 0)) && <Badge tone="green">คลังหลัก</Badge>} {!w.is_active && <Badge>ปิดใช้</Badge>}</span>
+              <span className="flex gap-3">
+                <button onClick={() => setEditWh({ id: w.id, code: w.code, name: w.name })} className="text-xs text-navy-700 hover:underline">แก้ชื่อ</button>
+                <button onClick={() => toggleWh(w)} className="text-xs text-navy-700 hover:underline">{w.is_active ? "ปิดใช้" : "เปิดใช้"}</button>
+                {!(w.role && SYSTEM_ROLES.includes(w.role)) && <button onClick={() => deleteWh(w)} className="text-xs text-red-600 hover:underline">ลบ</button>}
+              </span>
             </li>
           ))}
         </ul>
+        <p className="mt-1 text-xs text-slate-500">ใบรับสินค้าต่างประเทศ / ในประเทศ รับเข้าคลังหลักก่อนเสมอ (เลือกคลังอื่นได้ในใบ) เอกสารเดิมอ้างอิงคลังตามรหัสภายใน จึงแก้ชื่อได้โดยไม่กระทบประวัติ · ลบได้เฉพาะคลังที่ยังไม่มีเอกสารหรือ SN (ที่มีแล้วให้กดปิดใช้)</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Input className="max-w-[8rem]" placeholder="รหัส" value={code} onChange={(e) => setCode(e.target.value)} />
           <Input className="max-w-xs" placeholder="ชื่อคลัง" value={name} onChange={(e) => setName(e.target.value)} />
@@ -329,8 +369,14 @@ export default function StockDocs() {
   useEffect(() => {
     if (!deliveryParam || !newType) return setChecked(true);
     supabase.from("stock_docs").select("id").eq(deliveryParam.startsWith("r:") ? "reservation_id" : "delivery_id", deliveryParam.replace(/^r:/, "")).eq("doc_type", newType).neq("status", "cancelled").limit(1)
-      .then(({ data }) => {
-        if (data?.[0]) setParams((p) => { p.set("doc", data[0].id); p.delete("new"); p.delete("delivery"); p.delete("reservation"); return p; }, { replace: true });
+      .then(async ({ data }) => {
+        const go = (id: string) => setParams((p) => { p.set("doc", id); p.delete("new"); p.delete("delivery"); p.delete("reservation"); return p; }, { replace: true });
+        if (data?.[0]) go(data[0].id);
+        // sold after a posted RV: the delivery note is made from the reserved SNs (cut from the reservation warehouse)
+        else if (newType === "SO" && deliveryParam.startsWith("r:")) {
+          const rv = await postedRvFor(deliveryParam.slice(2));
+          if (rv) { try { go(await soFromRv(rv)); } catch { /* fall back to an empty SO */ } }
+        }
         setChecked(true);
       });
   }, [deliveryParam, newType]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -350,19 +396,19 @@ export default function StockDocs() {
       <PageTitle title="เอกสารคลังและ Serial Number" subtitle="รับเข้า จ่ายออก ยืม คืน จำหน่าย ทุกชิ้นตาม SN และค้นประวัติ SN ได้ในช่องเดียว" />
       {(docId || newType) && !wh.loading && checked ? (
         <DocEditor key={docId ?? newType} id={docId} type={newType ?? "GR"} warehouses={docId ? wh.rows : active} deliveryId={params.get("delivery")} claimId={params.get("claim")} reservationId={params.get("reservation")}
-          onClose={close} onChanged={() => setListKey((k) => k + 1)} />
+          onClose={close} onChanged={() => setListKey((k) => k + 1)} onOpen={open} />
       ) : (
         <>
           <Tabs value={tab} onChange={setTab} tabs={[
             { key: "search", label: "ค้นหา SN" },
             { key: "docs", label: "เอกสาร" },
             { key: "balance", label: "คงเหลือตาม SN" },
-            { key: "out", label: "ยืม / เบิก / จอง ค้าง" },
+            { key: "out", label: "เคลม / เบิก-ยืม / จอง ค้าง" },
             ...(canCount ? [{ key: "count" as Tab, label: "ตรวจนับ" }] : []),
             ...(isAdmin ? [{ key: "settings" as Tab, label: "ตั้งค่า" }] : []),
           ]} />
           {tab === "search" && <SnLookup initial={params.get("sn") ?? ""} />}
-          {tab === "docs" && <DocList key={listKey} open={open} newDoc={newDoc} />}
+          {tab === "docs" && <DocList key={listKey} open={open} newDoc={newDoc} warehouses={wh.rows} />}
           {tab === "balance" && <Balance warehouses={active} open={open} />}
           {tab === "out" && <OutList open={open} />}
           {tab === "count" && canCount && <StockCounts warehouses={active} openDoc={open} />}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ClaimPieces } from "./ClaimPieces";
 import { Link, useLocation } from "react-router-dom";
 import { NextSteps } from "../../../components/CareTeam";
 import { ScanButton } from "../../../components/SnScanner";
@@ -383,7 +384,7 @@ function ClaimCard({ c, changes, onChanged, bank }: { c: MyClaim; changes: SnCha
             <p className="font-mono text-xl font-bold text-navy-900">{c.claim_no}</p>
             <p className="mt-0.5 truncate text-sm text-slate-700">
               {[c.brand, productTypeLabel(c.product_type), c.model].filter(Boolean).join(" · ")} · {c.qty} ชิ้น
-              {c.site_name && <span className="text-slate-500"> · ไซต์ {c.site_name}</span>}
+              {c.site_name && <span className="text-slate-500"> · โครงการ {c.site_name}</span>}
             </p>
           </div>
           <div className="flex flex-col items-end gap-1">
@@ -457,6 +458,7 @@ function ClaimCard({ c, changes, onChanged, bank }: { c: MyClaim; changes: SnCha
                   <div><dt className="text-slate-500">รายการ Optimizer</dt>
                     <dd><ul className="list-disc pl-5">{optItems.map((i, k) => <li key={k}>{i.model} × {i.qty}{i.ref_inv_sn ? ` · Ref Inv ${i.ref_inv_sn}` : ""}</li>)}</ul></dd></div>
                 )}
+                {(c.details?.units?.length ?? 0) > 0 && <div><dt className="text-slate-500">สินค้าที่เคลมรายชิ้น</dt><dd className="mt-1"><ClaimPieces d={c.details} /></dd></div>}
                 {c.symptom && <div><dt className="inline text-slate-500">อาการ: </dt><dd className="inline whitespace-pre-line">{c.symptom}</dd></div>}
                 <div><dt className="inline text-slate-500">การรับสินค้า: </dt><dd className="inline">{c.delivery_type === "pickup" ? "รับเองที่คลัง" : `จัดส่ง · ${c.delivery_address ?? ""}`}</dd></div>
                 {c.handler && <div><dt className="inline text-slate-500">ผู้รับเรื่อง: </dt><dd className="inline">{c.handler}</dd></div>}
@@ -513,7 +515,7 @@ export default function MyClaims() {
         </div>
       )}
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-        {list.rows.length > 3 && <Input type="search" className="!w-auto min-w-[14rem] flex-1" placeholder="ค้นหาเลขเคลม รุ่น ไซต์ หรือ SN" value={q} onChange={(e) => setQ(e.target.value)} />}
+        {list.rows.length > 3 && <Input type="search" className="!w-auto min-w-[14rem] flex-1" placeholder="ค้นหาเลขเคลม รุ่น โครงการ หรือ SN" value={q} onChange={(e) => setQ(e.target.value)} />}
         {(["all", "open"] as const).map((k) => (
           <button key={k} onClick={() => setFilter(k)} className={cx("rounded-full px-3 py-1", filter === k ? "bg-navy-800 text-white" : "bg-slate-100 text-slate-700")}>
             {k === "open" ? "กำลังดำเนินการ" : "ทั้งหมด"}

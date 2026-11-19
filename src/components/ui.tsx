@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { Link } from "react-router-dom";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -71,6 +71,34 @@ export function Field({ label, hint, children, required }: { label: string; hint
 }
 
 export const Input = (p: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cx(fieldBase, p.className)} />;
+/** Password field with an eye button to show / hide what was typed. */
+export function PasswordInput(p: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input {...p} type={show ? "text" : "password"} className={cx(fieldBase, "pr-11", p.className)} />
+      <button
+        type="button"
+        onClick={() => setShow((v) => !v)}
+        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-400 hover:text-navy-700"
+        aria-label={show ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+        title={show ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+        tabIndex={-1}
+      >
+        {show ? (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden>
+            <path d="M3 3l18 18" /><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+            <path d="M9.9 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden>
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+}
 export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => (
   <textarea rows={4} {...p} className={cx(fieldBase, p.className)} />
 );

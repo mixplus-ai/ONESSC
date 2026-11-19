@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AcademicIcon, ArrowRightIcon, BoxIcon, BuildingIcon, CartIcon, FileIcon, GiftIcon, InboxIcon, LogoutIcon, UserIcon, UsersIcon, WrenchIcon } from "../../components/icons";
 import { useCart } from "../../lib/cart";
+import { RankBadge } from "../../components/catalog";
+import { useMyRank } from "../../lib/catalog";
 import { Alert, Badge, Card, PageTitle } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
@@ -111,6 +113,7 @@ function AccountHub() {
 
 function UserDashboard() {
   const { profile } = useAuth();
+  const rank = useMyRank();
   const [company, setCompany] = useState<Company | null>(null);
   const [training, setTraining] = useState<TrainingStatus | null>(null);
   const [claims, setClaims] = useState<{ open: number; toReturn: number } | null>(null);
@@ -140,7 +143,7 @@ function UserDashboard() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <p className="text-sm text-slate-500">บัญชีของฉัน</p>
-          <p className="mt-1 text-lg font-semibold text-navy-900">{profile.full_name || "-"}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-lg font-semibold text-navy-900">{profile.full_name || "-"}<RankBadge rank={rank} /></p>
           <p className="text-sm text-slate-600">{profile.email}</p>
           {profile.phone && <p className="text-sm text-slate-600">{profile.phone}</p>}
           <Link to="/app/profile" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-navy-700 hover:underline">แก้ไขโปรไฟล์ <ArrowRightIcon className="h-4 w-4" /></Link>

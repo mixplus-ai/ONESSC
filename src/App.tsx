@@ -21,6 +21,7 @@ import Portfolio, { PortfolioDetail } from "./pages/public/Portfolio";
 import Privacy from "./pages/public/Privacy";
 import Team from "./pages/public/Team";
 import Training from "./pages/public/Training";
+const CourseDetail = lazy(() => import("./pages/public/CourseDetail"));
 import VerifyCert from "./pages/public/VerifyCert";
 import { Loading } from "./components/ui";
 
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="promotions" element={<Promotions />} />
             <Route path="packages/:slug" element={<PackageDetail />} />
             <Route path="training" element={<Training />} />
+            <Route path="training/course/:code" element={<CourseDetail />} />
             <Route path="verify" element={<VerifyCert />} />
             <Route path="verify/:certNo" element={<VerifyCert />} />
             <Route path="claims" element={<ClaimsInfo />} />

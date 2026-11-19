@@ -10,6 +10,8 @@ import { useAuth } from "../../../../lib/auth";
 import { errorMessage, supabase } from "../../../../lib/supabase";
 import { printClaim, exportClaimImage, exportClaimXlsx } from "./exporters";
 import { staffName, useBoard } from "./shared";
+import { ClaimSnChanges } from "./SnChanges";
+import { ClaimStockSteps, autoClaimStock } from "./StockSteps";
 
 const chipTone: Record<StepState, string> = {
   none: "bg-slate-100 text-slate-600",
@@ -91,8 +93,12 @@ export function UnitGrid({ claim, units, open, onClose, focusStep }: { claim: Cl
     const { error } = await supabase.rpc("save_claim_units", { p_units: payload, p_delete: del });
     setBusy(false);
     if (error) return setErr(errorMessage(error));
+    // steps whose SN column changed get their stock document automatically
+    const before = new Map(units.map((u) => [String(u.id), u]));
+    const changed = ([2, 3, 4] as const).filter((n) => rows.some((r) => (r[STEPS[n - 1].sn!] ?? "") !== ((r.id != null ? before.get(String(r.id))?.[STEPS[n - 1].sn!] : null) ?? "")));
     await reload();
     onClose();
+    if (changed.length) void autoClaimStock(claim.id, [...changed]);
   }
 
   return (
@@ -194,8 +200,10 @@ function UnitEditor({ claim, unit, onClose }: { claim: Claim; unit: ClaimUnit | 
     const { error } = await supabase.rpc("save_claim_units", remove ? { p_units: [], p_delete: [unit.id] } : { p_units: [rest], p_delete: [] });
     setBusy(false);
     if (error) return setErr(errorMessage(error));
+    const changed = remove ? [] : ([2, 3, 4] as const).filter((n) => (u[STEPS[n - 1].sn!] ?? "") !== (unit[STEPS[n - 1].sn!] ?? ""));
     await reload();
     onClose();
+    if (changed.length) void autoClaimStock(claim.id, [...changed]);
   }
   return (
     <Modal open={Boolean(unit)} onClose={onClose} wide title={`แก้ไขหน่วยสินค้า #${unit?.seq ?? ""} · ${claim.claim_no}`}
@@ -389,12 +397,14 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
   const issueSns = units.map((u) => u.iss_sn).filter(Boolean) as string[];
   const dupIssue = issueSns.length !== new Set(issueSns.map((s) => s.toUpperCase())).size;
   const cardRef = useRef<HTMLDivElement>(null);
+  const hasReported = units.some((u) => u.reported_sn || u.position || u.ref_inv_sn || u.ret_result);
 
   const kv: [string, string][] = [
     ["รหัสสินค้า", [...new Set(units.map((u) => u.pcode).filter(Boolean))].join(", ") || claim.model || "-"],
     ["เลขใบสำคัญ", claim.voucher_no ?? "-"],
     ["วันที่ใบสำคัญ", fmtDmy(claim.voucher_date) || "-"],
     ["Case ID", claim.case_id ?? "-"],
+    ["ชื่อโครงการ", claim.site_name ?? "-"],
     ["SiteID", claim.site_id ?? "-"],
     ["วันนัดรับ", claim.pickup_on ?? "-"],
     ["รหัสเซลล์", claim.sales_code ?? "-"],
@@ -466,6 +476,9 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
               {canEdit && s.n > 1 && (
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
                   <button type="button" className="text-xs font-semibold text-navy-700 hover:underline" onClick={() => setGrid(s.n)}>{p.count ? "แก้ไข" : "กรอก"}</button>
+                  {s.n === 3 && (
+                    <button type="button" className="text-xs font-semibold text-navy-700 hover:underline" onClick={() => document.getElementById("claim-sn-changes")?.scrollIntoView({ behavior: "smooth", block: "center" })}>ขอแก้ SN</button>
+                  )}
                   {s.n === lastStep && (
                     <button type="button" disabled={undoing} className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50" title="ล้างข้อมูลขั้นนี้เพื่อถอยกลับไปแก้ไข (ย้อนได้ทีละขั้นจากขั้นล่าสุด)" onClick={() => undoStep(s.n)}>
                       {undoing ? "กำลังยกเลิก…" : "ยกเลิกขั้นนี้"}
@@ -485,6 +498,10 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
         </div>
       </Card>
 
+      <ClaimSnChanges claim={claim} units={units} />
+
+      <ClaimStockSteps claim={claim} units={units} />
+
       <Card className="!p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-xs">
@@ -492,6 +509,7 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
               <tr>
                 <th className="px-2 py-1" rowSpan={2}>#</th>
                 <th className="px-2 py-1" rowSpan={2}>A รหัสสินค้า</th>
+                {hasReported && <th className="px-2 py-1" rowSpan={2}>ลูกค้าแจ้ง (S/N · ตำแหน่ง · Inverter)</th>}
                 {STEPS.slice(1).map((s) => <th key={s.n} colSpan={s.fields.length} className="border-l border-slate-200 px-2 py-1 text-center">ขั้น {s.n} · {s.short}</th>)}
                 {canEdit && <th rowSpan={2} />}
               </tr>
@@ -504,6 +522,15 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
                 <tr key={u.id} className="border-t border-slate-100 hover:bg-slate-50">
                   <td className="px-2 py-1 text-slate-500">{u.seq}</td>
                   <td className="px-2 py-1">{u.pcode}</td>
+                  {hasReported && (
+                    <td className="whitespace-nowrap px-2 py-1" title={u.symptom ?? ""}>
+                      {u.item_type && <span className="mr-1 text-slate-500">{productTypeLabel(u.item_type)}</span>}
+                      <span className="font-mono">{u.reported_sn ?? "-"}</span>
+                      {u.position && u.position !== "0.0.0.0" && <span className="ml-1 font-mono text-sun-600">@{u.position}</span>}
+                      {u.ref_inv_sn && u.item_type !== "inverter" && <span className="ml-1 text-slate-500">Inv <span className="font-mono">{u.ref_inv_sn}</span></span>}
+                      {u.ret_result && <Badge tone={u.ret_result === "good" ? "green" : "red"}>{u.ret_result === "good" ? "ตรวจแล้ว: ดี" : "ตรวจแล้ว: เสีย"}</Badge>}
+                    </td>
+                  )}
                   {STEPS.slice(1).flatMap((s) => s.fields.map((f, j) => {
                     const v = u[f.key as UnitField] as string | null;
                     return <td key={f.key} className={cx("whitespace-nowrap px-2 py-1", j === 0 && "border-l border-slate-100", f.type === "sn" && "font-mono")}>{f.type === "date" ? fmtDmy(v) : v}</td>;

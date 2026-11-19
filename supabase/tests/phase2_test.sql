@@ -9,7 +9,7 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('00000000-0000-0000-0000-00000000000d', 'user2@ssc.test', '{}');
 update public.profiles set role = 'admin' where email = 'admin@ssc.test';
 update public.profiles set role = 'staff' where email in ('staff@ssc.test', 'staff2@ssc.test');
-insert into public.staff_permissions (user_id, perm) values ('00000000-0000-0000-0000-00000000000b', 'products'), ('00000000-0000-0000-0000-00000000000e', 'pricing'), ('00000000-0000-0000-0000-00000000000e', 'requests');
+insert into public.staff_permissions (user_id, perm) values ('00000000-0000-0000-0000-00000000000b', 'products'), ('00000000-0000-0000-0000-00000000000e', 'pricing'), ('00000000-0000-0000-0000-00000000000e', 'requests'), ('00000000-0000-0000-0000-00000000000e', 'requests.all');
 insert into public.companies (id, tax_id, name) values
   ('10000000-0000-0000-0000-000000000001', '0105555000001', 'บริษัท เอ'),
   ('10000000-0000-0000-0000-000000000002', '0105555000002', 'บริษัท บี');
@@ -107,7 +107,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000c
 do $$ begin
   assert (select count(*) from public.company_prices) = 1, 'user1 sees only company A price';
   assert (select price from public.company_prices) = 45000, 'company A price';
-  assert (select available from public.stock_status(array['SE10K'])) = 8, 'user gets number';
+  assert (select available from public.stock_status(array['SE10K'])) is null, 'user gets no number (show_qty_to_users off since migration 41)';
   assert public.effective_price((select id from public.product_variants where sku = 'SE10K')) = 45000, 'company price applies';
   assert (select count(*) from public.stock_levels) = 0, 'user cannot read raw stock';
   assert (select count(*) from public.stock_backorders) = 0, 'user cannot read backorders';
@@ -169,8 +169,8 @@ do $$ begin
 end $$;
 select code from public.create_reservation(jsonb_build_array(jsonb_build_object('variant_id', (select id from public.product_variants where sku = 'SE10K'), 'qty', 5)), 'รับเอง');
 do $$ begin
-  assert (select available from public.stock_status(array['SE10K'])) = 3, 'hold reduces availability';
   assert (select status from public.stock_status(array['SE10K'])) = 'low', 'now low';
+  assert (select fit from public.stock_fit('[{"sku":"SE10K","qty":3}]')) = 'full' and (select fit from public.stock_fit('[{"sku":"SE10K","qty":4}]')) = 'partial', 'hold reduces availability';
 end $$;
 
 -- user2 cannot see user1's requests, and cannot take more than what is left

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { Alert, Button, Field, Input } from "../../components/ui";
+import { Alert, Button, Field, Input, PasswordInput } from "../../components/ui";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, supabase } from "../../lib/supabase";
 import AuthShell from "./AuthShell";
@@ -59,8 +59,8 @@ export default function Register() {
         <Field label="เบอร์โทร"><Input name="phone" type="tel" autoComplete="tel" /></Field>
         <Field label="อีเมล" required><Input name="email" type="email" required autoComplete="email" /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="รหัสผ่าน" required hint="อย่างน้อย 8 ตัวอักษร"><Input name="password" type="password" required minLength={8} autoComplete="new-password" /></Field>
-          <Field label="ยืนยันรหัสผ่าน" required><Input name="password2" type="password" required autoComplete="new-password" /></Field>
+          <Field label="รหัสผ่าน" required hint="อย่างน้อย 8 ตัวอักษร"><PasswordInput name="password" required minLength={8} autoComplete="new-password" /></Field>
+          <Field label="ยืนยันรหัสผ่าน" required><PasswordInput name="password2" required autoComplete="new-password" /></Field>
         </div>
         <label className="flex items-start gap-3 text-sm text-slate-600">
           <input type="checkbox" name="consent" className="mt-0.5 h-4 w-4 rounded border-slate-300 text-navy-700" />
