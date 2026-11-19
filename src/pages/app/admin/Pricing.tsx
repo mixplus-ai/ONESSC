@@ -8,6 +8,7 @@ import { formatBaht, formatDateTime, type PriceRank, type Variant } from "../../
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 import type { Company } from "../../../lib/types";
+import { NoSkuNotice } from "./NoSkuNotice";
 
 type Row = Variant & { products: { name: string; brands: { name: string } | null } };
 interface PriceRow { variant_id: string; price: number; updated_at: string }
@@ -352,6 +353,8 @@ export default function Pricing() {
       <Gate allow={can("pricing")}>
         <PageTitle title="ราคาตาม Rank / บริษัท" subtitle="ดูและแก้ราคาทั้ง 4 Rank พร้อมกัน ทุกบริษัทใน Rank เปลี่ยนตาม โปรโมชั่นที่กำลังใช้งานจะแสดงแทนเสมอ" />
         {modeTabs}
+      <NoSkuNotice what="หน้าราคา" />
+        <NoSkuNotice what="หน้าราคา" />
         {variants.loading ? <Loading /> : <RankGrid ranks={ranks.rows} variants={variants.rows} companies={companies.rows} plusSet={plusSet} onRanksSaved={ranks.reload} />}
       </Gate>
     );
