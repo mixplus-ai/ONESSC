@@ -362,6 +362,57 @@ function Photos({ claim, kind, title, canUpload }: { claim: Claim; kind: FileKin
   );
 }
 
+/** เลขเคลม with an edit pencil for whoever handles the claim (assignee, claims.handle, board perm). */
+function ClaimNoEdit({ claim }: { claim: Claim }) {
+  const { reload, canEdit } = useBoard();
+  const { session, can } = useAuth();
+  const allowed = canEdit || can("claims.handle") || claim.assigned_to === session?.user.id;
+  const [open, setOpen] = useState(false);
+  const [no, setNo] = useState(claim.claim_no);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => { setNo(claim.claim_no); setReason(""); setErr(""); setOpen(false); }, [claim.id, claim.claim_no]);
+  async function save() {
+    setErr("");
+    if (!no.trim()) return setErr("กรุณากรอกเลขเคลม");
+    if (no.trim().toUpperCase() === claim.claim_no) return setOpen(false);
+    if (!confirm(`เปลี่ยนเลขเคลม ${claim.claim_no} → ${no.trim().toUpperCase()}?`)) return;
+    setBusy(true);
+    const { error } = await supabase.rpc("set_claim_no", { p_claim: claim.id, p_no: no, p_reason: reason.trim() || null });
+    setBusy(false);
+    if (error) return setErr(errorMessage(error));
+    setOpen(false);
+    await reload();
+  }
+  if (!open) {
+    return (
+      <p className="flex items-center gap-2">
+        <span className="font-mono text-2xl font-bold text-navy-900">{claim.claim_no}</span>
+        {allowed && (
+          <button type="button" onClick={() => setOpen(true)} className="rounded-lg px-2 py-1 text-xs font-semibold text-navy-700 ring-1 ring-slate-200 hover:bg-slate-50" title="แก้ไขเลขเคลม">
+            ✎ แก้เลขเคลม
+          </button>
+        )}
+      </p>
+    );
+  }
+  return (
+    <div className="max-w-md space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <Input className="!w-40 font-mono text-lg font-bold" value={no} onChange={(e) => setNo(e.target.value)} placeholder="เช่น 26-0123" aria-label="เลขเคลมใหม่" autoFocus />
+        <Input className="!w-56" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เหตุผล (ไม่บังคับ)" aria-label="เหตุผลที่แก้" />
+      </div>
+      <div className="flex items-center gap-2">
+        <Button className="!py-1.5" onClick={save} loading={busy}>บันทึกเลขเคลม</Button>
+        <Button variant="ghost" className="!py-1.5" onClick={() => { setOpen(false); setNo(claim.claim_no); setErr(""); }}>ยกเลิก</Button>
+      </div>
+      <p className="text-xs text-slate-500">ระบบเก็บเลขเดิมไว้ในหมายเหตุภายในและประวัติการแก้ไข</p>
+      {err && <Alert>{err}</Alert>}
+    </div>
+  );
+}
+
 export default function ClaimDetail({ claim }: { claim: Claim }) {
   const { unitsBy, statusBy, canEdit, staff, brands } = useBoard();
   const me = useAuth().session?.user.id;
@@ -427,7 +478,7 @@ export default function ClaimDetail({ claim }: { claim: Claim }) {
       <Card className="!p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="font-mono text-2xl font-bold text-navy-900">{claim.claim_no}</p>
+            <ClaimNoEdit claim={claim} />
             <p className="text-sm text-slate-600">{claim.company_name ?? "-"}</p>
             <p className="text-xs text-slate-500">
               {[brands.find((b) => b.id === claim.brand_id)?.name, claim.product_type && productTypeLabel(claim.product_type)].filter(Boolean).join(" · ")}
