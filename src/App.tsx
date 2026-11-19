@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import DemoBanner from "./components/DemoBanner";
 import AppLayout from "./components/AppLayout";
 import PublicLayout from "./components/PublicLayout";
 import { AuthProvider } from "./lib/auth";
@@ -63,6 +64,7 @@ export default function App() {
     <AuthProvider>
       <CartProvider>
       <BrowserRouter>
+        <DemoBanner />
         <Suspense fallback={<Loading />}>
         <Routes>
           <Route element={<PublicLayout />}>
