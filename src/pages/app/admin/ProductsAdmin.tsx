@@ -1,16 +1,18 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Gate } from "../../../components/AppLayout";
 import { FileUpload, GalleryUpload, IMAGE_SIZES, ImageUpload } from "../../../components/ImageUpload";
 import { BoxIcon, XIcon } from "../../../components/icons";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Textarea, cx } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
-import { fmtWarranty, fmtWarrantyPair, formatBaht, productImage, slugify, specialPrice, uploadProductFile, type Brand, type Category, type Product, type Spec, type Variant } from "../../../lib/catalog";
+import { fmtWarranty, fmtWarrantyPair, formatBaht, pickSlug, productImage, slugify, specialPrice, uploadProductFile, type Brand, type Category, type Product, type Spec, type Variant } from "../../../lib/catalog";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 import { Tabs } from "../MyRequests";
 import { PriceDialog } from "./PriceDialog";
 import { StockPicker } from "./StockPicker";
+import { ProductImport } from "./ProductImport";
+import { exportProductSheet } from "../../../lib/productSheet";
 
 // ---------------------------------------------------------------------------
 // Spec rows editor
@@ -46,14 +48,15 @@ const newVariant = (sort: number): VariantDraft => ({ _key: crypto.randomUUID(),
 // ---------------------------------------------------------------------------
 // Product editor
 // ---------------------------------------------------------------------------
-function ProductEditor({ initial, brands, categories, onClose }: { initial: Partial<Product>; brands: Brand[]; categories: Category[]; onClose: (saved: boolean) => void }) {
+function ProductEditor({ initial, brands, categories, takenSlugs, onClose }: { initial: Partial<Product>; brands: Brand[]; categories: Category[]; takenSlugs: string[]; onClose: (saved: boolean) => void }) {
   const [p, setP] = useState({
     name: "", slug: "", summary: "", description: "", specs: [] as Spec[], tags: [] as string[], cover_url: "", images: [] as string[],
     datasheet_url: "", manual_url: "", video_url: "", brand_id: "", category_id: "", is_published: false, is_featured: false, sort: 0,
     ...Object.fromEntries(Object.entries(initial).map(([k, v]) => [k, v ?? ""])),
   } as Product & { brand_id: string; category_id: string });
   const [variants, setVariants] = useState<VariantDraft[]>(
-    (initial.product_variants ?? []).slice().sort((a, b) => a.sort - b.sort || a.sku.localeCompare(b.sku)).map((v) => ({ ...v, _key: v.id })),
+    // a new product starts with one empty code row: prices, promotions and packages all need a SKU
+    initial.id ? (initial.product_variants ?? []).slice().sort((a, b) => a.sort - b.sort || a.sku.localeCompare(b.sku)).map((v) => ({ ...v, _key: v.id })) : [newVariant(0)],
   );
   const [removed, setRemoved] = useState<string[]>([]);
   const [tagText, setTagText] = useState((initial.tags ?? []).join(", "));
@@ -65,13 +68,26 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
   const set = <K extends keyof typeof p>(k: K, v: (typeof p)[K]) => setP((x) => ({ ...x, [k]: v }));
   const setV = (key: string, patch: Partial<VariantDraft>) => setVariants((vs) => vs.map((v) => (v._key === key ? { ...v, ...patch } : v)));
 
+  /** suggest a code from the product name for items that are not in the stock file yet */
+  function autoSku(key: string) {
+    const base = slugify(p.name || "item").toUpperCase().slice(0, 30);
+    const used = new Set(variants.map((v) => v.sku.trim().toUpperCase()));
+    let sku = base, i = 2;
+    while (used.has(sku)) sku = `${base}-${i++}`;
+    setV(key, { sku });
+  }
+
   async function save(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setErr("");
+    const skus = variants.map((v) => v.sku.trim()).filter(Boolean);
+    if (!skus.length && !confirm("สินค้านี้ยังไม่มีรหัสสินค้า (SKU)\nจะตั้งราคา ใส่โปรโมชั่น หรือจัดเข้าแพ็กเกจไม่ได้ และลูกค้าสั่งไม่ได้\n\nกด OK เพื่อบันทึกไปก่อน หรือ Cancel เพื่อกลับไปใส่รหัส")) return;
+    const dup = skus.find((x, i) => skus.findIndex((y) => y.toUpperCase() === x.toUpperCase()) !== i);
+    if (dup) return setErr(`รหัส ${dup} ซ้ำกันในสินค้านี้`);
+    setBusy(true);
     const row = {
       name: p.name.trim(),
-      slug: (p.slug || slugify(p.name)).trim(),
+      slug: pickSlug(p.slug, p.name, takenSlugs.filter((x) => x !== initial.slug)),
       summary: p.summary || null,
       description: p.description || null,
       specs: p.specs.filter((s) => s.label.trim()),
@@ -203,7 +219,7 @@ function ProductEditor({ initial, brands, categories, onClose }: { initial: Part
           <div className="space-y-3">
             {variants.map((v) => (
               <div key={v._key} className="grid gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2 lg:grid-cols-8">
-                <Field label="รหัสสินค้า" required><Input value={v.sku} onChange={(e) => setV(v._key, { sku: e.target.value })} className="font-mono" /></Field>
+                <Field label="รหัสสินค้า" required hint={!v.id && !v.sku.trim() ? <button type="button" className="font-semibold text-navy-700 hover:underline" onClick={() => autoSku(v._key)}>สร้างรหัสให้ (ยังไม่มีในสต๊อก)</button> : undefined}><Input value={v.sku} onChange={(e) => setV(v._key, { sku: e.target.value })} className="font-mono" placeholder="ตามไฟล์สต๊อก" /></Field>
                 <div className="lg:col-span-2"><Field label="ชื่อรุ่นย่อย"><Input value={v.name} placeholder={v.sku} onChange={(e) => setV(v._key, { name: e.target.value })} /></Field></div>
                 <Field label="ราคาปกติ (บาท)" hint="ว่าง = สอบถามราคา"><Input type="number" min="0" step="0.01" value={v.base_price ?? ""} onChange={(e) => setV(v._key, { base_price: e.target.value === "" ? null : Number(e.target.value) })} /></Field>
                 <Field label="หน่วย"><Input value={v.unit} onChange={(e) => setV(v._key, { unit: e.target.value })} /></Field>
@@ -248,9 +264,11 @@ function BrandsTab() {
   async function save(e: FormEvent) {
     e.preventDefault();
     if (!edit) return;
+    setErr("");
     const row = {
       name: (edit.name ?? "").trim(),
-      slug: edit.slug || slugify(edit.name ?? ""),
+      // typed slugs are cleaned (Thai, spaces, capitals made the save fail); a taken one gets -2, -3 …
+      slug: pickSlug(edit.slug, edit.name ?? "", list.rows.filter((b) => b.id !== edit.id).map((b) => b.slug)),
       logo_url: edit.logo_url || null,
       description: edit.description || null,
       stock_groups: groups.split(",").map((g) => g.trim()).filter(Boolean),
@@ -262,20 +280,30 @@ function BrandsTab() {
     setEdit(null);
     list.reload();
   }
+  async function remove(b: Partial<Brand>) {
+    if (!b.id) return;
+    const { count } = await supabase.from("products").select("id", { count: "exact", head: true }).eq("brand_id", b.id);
+    const warn = count ? `\nสินค้า ${count} รายการของแบรนด์นี้จะกลายเป็น “ไม่มีแบรนด์” (สินค้าไม่ถูกลบ)` : "";
+    if (!confirm(`ลบแบรนด์ “${b.name}”?${warn}\nกฎแต้มและรุ่นเคลมของแบรนด์นี้จะถูกลบด้วย ถ้าไม่แน่ใจให้ติ๊กซ่อนแทน`)) return;
+    const { error } = await supabase.from("brands").delete().eq("id", b.id);
+    if (error) return setErr(errorMessage(error));
+    setEdit(null);
+    list.reload();
+  }
   return (
     <>
       {edit ? (
         <Card className="mb-4">
           <form onSubmit={save} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="ชื่อแบรนด์" required><Input required value={edit.name ?? ""} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
-            <Field label="slug"><Input value={edit.slug ?? ""} placeholder={slugify(edit.name ?? "brand")} onChange={(e) => setEdit({ ...edit, slug: e.target.value.toLowerCase() })} /></Field>
+            <Field label="slug" hint="อังกฤษตัวเล็ก ตัวเลข - · เว้นว่างได้"><Input value={edit.slug ?? ""} placeholder={slugify(edit.name ?? "brand")} onChange={(e) => setEdit({ ...edit, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })} /></Field>
             <Field label="กลุ่มในไฟล์สต๊อก" hint="เช่น SLE-IVT, SLE-SPP"><Input value={groups} onChange={(e) => setGroups(e.target.value)} /></Field>
             <Field label="ลำดับ"><Input type="number" value={edit.sort ?? 0} onChange={(e) => setEdit({ ...edit, sort: Number(e.target.value) || 0 })} /></Field>
             <div className="sm:col-span-2"><Field label="โลโก้"><ImageUpload folder="brands" upload={uploadProductFile} size={IMAGE_SIZES.brandLogo} value={edit.logo_url ?? ""} onChange={(v) => setEdit({ ...edit, logo_url: v })} /></Field></div>
             <div className="sm:col-span-2"><Field label="คำอธิบาย"><Textarea rows={2} value={edit.description ?? ""} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field></div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={edit.is_published ?? true} onChange={(e) => setEdit({ ...edit, is_published: e.target.checked })} /> แสดงบนหน้าเว็บ</label>
             {err && <div className="sm:col-span-2 lg:col-span-4"><Alert>{err}</Alert></div>}
-            <div className="flex gap-2 sm:col-span-2 lg:col-span-4"><Button type="submit">บันทึก</Button><Button type="button" variant="ghost" onClick={() => setEdit(null)}>ยกเลิก</Button></div>
+            <div className="flex gap-2 sm:col-span-2 lg:col-span-4"><Button type="submit">บันทึก</Button><Button type="button" variant="ghost" onClick={() => setEdit(null)}>ยกเลิก</Button>{edit.id && <Button type="button" variant="danger" className="ml-auto" onClick={() => remove(edit)}>ลบแบรนด์</Button>}</div>
           </form>
         </Card>
       ) : (
@@ -308,7 +336,8 @@ function CategoriesTab() {
   const [err, setErr] = useState("");
   async function add(e: FormEvent) {
     e.preventDefault();
-    const { error } = await supabase.from("product_categories").insert({ name: name.trim(), slug: slugify(name), sort: (list.rows.at(-1)?.sort ?? 0) + 10 });
+    setErr("");
+    const { error } = await supabase.from("product_categories").insert({ name: name.trim(), slug: pickSlug("", name, list.rows.map((c) => c.slug)), sort: (list.rows.at(-1)?.sort ?? 0) + 10 });
     if (error) return setErr(errorMessage(error));
     setName("");
     list.reload();
@@ -357,7 +386,8 @@ export default function ProductsAdmin() {
   const [editing, setEditing] = useState<Partial<Product> | null>(null);
   const [q, setQ] = useState("");
   const [brand, setBrand] = useState("");
-  const [state, setState] = useState<"" | "published" | "draft">("");
+  const [params] = useSearchParams();
+  const [state, setState] = useState<"" | "published" | "draft" | "nosku" | "noprice">(params.get("nosku") ? "nosku" : "");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
@@ -366,7 +396,10 @@ export default function ProductsAdmin() {
     return list.rows.filter(
       (p) =>
         (!brand || p.brand_id === brand) &&
-        (!state || (state === "published") === p.is_published) &&
+        (!state ||
+          (state === "nosku" ? !(p.product_variants ?? []).length
+            : state === "noprice" ? (p.product_variants ?? []).some((v) => v.base_price == null)
+            : (state === "published") === p.is_published)) &&
         (!n || [p.name, p.summary, ...(p.product_variants ?? []).map((v) => v.sku)].join(" ").toLowerCase().includes(n)),
     );
   }, [list.rows, q, brand, state]);
@@ -378,6 +411,12 @@ export default function ProductsAdmin() {
   const selling = (p: Product) => (p.product_variants ?? []).some((v) => v.is_active);
   const priceShown = (p: Product) => (p.product_variants ?? []).some((v) => v.show_price !== false);
   const [pricing, setPricing] = useState<Product | null>(null);
+  const [importing, setImporting] = useState(false);
+  async function excel(kind: string) {
+    setErr("");
+    if (kind === "import") { setImporting(true); setEditing(null); setPicking(false); return; }
+    try { await exportProductSheet(list.rows, brands.rows, categories.rows, kind === "blank"); } catch (x) { setErr(errorMessage(x)); }
+  }
 
   /** แสดง/ซ่อน on the website (products.is_published) and เปิด/ปิดขาย (every SKU's is_active) for one or many products. */
   async function setFlag(ids: string[], what: "publish" | "sell" | "price", on: boolean) {
@@ -419,6 +458,12 @@ export default function ProductsAdmin() {
         subtitle="แคตตาล็อก รูป สเปก ราคาปกติ และรหัสสินค้าที่ผูกกับสต๊อก"
         actions={tab === "products" && !editing && (
           <>
+            <Select className="!h-10 !w-auto" value="" onChange={(e) => { const v = e.target.value; e.target.value = ""; if (v) excel(v); }} aria-label="Excel">
+              <option value="">Excel / Template…</option>
+              <option value="all">ส่งออกสินค้าทั้งหมด (.xlsx)</option>
+              <option value="blank">ดาวน์โหลด Template เปล่า</option>
+              <option value="import">นำเข้าจากไฟล์ Excel…</option>
+            </Select>
             <Link to="/app/admin/products-grid" className="inline-flex h-10 items-center rounded-xl px-3 text-sm font-semibold text-navy-700 ring-1 ring-slate-300 hover:bg-slate-50">แก้แบบตาราง</Link>
             <Button variant="secondary" onClick={() => { setPicking(true); setMsg(""); }}>+ เพิ่มจากสต๊อก</Button>
             <Button onClick={() => setEditing({})}>+ เพิ่มสินค้า</Button>
@@ -433,6 +478,7 @@ export default function ProductsAdmin() {
           {msg && <div className="mb-4"><Alert tone="green">{msg}</Alert></div>}
           {err && <div className="mb-4"><Alert>{err}</Alert></div>}
           {pricing && <PriceDialog product={pricing} onClose={(saved) => { setPricing(null); if (saved) { setMsg(`บันทึกราคา ${pricing.name} แล้ว`); list.reload(); } }} />}
+          {importing && <ProductImport products={list.rows} brands={brands.rows} categories={categories.rows} onClose={(changed) => { setImporting(false); if (changed) { list.reload(); brands.reload(); categories.reload(); setMsg("นำเข้าจาก Excel แล้ว"); } }} />}
           {picking && !editing && (
             <StockPicker
               brands={brands.rows}
@@ -443,7 +489,7 @@ export default function ProductsAdmin() {
             />
           )}
           {editing && (
-            <ProductEditor key={editing.id ?? "new"} initial={editing} brands={brands.rows} categories={categories.rows} onClose={(saved) => { setEditing(null); if (saved) list.reload(); }} />
+            <ProductEditor key={editing.id ?? "new"} initial={editing} brands={brands.rows} categories={categories.rows} takenSlugs={list.rows.map((x) => x.slug)} onClose={(saved) => { setEditing(null); if (saved) list.reload(); }} />
           )}
           <div className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
             <Input type="search" placeholder="ค้นหาชื่อหรือรหัสสินค้า" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -455,6 +501,8 @@ export default function ProductsAdmin() {
               <option value="">ทุกสถานะ</option>
               <option value="published">แสดงบนเว็บ</option>
               <option value="draft">ซ่อนอยู่</option>
+              <option value="nosku">ยังไม่มีรหัสสินค้า</option>
+              <option value="noprice">มีรหัสที่ยังไม่มีราคา</option>
             </Select>
           </div>
           {list.loading ? (
@@ -493,7 +541,7 @@ export default function ProductsAdmin() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className={cx("truncate font-semibold", p.is_published ? "text-navy-900" : "text-slate-400")}>{p.name}</p>
-                        <p className="truncate font-mono text-xs text-slate-500">{vs.map((v) => v.sku).join(" · ") || "ยังไม่มีรหัสสินค้า"}</p>
+                        {vs.length ? <p className="truncate font-mono text-xs text-slate-500">{vs.map((v) => v.sku).join(" · ")}</p> : <p className="text-xs font-semibold text-amber-700">ยังไม่มีรหัสสินค้า: ตั้งราคา/โปร/แพ็กเกจไม่ได้ กด “แก้ไข” → “+ เพิ่มรหัสสินค้า”</p>}
                         <p className="text-xs text-slate-500">
                           {p.brands?.name ?? "ไม่มีแบรนด์"}{p.product_categories && ` · ${p.product_categories.name}`} ·{" "}
                           <span className={cx(sp.length > 0 && "text-slate-400 line-through")}>{prices.length ? formatBaht(Math.min(...prices)) : "ไม่มีราคา"}</span>
