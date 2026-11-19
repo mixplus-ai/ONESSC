@@ -244,6 +244,20 @@ export const formatDate = (s: string | null | undefined) =>
 export const formatDateTime = (s: string | null | undefined) =>
   s ? new Date(s).toLocaleString("th-TH", { day: "numeric", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-";
 
+/** Clean a typed slug to the allowed form (a-z 0-9 -). Returns "" when nothing usable is left. */
+export function cleanSlug(s: string | null | undefined): string {
+  return (s ?? "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+/** Typed slug if usable, else one made from the name; adds -2, -3 … when it is already taken. */
+export function pickSlug(typed: string | null | undefined, name: string, taken: Iterable<string> = []): string {
+  const base = cleanSlug(typed) || slugify(name);
+  const used = new Set(taken);
+  let s = base, i = 2;
+  while (used.has(s)) s = `${base}-${i++}`;
+  return s;
+}
+
 export function slugify(s: string): string {
   const base = s
     .toLowerCase()

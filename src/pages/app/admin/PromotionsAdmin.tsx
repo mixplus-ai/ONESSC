@@ -4,10 +4,11 @@ import { IMAGE_SIZES, ImageUpload } from "../../../components/ImageUpload";
 import { XIcon } from "../../../components/icons";
 import { Alert, Badge, Button, Card, Empty, Field, Input, Loading, PageTitle, Select, Textarea } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
-import { formatBaht, formatDate, formatQty, isRunning, slugify, uploadProductFile, type Package, type Promotion, type Variant } from "../../../lib/catalog";
+import { formatBaht, formatDate, formatQty, isRunning, pickSlug, slugify, uploadProductFile, type Package, type Promotion, type Variant } from "../../../lib/catalog";
 import { useRows } from "../../../lib/content";
 import { errorMessage, supabase } from "../../../lib/supabase";
 import { Tabs } from "../MyRequests";
+import { NoSkuNotice } from "./NoSkuNotice";
 
 type VRow = Variant & { products: { name: string; brands: { id: string; name: string } | null } };
 
@@ -83,8 +84,12 @@ function PromotionEditor({ initial, variants, onClose }: { initial: Partial<Prom
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setErr("");
+    if (p.starts_at && p.ends_at && new Date(p.ends_at) <= new Date(p.starts_at)) return setErr("วันสิ้นสุดต้องอยู่หลังวันเริ่ม");
+    if (p.is_published && !items.length) return setErr("เลือกสินค้าอย่างน้อย 1 รายการก่อนเผยแพร่");
+    const over = items.find((i) => { const b = byId.get(i.variant_id)?.base_price; return b != null && Number(i.promo_price) > Number(b); });
+    if (over && !confirm(`ราคาโปรของ ${byId.get(over.variant_id)?.sku} สูงกว่าราคาปกติ บันทึกต่อไหม?`)) return;
+    setBusy(true);
     try {
       const row = {
         title: (p.title ?? "").trim(),
@@ -166,7 +171,7 @@ function PromotionEditor({ initial, variants, onClose }: { initial: Partial<Prom
   );
 }
 
-function PackageEditor({ initial, variants, onClose }: { initial: Partial<Package>; variants: VRow[]; onClose: (saved: boolean) => void }) {
+function PackageEditor({ initial, variants, takenSlugs, onClose }: { initial: Partial<Package>; variants: VRow[]; takenSlugs: string[]; onClose: (saved: boolean) => void }) {
   const [p, setP] = useState<Partial<Package>>({ is_published: false, sort: 0, ...initial });
   const [items, setItems] = useState<{ variant_id: string; qty: string }[]>(
     [...(initial.package_items ?? [])].sort((a, b) => a.sort - b.sort).map((i) => ({ variant_id: i.variant_id, qty: String(i.qty) })),
@@ -178,13 +183,15 @@ function PackageEditor({ initial, variants, onClose }: { initial: Partial<Packag
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setErr("");
+    if (p.starts_at && p.ends_at && new Date(p.ends_at) <= new Date(p.starts_at)) return setErr("วันสิ้นสุดต้องอยู่หลังวันเริ่ม");
+    if (!items.length) return setErr("เลือกสินค้าในแพ็กเกจอย่างน้อย 1 รายการ");
+    setBusy(true);
     try {
       const row = {
         name: (p.name ?? "").trim(),
         code: (p.code ?? "").trim() || null,
-        slug: p.slug || slugify(p.name ?? ""),
+        slug: pickSlug(p.slug, p.name ?? "", takenSlugs.filter((x) => x !== initial.slug)),
         summary: p.summary || null,
         description: p.description || null,
         cover_url: p.cover_url || null,
@@ -312,6 +319,7 @@ export default function PromotionsAdmin() {
         actions={tab === "promotions" ? !editPromo && <Button onClick={() => setEditPromo({})}>+ โปรโมชั่น</Button> : !editPkg && <Button onClick={() => setEditPkg({})}>+ แพ็กเกจ</Button>}
       />
       <Tabs value={tab} onChange={setTab} tabs={[{ key: "promotions", label: "โปรโมชั่น" }, { key: "packages", label: "แพ็กเกจ" }]} />
+      {(editPromo || editPkg) && <NoSkuNotice what="รายการให้เลือก" />}
       {tab === "promotions" && (
         <>
           {editPromo && <PromotionEditor key={editPromo.id ?? "new"} initial={editPromo} variants={variants.rows} onClose={(s) => { setEditPromo(null); if (s) promos.reload(); }} />}
@@ -335,7 +343,7 @@ export default function PromotionsAdmin() {
       )}
       {tab === "packages" && (
         <>
-          {editPkg && <PackageEditor key={editPkg.id ?? "new"} initial={editPkg} variants={variants.rows} onClose={(s) => { setEditPkg(null); if (s) packages.reload(); }} />}
+          {editPkg && <PackageEditor key={editPkg.id ?? "new"} initial={editPkg} variants={variants.rows} takenSlugs={packages.rows.map((x) => x.slug)} onClose={(s) => { setEditPkg(null); if (s) packages.reload(); }} />}
           {packages.loading ? <Loading /> : packages.rows.length ? (
             <div className="grid gap-3 md:grid-cols-2">
               {packages.rows.map((p) => (
