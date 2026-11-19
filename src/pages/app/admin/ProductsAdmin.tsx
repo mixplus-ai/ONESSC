@@ -11,6 +11,8 @@ import { errorMessage, supabase } from "../../../lib/supabase";
 import { Tabs } from "../MyRequests";
 import { PriceDialog } from "./PriceDialog";
 import { StockPicker } from "./StockPicker";
+import { ProductImport } from "./ProductImport";
+import { exportProductSheet } from "../../../lib/productSheet";
 
 // ---------------------------------------------------------------------------
 // Spec rows editor
@@ -409,6 +411,12 @@ export default function ProductsAdmin() {
   const selling = (p: Product) => (p.product_variants ?? []).some((v) => v.is_active);
   const priceShown = (p: Product) => (p.product_variants ?? []).some((v) => v.show_price !== false);
   const [pricing, setPricing] = useState<Product | null>(null);
+  const [importing, setImporting] = useState(false);
+  async function excel(kind: string) {
+    setErr("");
+    if (kind === "import") { setImporting(true); setEditing(null); setPicking(false); return; }
+    try { await exportProductSheet(list.rows, brands.rows, categories.rows, kind === "blank"); } catch (x) { setErr(errorMessage(x)); }
+  }
 
   /** แสดง/ซ่อน on the website (products.is_published) and เปิด/ปิดขาย (every SKU's is_active) for one or many products. */
   async function setFlag(ids: string[], what: "publish" | "sell" | "price", on: boolean) {
@@ -450,6 +458,12 @@ export default function ProductsAdmin() {
         subtitle="แคตตาล็อก รูป สเปก ราคาปกติ และรหัสสินค้าที่ผูกกับสต๊อก"
         actions={tab === "products" && !editing && (
           <>
+            <Select className="!h-10 !w-auto" value="" onChange={(e) => { const v = e.target.value; e.target.value = ""; if (v) excel(v); }} aria-label="Excel">
+              <option value="">Excel / Template…</option>
+              <option value="all">ส่งออกสินค้าทั้งหมด (.xlsx)</option>
+              <option value="blank">ดาวน์โหลด Template เปล่า</option>
+              <option value="import">นำเข้าจากไฟล์ Excel…</option>
+            </Select>
             <Link to="/app/admin/products-grid" className="inline-flex h-10 items-center rounded-xl px-3 text-sm font-semibold text-navy-700 ring-1 ring-slate-300 hover:bg-slate-50">แก้แบบตาราง</Link>
             <Button variant="secondary" onClick={() => { setPicking(true); setMsg(""); }}>+ เพิ่มจากสต๊อก</Button>
             <Button onClick={() => setEditing({})}>+ เพิ่มสินค้า</Button>
@@ -464,6 +478,7 @@ export default function ProductsAdmin() {
           {msg && <div className="mb-4"><Alert tone="green">{msg}</Alert></div>}
           {err && <div className="mb-4"><Alert>{err}</Alert></div>}
           {pricing && <PriceDialog product={pricing} onClose={(saved) => { setPricing(null); if (saved) { setMsg(`บันทึกราคา ${pricing.name} แล้ว`); list.reload(); } }} />}
+          {importing && <ProductImport products={list.rows} brands={brands.rows} categories={categories.rows} onClose={(changed) => { setImporting(false); if (changed) { list.reload(); brands.reload(); categories.reload(); setMsg("นำเข้าจาก Excel แล้ว"); } }} />}
           {picking && !editing && (
             <StockPicker
               brands={brands.rows}
